@@ -13,8 +13,7 @@ import {
   buildTree, buildRock, buildHouse, buildPagoda, buildTorii, buildTemple,
   buildGate, buildStall, buildBrazier, buildWell, buildCart, buildFence,
   buildWatchtower, buildBarricade, buildStuckSpear, buildRubble, buildLantern,
-  buildStatue, buildGraves, buildBridge, buildBanner, buildPlatform, mat
-} from '../entities/models.js';
+  buildStatue, buildGraves, buildBridge, buildBanner, buildPlatform, mat, bambooParts } from '../entities/models.js';
 
 export const CELL = 256;
 
@@ -336,21 +335,37 @@ export class Props {
     const scale = { low: .35, medium: .6, high: 1, ultra: 1.35 }[this.quality] ?? 1;
 
     /* --- trees --- */
-    const treeCount = Math.floor((w.density?.trees ?? .5) * 26 * scale);
+    // Dense worlds get a superlinear share: a wood is not a meadow with more
+    // trees in it, and the fog closes the near field so the illusion holds.
+    const td = w.density?.trees ?? .5;
+    // Bamboo is instanced, so the wood can be genuinely thick: the count is
+    // set by what the non-bamboo remainder costs, not by the total.
+    const treeCount = Math.floor((td + Math.max(0, td - 1) * 1.9) * 82 * scale);
+    const bamboo = [];                       // instanced: stalk transforms
     for (let i = 0; i < treeCount; i++) {
       const x = ox + rng.range(-CELL / 2, CELL / 2);
       const z = oz + rng.range(-CELL / 2, CELL / 2);
       if (Math.max(Math.abs(x), Math.abs(z)) > T.half - 40) continue;
-      if (!T.isFlatGround(x, z, .42)) continue;
+      if (!T.isFlatGround(x, z, w.theme === 'forest' ? .68 : .42)) continue;
       if (this.inHub(new THREE.Vector3(x, 0, z), 70)) continue;
-      const t = buildTree(w.theme, rng);
-      t.position.set(x, T.heightAt(x, z) - .3, z);
-      t.rotation.y = rng() * 6.28;
+      const y = T.heightAt(x, z) - .3;
       const s = rng.range(.75, 1.3);
+
+      // In the wood most trees are bamboo, and bamboo instances.
+      if (w.theme === 'forest' && rng.chance(.82)) {
+        bamboo.push({ x, y, z, h: rng.range(7, 15) * s, lean: rng.range(-.06, .06),
+                      spin: rng() * 6.28, s });
+        colliders.push({ x, z, r: .45 * s });
+        continue;
+      }
+      const t = buildTree(w.theme, rng);
+      t.position.set(x, y, z);
+      t.rotation.y = rng() * 6.28;
       t.scale.setScalar(s);
       g.add(t);
       colliders.push({ x, z, r: .8 * s });
     }
+    if (bamboo.length) g.add(...this._bambooMeshes(bamboo));
 
     /* --- rocks --- */
     const rockCount = Math.floor((w.density?.rocks ?? .4) * 14 * scale);
@@ -503,7 +518,11 @@ export class Props {
       }
     }
 
-    let budget = 1;
+    // One cell per frame keeps steady play smooth, but after a teleport, a
+    // world load or a hard gallop the backlog is dozens of cells and the
+    // world stays visibly empty while it catches up. Spend more when behind.
+    const missing = wanted.size - this.cells.size;
+    let budget = missing > 6 ? 4 : 1;
     for (const key of wanted) {
       if (this.cells.has(key)) continue;
       if (budget-- <= 0) break;
@@ -512,6 +531,39 @@ export class Props {
       this.cells.set(key, g);
       this.group.add(g);
     }
+  }
+
+  /** Three instanced meshes carrying a whole cell's worth of bamboo. */
+  _bambooMeshes(list) {
+    const P = bambooParts();
+    const n = list.length;
+    const stalks = new THREE.InstancedMesh(P.stalk.geo, P.stalk.mat, n);
+    const leafA = new THREE.InstancedMesh(P.leaf.geo, P.leaf.mat, n);
+    const leafB = new THREE.InstancedMesh(P.leaf.geo, P.leaf.mat, n);
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion();
+    const e = new THREE.Euler(), pos = new THREE.Vector3(), scl = new THREE.Vector3();
+    list.forEach((b, i) => {
+      // The stalk geometry is a unit-height cylinder, so y scale is its height.
+      e.set(0, b.spin, b.lean); q.setFromEuler(e);
+      pos.set(b.x, b.y + b.h / 2, b.z);
+      scl.set(b.s, b.h, b.s);
+      stalks.setMatrixAt(i, m.compose(pos, q, scl));
+
+      scl.set(b.s, b.s, b.s);
+      e.set(b.lean * 3, b.spin, .2); q.setFromEuler(e);
+      pos.set(b.x, b.y + b.h * .82, b.z);
+      leafA.setMatrixAt(i, m.compose(pos, q, scl));
+      e.set(b.lean * 3, b.spin + 1.57, -.2); q.setFromEuler(e);
+      pos.set(b.x, b.y + b.h * .72, b.z);
+      leafB.setMatrixAt(i, m.compose(pos, q, scl));
+    });
+    for (const im of [stalks, leafA, leafB]) {
+      im.instanceMatrix.needsUpdate = true;
+      im.castShadow = true;
+      im.receiveShadow = true;
+      im.frustumCulled = true;
+    }
+    return [stalks, leafA, leafB];
   }
 
   /** Nearest blocking prop within `r` of a point, or null. */

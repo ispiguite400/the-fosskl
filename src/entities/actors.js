@@ -853,12 +853,103 @@ export class Animal extends Actor {
 /* ============================================================
    CHEST
    ============================================================ */
+/* ============================================================
+   KODAMA — the wood's small witnesses.
+   They do not fight and cannot be hurt. Stand near one without swinging
+   and it will decide you are not the problem, and give you something.
+   Swing near one and it is simply gone, along with what it was offering.
+   ============================================================ */
+export class Kodama extends Actor {
+  constructor(game, pos) {
+    super(game, pos);
+    this.radius = .3;
+    this.height = .8;
+    this.state = 'watching';       // watching -> blessing -> spent
+    this.trust = 0;
+    this.t = Math.random() * 6.28;
+
+    const root = new THREE.Group();
+    const pale = new THREE.MeshStandardMaterial({
+      color: 0xdfeee0, emissive: 0x88c890, emissiveIntensity: .9, roughness: .9
+    });
+    const head = new THREE.Mesh(new THREE.SphereGeometry(.19, 12, 10), pale);
+    head.position.y = .58; root.add(head);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(.09, .12, .34, 8), pale);
+    body.position.y = .28; root.add(body);
+    // Three dark holes for a face — no eyes, just openings.
+    const dark = new THREE.MeshBasicMaterial({ color: 0x14201a });
+    for (const [x, y] of [[-.07, .62], [.07, .62], [0, .5]]) {
+      const h = new THREE.Mesh(new THREE.SphereGeometry(.035, 8, 6), dark);
+      h.position.set(x, y, .17); root.add(h);
+    }
+    this.glow = new THREE.PointLight(0x9fe8b0, 1.1, 7, 2);
+    this.glow.position.y = .6; root.add(this.glow);
+
+    this.root = root;
+    this.pos.y = this.groundY();
+    this.root.position.copy(this.pos);
+    game.scene.add(root);
+  }
+
+  update(dt, player) {
+    this.t += dt;
+    this.root.position.set(this.pos.x, this.pos.y + Math.sin(this.t * 1.6) * .08, this.pos.z);
+
+    if (this.state === 'spent') {
+      this.glow.intensity = Math.max(0, this.glow.intensity - dt * 3);
+      this.root.scale.multiplyScalar(Math.pow(.02, dt));
+      if (this.glow.intensity <= .02) { this.remove = true; this.dispose(); }
+      return;
+    }
+
+    const d = this.pos.distanceTo(player.pos);
+    // Always turn to face whoever is there.
+    const to = Math.atan2(player.pos.x - this.pos.x, player.pos.z - this.pos.z);
+    this.yaw = to; this.root.rotation.y = to;
+
+    // A swing anywhere close and it wants nothing more to do with you.
+    if (d < 9 && player.attackT > 0) {
+      this.game.hud?.toast('THE WOOD LOOKS AWAY');
+      this.game.audio?.sfx('uiBack', { volume: .5 });
+      this.state = 'spent';
+      return;
+    }
+
+    if (d < 4.5) {
+      this.trust += dt;
+      this.glow.intensity = 1.1 + Math.sin(this.t * 8) * .35 + this.trust * .7;
+      if (this.trust > 2.2) this._bless(player);
+    } else {
+      this.trust = Math.max(0, this.trust - dt * .6);
+      this.glow.intensity = 1.1 + Math.sin(this.t * 2) * .25;
+    }
+  }
+
+  _bless(player) {
+    this.state = 'spent';
+    player.buff = { damage: 1.25, speed: 1.12, t: 90 };
+    player.hp = Math.min(player.hpMax, player.hp + player.hpMax * .35);
+    this.game.audio?.sfx('rankUp');
+    this.game.vfx?.magicBurst(this.pos.clone().setY(this.pos.y + .7), [.62, .95, .7], 90);
+    this.game.hud?.toast("THE WOOD'S BLESSING — 90s", true);
+    this.game.grantXP?.(220);
+  }
+
+  dispose() {
+    this.root.parent?.remove(this.root);
+  }
+}
+
 export class Chest extends Actor {
   constructor(game, pos, { locked = false, id }) {
     super(game, pos);
     this.id = id;
     this.locked = locked;
     this.opened = false;
+    /* Not every box in the deep wood is a box. From world three on, roughly
+     * one chest in nine has teeth. Seeded off the id so a given chest is
+     * always the same one across saves — no save-scumming the surprise. */
+    this.isMimic = game.world?.id >= 3 && makeRNG((id * 719393) >>> 0)() < .11;
     this.interactRange = 3.4;
     this.root = buildChest(locked);
     this.pos.y = this.groundY();
@@ -879,6 +970,11 @@ export class Chest extends Actor {
       }
     }
     this.opened = true;
+    if (this.isMimic) {
+      this.game.audio.sfxAt('bossRoar', this.pos, this.game.listenerPos, 50);
+      this.game.vfx.magicBurst(this.pos.clone().setY(this.pos.y + .8), [.5, .9, .4], 90);
+      return { type: 'mimic' };
+    }
     this.game.audio.sfxAt('chest', this.pos, this.game.listenerPos, 40);
     this.game.vfx.magicBurst(this.pos.clone().setY(this.pos.y + 1), [1, .8, .35], 60);
     return this.rollLoot();

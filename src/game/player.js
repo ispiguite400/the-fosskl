@@ -450,9 +450,14 @@ export class Player {
     // Holding jump in the air slows the fall and charges the dash.
     const canDash = !this.grounded && this.dashesLeft > 0 && this.dashCooldown <= 0 &&
                     this.save.abilities.includes('wind_dash');
+    this._hanging = false;
     if (canDash && inp.isDown('dash') && inp.heldFor('dash') > .08) {
       this.dashCharge = Math.min(1, this.dashCharge + dt * 1.7);
-      if (this.vel.y < 0) this.vel.y *= Math.pow(.06, dt);        // hang
+      // Hold to hang: the wind takes your weight. Scaling the fall alone only
+      // traded acceleration for a brisk constant drop, which does not read as
+      // slowed. Gravity is nearly cancelled below and the descent capped, so
+      // you hover long enough to pick your line before releasing.
+      this._hanging = true;
       if (!this._chargeSfx) { this.game.audio.sfx('windCharge'); this._chargeSfx = true; }
       this.game.vfx.windTrail(this._chest(), UP, .35);
     } else if (this.dashCharge > 0) {
@@ -460,7 +465,8 @@ export class Player {
     }
 
     /* ---- gravity + ground ---- */
-    this.vel.y -= 30 * dt;
+    this.vel.y -= (this._hanging ? 4.5 : 30) * dt;
+    if (this._hanging) this.vel.y = Math.max(this.vel.y, -2.4);
     if (this.dashing > 0) {
       this.dashing -= dt;
       this.vel.y = Math.max(this.vel.y, -4);

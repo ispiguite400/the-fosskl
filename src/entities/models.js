@@ -811,6 +811,17 @@ export function buildAnimal(def, rng = makeRNG(1)) {
 /* ============================================================
    VEGETATION
    ============================================================ */
+/* Bamboo is 55% of the Everdark Wood and every stalk is the same three
+ * pieces, so the wood is built as three instanced meshes per streaming cell
+ * rather than thousands of little Groups. One draw call per piece per cell
+ * instead of one per stalk is the difference between a grove and a slideshow. */
+export function bambooParts() {
+  return {
+    stalk: { geo: cyl(.05, .07, 1, 5), mat: mat(0x6a8f3a, { roughness: .8 }) },
+    leaf:  { geo: box(.03, 1.5, 1.1), mat: mat(0x7aa84a, { roughness: .9, side: THREE.DoubleSide }) }
+  };
+}
+
 export function buildTree(theme, rng) {
   const g = new THREE.Group();
   const h = rng.range(6, 14);
@@ -819,20 +830,20 @@ export function buildTree(theme, rng) {
   const bark = mat(barkColor, { roughness: 1 });
 
   if (theme === 'forest' && rng.chance(.55)) {
-    /* bamboo cluster */
-    const n = rng.int(4, 9);
-    for (let i = 0; i < n; i++) {
-      const bh = rng.range(7, 15);
-      const stalk = mesh(cyl(.05, .07, bh, 6), mat(0x6a8f3a, { roughness: .8 }),
-        rng.range(-1.2, 1.2), bh / 2, rng.range(-1.2, 1.2));
-      stalk.rotation.z = rng.range(-.05, .05);
-      g.add(stalk);
-      for (let k = 0; k < 4; k++) {
-        const leaf = mesh(box(.02, .9, .16), mat(0x7aa84a, { roughness: .9, side: THREE.DoubleSide }),
-          stalk.position.x, bh * (.6 + k * .1), stalk.position.z);
-        leaf.rotation.set(rng.range(-.6, .6), rng() * 6.28, rng.range(-.6, .6));
-        g.add(leaf);
-      }
+    /* One bamboo stalk, not a clump. A clump of nine stalks with four leaves
+     * apiece was forty-five meshes for a single entry, which capped how many
+     * trees the wood could afford. Cheap stalks, placed thickly, read as a
+     * far denser grove than a handful of expensive clumps ever did. */
+    const bh = rng.range(7, 15);
+    const stalk = mesh(cyl(.05, .07, bh, 5), mat(0x6a8f3a, { roughness: .8 }), 0, bh / 2, 0);
+    stalk.rotation.z = rng.range(-.06, .06);
+    g.add(stalk);
+    // Two crossed leaf blades near the top carry the silhouette.
+    const leafM = mat(0x7aa84a, { roughness: .9, side: THREE.DoubleSide });
+    for (let k = 0; k < 2; k++) {
+      const leaf = mesh(box(.03, 1.5, 1.1), leafM, 0, bh * rng.range(.72, .92), 0);
+      leaf.rotation.set(rng.range(-.4, .4), k * 1.57 + rng() * .6, rng.range(-.35, .35));
+      g.add(leaf);
     }
     return g;
   }

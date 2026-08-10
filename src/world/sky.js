@@ -209,7 +209,7 @@ export class Sky {
 
   _baseFog() {
     // Low enough that hills a kilometre out are still visible.
-    return { ruins: .0013, forest: .0030, snow: .0026, desert: .0014,
+    return { ruins: .0013, forest: .0042, snow: .0026, desert: .0014,
              ocean: .0016, sky: .0018, kingdom: .0016 }[this.world.theme] ?? .0018;
   }
 
@@ -364,7 +364,10 @@ export class Sky {
 
     /* ---- sky colours ---- */
     const p = this.world.palette;
-    const zenithDay = new THREE.Color(0x2f6fb0);
+    // A world may claim its own overhead colour. Under a closed canopy the
+    // sky is not blue - it is whatever the leaves let through - and a fixed
+    // blue zenith was making the Everdark Wood read as an open meadow.
+    const zenithDay = new THREE.Color(p.zenith ?? 0x2f6fb0);
     const zenithNight = new THREE.Color(0x040814);
     const horizonDay = new THREE.Color(p.sky);
     const horizonDusk = new THREE.Color(0xff7a2b);

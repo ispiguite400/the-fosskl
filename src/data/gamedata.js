@@ -21,8 +21,19 @@ export function rankFor(level) {
   return r;
 }
 
+/* Levelling curve.
+ *
+ * Enemy experience grows about twenty-two fold from world two to world nine,
+ * because both the archetypes and the per-world level scale climb. A
+ * quadratic requirement grows far slower than that, so the early worlds were
+ * an enormous grind and the late ones a formality: reaching the gate took
+ * roughly 1360 kills in world two against 276 in world nine.
+ *
+ * A cubic tracks the income curve almost exactly, which is what keeps every
+ * world worth a comparable amount of play - a little over two hundred kills
+ * each, landing between thirty and forty-five minutes at a realistic pace. */
 export function xpToNext(level) {
-  return Math.floor(40 + level * 28 + level * level * 1.6);
+  return Math.floor(90 + level + level * level * level * .016);
 }
 
 /* ============================================================
@@ -271,11 +282,13 @@ export const WORLDS = [
     id: 3, name: 'Everdark Wood', startPhase: 0.5, jp: '常闇の森', theme: 'forest', art: 'bamboo',
     music: 'world3', hub: true, size: 7600,
     subtitle: 'Beneath a roof of leaves',
-    palette: { fog: 0x2e4a30, sky: 0x6f8f6a, ground: 0x30442a, grass: 0x3f6a34, water: 0x27503f },
-    sun: { elevation: 58, azimuth: 240, intensity: 1.0, color: 0xdfeec0 },
-    density: { trees: 2.6, rocks: .45, grass: .9, buildings: .18 },
+    palette: { fog: 0x243a26, sky: 0x4c6b48, zenith: 0x1d3320,
+               ground: 0x2a3c24, grass: 0x355c2c, water: 0x27503f },
+    // Little of it reaches the floor: a low, green, filtered light.
+    sun: { elevation: 58, azimuth: 240, intensity: .55, color: 0xc8dfa0 },
+    density: { trees: 3.4, rocks: .45, grass: .55, buildings: .18 },
     enemyLevel: 13, enemyTypes: ['ronin', 'bandit', 'shadow', 'archer', 'monk'], boss: 'forest_warden',
-    ambient: 'forest',
+    ambient: 'forest', motes: 0x9fe8b0, kodama: 14,
     intro: 'The canopy holds the light out. Whatever lives here has never needed eyes.'
   },
   {
@@ -363,6 +376,9 @@ export const worldById = id => WORLDS.find(w => w.id === id) || WORLDS[0];
    ENEMY ARCHETYPES
    ============================================================ */
 export const ENEMIES = {
+  /* Wears a chest until you open it. Fast, hits hard, pays out like a small
+     boss - the deep wood punishes greed and then rewards nerve. */
+  mimic:       { name: 'Hungering Chest', hp: 210, damage: 26, speed: 5.4, blockChance: 0, xp: 340, scale: 1.06, weapon: 'fist', armor: .18, aggro: 44, feral: true },
   ashigaru:    { name: 'Ashigaru', hp: 55,  damage: 8,  speed: 3.6, blockChance: .40, xp: 26,  scale: 1.0, weapon: 'spear',   armor: .1, aggro: 26 },
   ronin:       { name: 'Ronin',    hp: 80,  damage: 12, speed: 4.2, blockChance: .40, xp: 38,  scale: 1.02, weapon: 'katana', armor: .15, aggro: 30 },
   bandit:      { name: 'Bandit',   hp: 70,  damage: 11, speed: 4.8, blockChance: .40, xp: 34,  scale: .96, weapon: 'axe',     armor: .05, aggro: 32 },

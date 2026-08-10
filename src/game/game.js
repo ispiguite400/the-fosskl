@@ -15,11 +15,12 @@ import {
 import { Terrain } from '../world/terrain.js';
 import { Sky } from '../world/sky.js';
 import { Props } from '../world/props.js';
+import { Motes } from '../world/motes.js';
 import { VFX } from './vfx.js';
 import { Player } from './player.js';
 import { Missions, Story, Tutorial, GATE_LEVEL } from './missions.js';
 import { Storm } from './storm.js';
-import { Enemy, Boss, NPC, Companion, Animal, Chest, Pickup, Projectile, Ally } from '../entities/actors.js';
+import { Enemy, Boss, NPC, Companion, Animal, Chest, Pickup, Projectile, Ally, Kodama } from '../entities/actors.js';
 import { buildWeapon, buildPickup } from '../entities/models.js';
 import { HUD, SplitHUD } from '../ui/hud.js';
 import { InventoryUI, addItem, removeItem, countItem, hasSpace } from '../ui/inventory.js';
@@ -172,6 +173,11 @@ export class Game {
     this.sky = new Sky(this.scene, world, this.renderer);
     this.props = new Props(this.scene, this.terrain, world, seed, q);
     this.vfx = new VFX(this.scene);
+    // Spirit motes: the dark canopy worlds get a drifting swarm that also
+    // gathers around unopened chests.
+    this.motes = world.motes
+      ? new Motes(this.scene, this.terrain, world, q, world.motes)
+      : null;
 
     /* --- player --- */
     if (!this.player) {
@@ -228,6 +234,9 @@ export class Game {
   }
 
   _teardownWorld() {
+    this.motes?.dispose(); this.motes = null;
+    for (const k of this.kodama || []) k.dispose();
+    this.kodama = [];
     for (const list of [this.enemies, this.npcs, this.animals, this.chests, this.pickups, this.allies]) {
       for (const a of list) a.dispose?.();
       list.length = 0;
@@ -299,6 +308,16 @@ export class Game {
       girl.isGirl = true;
       this.npcs.push(girl);
       this.girlNPC = girl;
+    }
+
+    /* --- kodama: the wood's witnesses --- */
+    this.kodama = [];
+    if (world.kodama) {
+      for (let i = 0; i < world.kodama; i++) {
+        const a = rng() * 6.28, r = rng.range(90, world.size * .38);
+        const p = this.terrain.findSpawn({ x: Math.cos(a) * r, z: Math.sin(a) * r }, 140);
+        this.kodama.push(new Kodama(this, new THREE.Vector3(p.x, p.y, p.z)));
+      }
     }
 
     /* --- roaming enemies --- */
@@ -803,6 +822,18 @@ export class Game {
     Save.data.chestsOpened++;
     this.missions.onChestOpened();
 
+    // Some chests bite. The lid was the lure.
+    if (loot.type === 'mimic') {
+      chest.root.parent?.remove(chest.root);
+      const m = this.spawnEnemy(chest.pos.clone(), 'mimic');
+      if (m) { m.foe = null; m.target = this.player; m.pos.y = chest.pos.y; }
+      this.shake(1.3, .5);
+      this.rumble(0, 1, .9, 300);
+      this.hud.toast('IT WAS NEVER A CHEST', true);
+      Save.write();
+      return;
+    }
+
     if (loot.type === 'xp') {
       this.grantXP(loot.amount);
       this.hud.toast(`+${loot.amount} EXPERIENCE`, true);
@@ -1012,6 +1043,9 @@ export class Game {
     this.props.update(this.player.pos);
     this.props.tick(dt, this.elapsed, this.sky.uniforms.uStars.value);
     this.sky.update(dt, this.player.pos, Audio);
+    // Motes come out with the dark, and track whichever player is nearest.
+    this.motes?.update(dt, this.cameras[0], this.player.pos, this.chests,
+                       this.sky.uniforms.uStars.value);
 
     /* --- actors --- */
     for (let i = this.enemies.length - 1; i >= 0; i--) {
@@ -1051,6 +1085,10 @@ export class Game {
       if (pr.remove) this.projectiles.splice(i, 1);
     }
     if (this.companion) this.companion.update(dt, this.player);
+    if (this.kodama?.length) {
+      for (const k of this.kodama) k.update(dt, this._closestPlayer(k.pos));
+      if (this.kodama.some(k => k.remove)) this.kodama = this.kodama.filter(k => !k.remove);
+    }
     this._updateHazards(dt);
     if (this.storm) {
       this.storm.update(dt, [this.player, this.player2]);
