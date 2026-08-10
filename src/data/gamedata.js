@@ -423,7 +423,7 @@ export const BOSSES = {
   },
   dune_colossus: {
     name: 'Colossus of the Waste', hp: 4200, damage: 48, speed: 3.0, xp: 5600, scale: 2.4,
-    music: 'boss', abilities: ['slam', 'quake'], color: 0xb08040,
+    music: 'boss', abilities: ['slam', 'quake'], color: 0xb08040, dormant: true,
     intro: 'You mistook it for a rock formation for the last four kilometres.'
   },
   frost_sovereign: {
@@ -544,6 +544,9 @@ export const ANIMALS = {
   camel:     { name: 'Camel',      rideable: true, speed: 9,  hp: 160, scale: 1.1, color: 0xc9a06a, hump: true, worlds: [4, 6] },
   direwolf:  { name: 'Direwolf',   rideable: true, speed: 15, hp: 110, scale: .9, color: 0x6a6a72, worlds: [3, 5, 6] },
   kirin:     { name: 'Kirin',      rideable: true, speed: 18, hp: 220, scale: 1.2, color: 0xd8c070, glow: true, mythic: true, worlds: [7, 8, 9, 10] },
+  jackal:    { name: 'Waste Jackal', rideable: false, speed: 14, hp: 55, scale: .55, color: 0xa08658, worlds: [4, 6] },
+  dunestrider: { name: 'Dunestrider', rideable: true, speed: 17, hp: 190, scale: 1.25, color: 0xe0c48a,
+                 hump: true, mythic: true, worlds: [4] },
   tanuki:    { name: 'Tanuki',     rideable: false, speed: 6, hp: 40, scale: .4, color: 0x8a6a4a, worlds: [2, 3] },
   crane:     { name: 'Crane',      rideable: false, speed: 8, hp: 30, scale: .7, color: 0xf0f0f0, worlds: [2, 7] },
   cloudstag: { name: 'Cloud Stag', rideable: true, speed: 20, hp: 260, scale: 1.3, color: 0xe8f0ff, glow: true, mythic: true, worlds: [10] }

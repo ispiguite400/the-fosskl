@@ -537,9 +537,42 @@ export class Boss extends Enemy {
     this.phase = 1;
     this.abilityCd = 4;
     this.summons = [];
+
+    /* Some bosses are already on the field when you arrive, and you have
+     * walked past them. The colossus is buried to the waist in its own dune
+     * and does not move at all — no aggro, no idle sway, nothing that reads
+     * as alive — until you are close enough for it to matter. Its intro line
+     * only lands if the mistake was one you actually made. */
+    if (def.dormant) {
+      this.dormant = true;
+      this.wakeT = 0;
+      this.buried = this.height * .42;
+      this.root.position.y = pos.y - this.buried;
+      this.yaw = this.rng() * 6.28;
+      this.root.rotation.y = this.yaw;
+      poseHumanoid(this.rig, 0, { speed: 0, block: .55 });
+      this.aggro = 0;
+    }
+  }
+
+  /** Stand up out of the sand. Called by proximity, or by being hit. */
+  wake() {
+    if (!this.dormant || this.waking) return;
+    this.waking = true;
+    this.game.audio.sfxAt('bossRoar', this.pos, this.game.listenerPos, 220, { volume: 1 });
+    this.game.shake(1.9, 1.6);
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * 6.28, r = 3 + this.rng() * 5;
+      this.game.vfx.explosion(
+        this.pos.clone().add(new THREE.Vector3(Math.cos(a) * r, .4 + this.rng() * 1.4, Math.sin(a) * r)),
+        6, [.78, .62, .38]);
+    }
+    this.game.hud?.toast(this.bdef.intro, true);
   }
 
   takeHit(amount, fromPos, opts = {}) {
+    // Throwing a knife at the rock formation is a fair way to find out.
+    if (this.dormant) this.wake();
     const before = this.hp / this.hpMax;
     const res = super.takeHit(amount, fromPos, opts);
     const after = this.hp / this.hpMax;
@@ -557,6 +590,32 @@ export class Boss extends Enemy {
   }
 
   update(dt, player) {
+    if (this.dormant) {
+      const d = this.pos.distanceTo(player.pos);
+      if (!this.waking && d < 34) this.wake();
+      if (!this.waking) {
+        // Utterly inert. Not even breathing — it is scenery until it isn't.
+        this.root.position.set(this.pos.x, this.pos.y - this.buried, this.pos.z);
+        return;
+      }
+      // Rising: heave up out of the dune, then hand back to the normal AI.
+      this.wakeT += dt;
+      const k = clamp(this.wakeT / 2.6, 0, 1);
+      this.root.position.set(this.pos.x, this.pos.y - this.buried * (1 - k * k), this.pos.z);
+      this.root.rotation.y = this.yaw;
+      poseHumanoid(this.rig, this.t += dt, { speed: 0, block: .55 * (1 - k) });
+      if (this.wakeT > .5 && this.wakeT % .35 < dt)
+        this.game.vfx.explosion(
+          this.pos.clone().add(new THREE.Vector3(this.rng.range(-3, 3), .3, this.rng.range(-3, 3))),
+          4, [.78, .62, .38]);
+      if (k >= 1) {
+        this.dormant = false; this.waking = false;
+        this.aggro = 90;
+        this.abilityCd = 1.2;
+      }
+      return;
+    }
+
     if (!this.dead) {
       this.abilityCd -= dt;
       const dist = this.pos.distanceTo(player.pos);

@@ -46,6 +46,37 @@ export class Missions {
           hint: 'Hold right mouse or L2 to guard. Guarding costs power.'
         }
       ];
+    } else if (worldId === 4) {
+      /* The waste gets its own chain. Its whole idea is that the desert is
+       * not empty — it is covering something — so the missions send you to
+       * dig at it rather than to walk across it. */
+      const need = GATE_LEVEL[4];
+      this.list = [
+        {
+          id: 'w4_hub', title: 'MISSION', desc: 'Reach the village', kind: 'reach',
+          target: () => this.game.props.hubCenter, radius: 60,
+          hint: 'Get inside before the storm turns. Out here it takes the horizon with it.'
+        },
+        {
+          id: 'w4_city', title: 'MISSION', desc: 'Find what the dunes are covering', kind: 'reach',
+          target: () => this.game.props.ruinPos, radius: 45,
+          hint: 'There are roof ridges out there in rows. Rows do not happen by accident.'
+        },
+        {
+          id: 'w4_cull', title: 'MISSION', desc: 'Clear the drowned streets of 18 scavengers',
+          count: 18, progress: 0, kind: 'kill',
+          hint: 'They came for the same reason you did. They got here first.'
+        },
+        {
+          id: 'w4_boss', title: 'BOSS', desc: 'Destroy the Colossus of the Waste',
+          kind: 'boss', target: () => this.game.boss?.pos ?? this.game.bossSpawn,
+          hint: 'It has not moved in a very long time. Do not take that for dead.'
+        },
+        {
+          id: 'w4_gate', title: 'MISSION', desc: `Reach level ${need}, then find the gate`,
+          kind: 'gate', level: need, target: () => this.game.props.gatePos
+        }
+      ];
     } else {
       const w = worldById(worldId);
       const need = GATE_LEVEL[worldId] ?? 45;

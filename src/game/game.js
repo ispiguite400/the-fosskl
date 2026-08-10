@@ -361,13 +361,21 @@ export class Game {
       this.bossSpawn = bp;
       this.boss = new Boss(this, bp, world.boss, lvlScale);
       this.enemies.push(this.boss);
+      // A boss that is pretending to be a rock formation needs rock
+      // formations to be one of. Scatter an outcrop around it that never
+      // streams out, so the silhouette is ambiguous from any distance.
+      if (BOSSES[world.boss]?.dormant) this.props.buildOutcrop(bp, rng);
     }
 
     /* --- animals --- */
     const animalTypes = Object.entries(ANIMALS).filter(([, a]) => a.worlds.includes(world.id));
     if (animalTypes.length) {
+      // Mythic mounts are meant to be a find, not a third of the wildlife, so
+      // they go into the bag once against everything else's four entries.
+      const bag = [];
+      for (const entry of animalTypes) for (let k = 0; k < (entry[1].mythic ? 1 : 4); k++) bag.push(entry);
       for (let i = 0; i < 16; i++) {
-        const [id] = rng.pick(animalTypes);
+        const [id] = rng.pick(bag);
         const a = rng() * 6.28, r = rng.range(80, world.size * .35);
         const p = this.terrain.findSpawn({ x: Math.cos(a) * r, z: Math.sin(a) * r }, 120);
         this.animals.push(new Animal(this, new THREE.Vector3(p.x, p.y, p.z), id));
@@ -378,9 +386,15 @@ export class Game {
     if (world.id > 1) {
       const opened = new Set(wstate.chestsOpened);
       const n = 22 + world.id * 2;
+      // Where a world has a buried city, a fifth of its chests are in it.
+      // Walking that far into the waste has to pay.
+      const hoard = this.props.ruinPos ? Math.floor(n / 5) : 0;
       for (let i = 0; i < n; i++) {
-        const a = rng() * 6.28, r = rng.range(60, world.size * .42);
-        const p = this.terrain.findSpawn({ x: Math.cos(a) * r, z: Math.sin(a) * r }, 160);
+        let a = rng() * 6.28, r = rng.range(60, world.size * .42);
+        let origin = { x: 0, z: 0 };
+        if (i < hoard) { r = rng.range(12, 95); origin = this.props.ruinPos; }
+        const p = this.terrain.findSpawn(
+          { x: origin.x + Math.cos(a) * r, z: origin.z + Math.sin(a) * r }, 160);
         const locked = rng.chance(.42);
         const chest = new Chest(this, new THREE.Vector3(p.x, p.y, p.z), { locked, id: world.id * 1000 + i });
         if (opened.has(chest.id)) { chest.opened = true; chest.lidAngle = -2.1; }
@@ -1110,7 +1124,10 @@ export class Game {
     this.inCombat = this._combatT > 0;
 
     /* --- boss bar + music --- */
-    const activeBoss = this.enemies.find(e => e.isBoss && !e.dead && e.pos.distanceTo(this.player.pos) < 70);
+    // A dormant boss is scenery: no health bar, no boss theme, nothing to
+    // give it away until it stands up.
+    const activeBoss = this.enemies.find(e =>
+      e.isBoss && !e.dead && !e.dormant && e.pos.distanceTo(this.player.pos) < 70);
     if (activeBoss) {
       this.hud.setBoss(activeBoss);
       if (Audio.current !== activeBoss.bdef.music) Audio.play(activeBoss.bdef.music);

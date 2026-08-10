@@ -92,6 +92,24 @@ export class Props {
         this.colliders.push({ x: s.x, z: s.z, r: 14 });
       }
     }
+    if (w.theme === 'desert') {
+      /* One drowned city that is always there, so the waste has a
+       * destination and not just scenery. It sits in the lowest ground
+       * within reach — a basin is where a city would have been, and where
+       * the sand has had the least to bury. */
+      let low = null;
+      for (let i = 0; i < 500; i++) {
+        const x = rng.range(-1, 1) * w.size * .3, z = rng.range(-1, 1) * w.size * .3;
+        if (Math.hypot(x, z) < 300) continue;                 // not on the hub
+        const y = this.terrain.heightAt(x, z);
+        if (this.terrain.slopeAt(x, z) > .28) continue;
+        if (!low || y < low.y) low = { x, y, z };
+      }
+      if (low) {
+        this.ruinPos = new THREE.Vector3(low.x, low.y, low.z);
+        this._buildDrownedCity(this.ruinPos, rng);
+      }
+    }
     if (w.theme === 'kingdom') {
       // A great keep on the highest ground we can find.
       let best = null;
@@ -537,6 +555,49 @@ export class Props {
     }
 
     /* --- theme flourishes --- */
+    /* "Dunes over drowned cities." The waste is not empty, it is covered:
+     * every so often a street corner of somewhere older surfaces — the top
+     * third of a pagoda, a torii with only its crossbeam clear, a colonnade
+     * running off under the sand. They are sunk, not ruined, so the geometry
+     * is the ordinary architecture pushed down into the ground. */
+    if (w.theme === 'desert' && rng.chance(.5)) {
+      const bx = ox + rng.range(-CELL / 2 + 30, CELL / 2 - 30);
+      const bz = oz + rng.range(-CELL / 2 + 30, CELL / 2 - 30);
+      if (T.isFlatGround(bx, bz, .5) && !this.inHub(tmpP.set(bx, 0, bz), 120)) {
+        const bearing = rng() * 6.28;            // the buried street's line
+        const n = rng.int(3, 8);
+        for (let i = 0; i < n; i++) {
+          // Strung out along the street, so it reads as one place, not litter.
+          const along = (i - n / 2) * rng.range(7, 13);
+          const off = rng.range(-4, 4);
+          const x = bx + Math.cos(bearing) * along - Math.sin(bearing) * off;
+          const z = bz + Math.sin(bearing) * along + Math.cos(bearing) * off;
+          if (Math.max(Math.abs(x), Math.abs(z)) > T.half - 40) continue;
+          const roll = rng();
+          let obj, sink, radius = 1.6;
+          if (roll < .30) { obj = buildTorii(rng, rng.range(.9, 1.5)); sink = rng.range(2.6, 4.4); }
+          else if (roll < .52) { obj = buildPagoda(rng, rng.int(3, 4), rng.range(.7, 1)); sink = rng.range(6, 10); radius = 3; }
+          else if (roll < .74) { obj = buildHouse(rng, { ruined: true, scale: rng.range(.9, 1.3) }); sink = rng.range(3.2, 4.8); radius = 3.4; }
+          else if (roll < .90) { obj = buildStatue(rng); sink = rng.range(.6, 2.2); }
+          else { obj = buildTemple(rng, rng.range(.35, .55)); sink = rng.range(3.4, 6); radius = 4; }
+          obj.position.set(x, T.heightAt(x, z) - sink, z);
+          obj.rotation.y = bearing + rng.range(-.25, .25);
+          // Everything down here has been leaning for a very long time.
+          obj.rotation.z = rng.range(-.16, .16);
+          g.add(obj);
+          colliders.push({ x, z, r: radius });
+        }
+        // Sand piled against the windward side of whatever is sticking up.
+        for (let i = 0; i < rng.int(4, 9); i++) {
+          const x = bx + rng.range(-34, 34), z = bz + rng.range(-34, 34);
+          const r = buildRubble(rng);
+          r.position.set(x, T.heightAt(x, z) - rng.range(0, .5), z);
+          r.rotation.y = rng() * 6.28;
+          g.add(r);
+        }
+      }
+    }
+
     if (w.theme === 'sky' && rng.chance(.5)) {
       // Small floating shards under the islands.
       for (let i = 0; i < rng.int(2, 6); i++) {
@@ -632,6 +693,92 @@ export class Props {
       im.frustumCulled = true;
     }
     return [stalks, leafA, leafB];
+  }
+
+  /* ==========================================================
+     The drowned city. Two streets crossing at a temple, all of it
+     sunk to the eaves — you walk along what used to be third-storey
+     roofline. Torii still stand at the ends of the streets because a
+     torii is mostly air and the sand went through it.
+     ========================================================== */
+  _buildDrownedCity(center, rng) {
+    const T = this.terrain;
+    const place = (obj, x, z, sink, radius) => {
+      obj.position.set(x, T.heightAt(x, z) - sink, z);
+      obj.rotation.z = rng.range(-.13, .13);
+      this.landmarks.add(obj);
+      if (radius) {
+        const c = { x, z, r: radius };
+        this.colliders.push(c);
+      }
+    };
+
+    const main = rng() * 6.28;
+    for (const bearing of [main, main + Math.PI / 2]) {
+      const len = rng.int(9, 14);
+      for (let i = -len; i <= len; i++) {
+        if (Math.abs(i) < 2) continue;                        // the crossing itself
+        for (const side of [-1, 1]) {
+          if (rng.chance(.22)) continue;                      // gaps: it is a ruin
+          const along = i * rng.range(9, 12);
+          const off = side * rng.range(7, 11);
+          const x = center.x + Math.cos(bearing) * along - Math.sin(bearing) * off;
+          const z = center.z + Math.sin(bearing) * along + Math.cos(bearing) * off;
+          const roll = rng();
+          let obj, sink, radius = 3.4;
+          if (roll < .62) { obj = buildHouse(rng, { ruined: rng.chance(.6), scale: rng.range(.9, 1.4) }); sink = rng.range(3.4, 5); }
+          else if (roll < .84) { obj = buildPagoda(rng, rng.int(3, 5), rng.range(.8, 1.2)); sink = rng.range(6, 10); radius = 3; }
+          else { obj = buildStall(rng); sink = rng.range(1.2, 2.4); radius = 1.8; }
+          obj.rotation.y = bearing + (side > 0 ? Math.PI : 0) + rng.range(-.2, .2);
+          place(obj, x, z, sink, radius);
+        }
+      }
+      // A torii at each end of the street, standing clear of the sand.
+      for (const end of [-1, 1]) {
+        const d = (len + 2) * 11 * end;
+        const x = center.x + Math.cos(bearing) * d, z = center.z + Math.sin(bearing) * d;
+        const t = buildTorii(rng, rng.range(1.3, 2));
+        t.rotation.y = bearing + Math.PI / 2;
+        place(t, x, z, rng.range(1.2, 2.6), 1.6);
+      }
+    }
+
+    // The temple at the crossing, sunk deepest of all, and its lanterns.
+    const temple = buildTemple(rng, 1.5);
+    temple.rotation.y = main;
+    place(temple, center.x, center.z, 13, 7);
+    for (let i = 0; i < 8; i++) {
+      const a = rng() * 6.28, r = rng.range(12, 40);
+      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
+      const s = buildStatue(rng);
+      s.rotation.y = rng() * 6.28;
+      place(s, x, z, rng.range(.4, 2.4), 1.2);
+    }
+    for (let i = 0; i < 30; i++) {
+      const a = rng() * 6.28, r = Math.sqrt(rng()) * 120;
+      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
+      const rb = buildRubble(rng);
+      rb.rotation.y = rng() * 6.28;
+      place(rb, x, z, rng.range(0, .6), 0);
+    }
+  }
+
+  /** A permanent ring of standing rock, for a boss to hide in plain sight. */
+  buildOutcrop(center, rng) {
+    const T = this.terrain;
+    for (let i = 0; i < 16; i++) {
+      const a = rng() * 6.28, r = 7 + Math.sqrt(rng()) * 26;
+      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
+      const rock = buildRock(rng, this.world.theme);
+      const s = rng.range(1.4, 4.2);
+      rock.position.set(x, T.heightAt(x, z) - s * .3, z);
+      rock.rotation.set(rng.range(-.2, .2), rng() * 6.28, rng.range(-.2, .2));
+      rock.scale.set(s, s * rng.range(1.1, 2.3), s);
+      this.landmarks.add(rock);
+      const c = { x, z, r: s * .8 };
+      this.colliders.push(c);
+      this._gridAdd(c, null);
+    }
   }
 
   /** File a collider into every grid bucket its circle touches. */

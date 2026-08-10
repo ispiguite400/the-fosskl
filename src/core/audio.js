@@ -563,16 +563,21 @@ export class AudioEngine {
     this.sfx(name, { ...opts, volume: (opts.volume ?? 1) * (1 - d / maxDist) ** 1.6 });
   }
 
-  /* ---------- looping rain bed ---------- */
-  startRain() {
+  /* ---------- looping rain bed ----------
+   * `kind` is 'rain' or 'sand'. Both are filtered noise, but a sandstorm is
+   * the same weather one octave down: no hiss on the top, a wide low roar,
+   * and a slow swell in the gain so gusts arrive rather than switch on. */
+  startRain(kind = 'rain') {
     if (!this.ready || this._rain) return;
+    const sand = kind === 'sand';
     const src = this.ctx.createBufferSource();
     src.buffer = this._noiseBuffer(4); src.loop = true;
     const f = this.ctx.createBiquadFilter(); f.type = 'bandpass';
-    f.frequency.value = 1400; f.Q.value = .55;
-    const hp = this.ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 400;
+    f.frequency.value = sand ? 420 : 1400; f.Q.value = sand ? .35 : .55;
+    const hp = this.ctx.createBiquadFilter(); hp.type = 'highpass';
+    hp.frequency.value = sand ? 90 : 400;
     const g = this.ctx.createGain(); g.gain.value = 0;
-    g.gain.setTargetAtTime(.16, this.ctx.currentTime, 2.5);
+    g.gain.setTargetAtTime(sand ? .21 : .16, this.ctx.currentTime, sand ? 5 : 2.5);
     src.connect(f); f.connect(hp); hp.connect(g); g.connect(this.sfxBus);
     src.start();
     this._rain = { src, g };
