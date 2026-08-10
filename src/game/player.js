@@ -71,12 +71,63 @@ export class Player {
     this.viewRoll = 0;
     this.recoil = 0;
 
+    // Player one plays out of the save file. Player two carries its own
+    // gear so split screen is not two people sharing one satchel.
+    this.loadout = index === 0 ? null : { inventory: new Array(36).fill(null), equipped: 0 };
+
     this._buildViewModel();
     this.refreshStats();
   }
 
   get save() { return this.game.save; }
   get input() { return this.game.input.players[this.index]; }
+
+  /** The bag this player actually draws from. */
+  get inv() { return this.loadout ? this.loadout.inventory : this.save.inventory; }
+  get equippedIndex() { return this.loadout ? this.loadout.equipped : this.save.equipped; }
+  set equippedIndex(v) { if (this.loadout) this.loadout.equipped = v; else this.save.equipped = v; }
+
+  /** Give this player a temporary bag of their own — used so a duel is
+   *  fought with matched kit instead of whatever the campaign save holds.
+   *  Player one's real inventory is untouched and restored afterwards. */
+  pushTempLoadout(kind = 'versus') {
+    if (!this._savedLoadout) this._savedLoadout = { had: !!this.loadout, ref: this.loadout };
+    this.loadout = { inventory: new Array(36).fill(null), equipped: 0 };
+    this.giveLoadout(kind);
+  }
+
+  popTempLoadout() {
+    if (!this._savedLoadout) return;
+    this.loadout = this._savedLoadout.had ? this._savedLoadout.ref : null;
+    this._savedLoadout = null;
+    this._viewWeaponId = null;
+    this.syncViewModel();
+  }
+
+  /** Kit a player out. Co-op mirrors player one; versus is a fixed duel set. */
+  giveLoadout(kind = 'versus') {
+    if (!this.loadout) return;
+    const inv = this.loadout.inventory;
+    inv.fill(null);
+    if (kind === 'coop') {
+      // Same four slots as player one, plus their own consumables.
+      for (let i = 0; i < 4; i++) {
+        const s = this.save.inventory[i];
+        inv[i] = s ? { id: s.id, qty: s.qty } : null;
+      }
+      inv[4] = { id: 'potion_hp', qty: 3 };
+      inv[5] = { id: 'food', qty: 3 };
+    } else {
+      inv[0] = { id: 'kontana', qty: 1 };
+      inv[1] = { id: 'bow', qty: 1 };
+      inv[2] = { id: 'smoke_bomb', qty: 6 };
+      inv[3] = { id: 'iron_shield', qty: 1 };
+      inv[4] = { id: 'potion_hp', qty: 2 };
+    }
+    this.loadout.equipped = 0;
+    this._viewWeaponId = null;
+    this.syncViewModel();
+  }
 
   /* ==========================================================
      Stats
@@ -152,15 +203,14 @@ export class Player {
      Equipment
      ========================================================== */
   equippedStack() {
-    const i = this.save.equipped ?? 0;
-    return this.save.inventory[clamp(i, 0, 3)] || null;
+    return this.inv[clamp(this.equippedIndex ?? 0, 0, 3)] || null;
   }
   equippedDef() {
     const s = this.equippedStack();
     return s ? ITEMS[s.id] : ITEMS.fist;
   }
   setEquipped(i) {
-    this.save.equipped = clamp(i, 0, 3);
+    this.equippedIndex = clamp(i, 0, 3);
     this.syncViewModel();
     this.game.syncHotbar();
     this.game.audio.sfx('uiMove', { volume: .35 });
@@ -171,7 +221,7 @@ export class Player {
     const eq = this.equippedDef();
     if (eq.kind === 'shield') return eq;
     for (let i = 0; i < 4; i++) {
-      const s = this.save.inventory[i];
+      const s = this.inv[i];
       if (s && ITEMS[s.id]?.kind === 'shield') return ITEMS[s.id];
     }
     return null;
@@ -488,6 +538,7 @@ export class Player {
     this.dashCooldown = .18;
     this.invuln = Math.max(this.invuln, .22);
 
+    if (this.index === 0 && this.game._tut) this.game._tut.dashes++;
     this.game.audio.sfx('windDash');
     this.game.vfx.windBurst(this._chest(), this.dashDir);
     this.game.shake(.5, .25);
@@ -515,6 +566,7 @@ export class Player {
       this.dashing = 0;
       this.dashesLeft = this.maxDashes;
 
+      if (this.index === 0 && this.game._tut) this.game._tut.dashHits++;
       this.game.audio.sfx('launch');
       this.game.vfx.windBurst(e._chestPos(), this.dashDir);
       this.game.vfx.explosion(e._chestPos(), 3, [.8, .92, 1]);
@@ -556,9 +608,11 @@ export class Player {
 
     /* ---- hotbar ---- */
     for (let i = 0; i < 4; i++) if (inp.justPressed('slot' + (i + 1))) this.setEquipped(i);
-    if (inp.justPressed('nextSlot')) this.setEquipped((this.save.equipped + 1) % 4);
-    if (inp.justPressed('prevSlot')) this.setEquipped((this.save.equipped + 3) % 4);
-    if (this.game.input.wheel) this.setEquipped((this.save.equipped + (this.game.input.wheel > 0 ? 1 : 3)) % 4);
+    if (inp.justPressed('nextSlot')) this.setEquipped((this.equippedIndex + 1) % 4);
+    if (inp.justPressed('prevSlot')) this.setEquipped((this.equippedIndex + 3) % 4);
+    if (this.index === 0 && this.game.input.wheel) {
+      this.setEquipped((this.equippedIndex + (this.game.input.wheel > 0 ? 1 : 3)) % 4);
+    }
 
     /* ---- block ---- */
     const wantBlock = inp.isDown('block') && this.save.flags.blockUnlocked && this.power > 0;
@@ -578,7 +632,7 @@ export class Player {
       const s = this.equippedStack();
       if (s) {
         this.game.dropItemInWorld(s.id, 1);
-        removeItem(this.save.inventory, s.id, 1);
+        removeItem(this.inv, s.id, 1);
         this.game.syncHotbar();
       }
     }
@@ -611,10 +665,10 @@ export class Player {
   _useConsumable() {
     // Prefer whatever consumable sits in the active slot, else the first one.
     let stack = this.equippedStack();
-    let idx = this.save.equipped;
+    let idx = this.equippedIndex;
     if (!stack || ITEMS[stack.id]?.kind !== 'consumable') {
-      idx = this.save.inventory.findIndex(s => s && ITEMS[s.id]?.kind === 'consumable' && ITEMS[s.id].heal);
-      stack = idx >= 0 ? this.save.inventory[idx] : null;
+      idx = this.inv.findIndex(s => s && ITEMS[s.id]?.kind === 'consumable' && ITEMS[s.id].heal);
+      stack = idx >= 0 ? this.inv[idx] : null;
     }
     if (!stack) { this.game.audio.sfx('uiDeny', { volume: .4 }); return; }
     const def = ITEMS[stack.id];
@@ -634,7 +688,7 @@ export class Player {
     }
 
     stack.qty--;
-    if (stack.qty <= 0) this.save.inventory[idx] = null;
+    if (stack.qty <= 0) this.inv[idx] = null;
     this.game.audio.sfx(def.tame ? 'tame' : 'heal');
     this.game.vfx.magicBurst(this._chest(), def.tint ? [1, .5, .4] : [.5, 1, .6], 30);
     this.game.syncHotbar();
@@ -655,6 +709,7 @@ export class Player {
     this.comboTimer = speed * 2.2;
 
     this.game.audio.sfx(def.damage > 35 ? 'swingHeavy' : def.id === 'fist' ? 'punch' : 'swing');
+    if (this.index === 0 && this.game._tut) this.game._tut.swings++;
 
     // Resolve the hit partway through the swing so it reads as connecting.
     setTimeout(() => this._resolveMelee(def), speed * 380);
@@ -699,6 +754,7 @@ export class Player {
         return;                    // a blocked swing ends the exchange
       }
       if (res === 'killed' || res === 'hit') {
+        if (this.index === 0 && this.game._tut) this.game._tut.enemiesHit++;
         this.game.hud.hitMarker();
         this.hitStop = .045;
         this.game.rumble(this.index, .45, .3, 90);
@@ -774,7 +830,7 @@ export class Player {
     if (def.consumes) {
       const stack = this.equippedStack();
       stack.qty--;
-      if (stack.qty <= 0) this.save.inventory[this.save.equipped] = null;
+      if (stack.qty <= 0) this.inv[this.equippedIndex] = null;
       this.game.syncHotbar();
     }
   }
@@ -805,7 +861,7 @@ export class Player {
     this.attackCooldown = def.speed;
 
     stack.qty--;
-    if (stack.qty <= 0) this.save.inventory[this.save.equipped] = null;
+    if (stack.qty <= 0) this.inv[this.equippedIndex] = null;
     this.game.syncHotbar();
   }
 

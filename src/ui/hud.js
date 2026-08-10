@@ -263,3 +263,72 @@ export class Cinematics {
     this.q.fade.style.opacity = '0';
   }
 }
+
+/* ============================================================
+   Split-screen HUD.
+   The full HUD is built around one viewport, so each half of a
+   two-player game gets its own compact panel instead: vitals,
+   level and the four weapon slots, anchored inside its own half.
+   ============================================================ */
+export class SplitHUD {
+  constructor(half) {                       // 'top' | 'bottom'
+    const host = document.getElementById('layer-game');
+    this.root = el('div', 'mini-hud ' + half, `
+      <div class="mini-left">
+        <div class="mini-name"></div>
+        <div class="vital hp"><div class="track"><div class="fill"></div></div></div>
+        <div class="vital st"><div class="track"><div class="fill"></div></div></div>
+        <div class="vital pw"><div class="track"><div class="fill"></div></div></div>
+      </div>
+      <div class="mini-slots"></div>
+      <div class="mini-reticle"></div>
+    `);
+    host.appendChild(this.root);
+
+    this.q = {
+      hp: $('.vital.hp .fill', this.root),
+      st: $('.vital.st .fill', this.root),
+      pw: $('.vital.pw .fill', this.root),
+      pwWrap: $('.vital.pw', this.root),
+      name: $('.mini-name', this.root),
+      slots: $('.mini-slots', this.root)
+    };
+
+    this._slots = [];
+    for (let i = 0; i < 4; i++) {
+      const s = el('div', 'slot', `<div class="ico"></div><div class="qty"></div>`);
+      this.q.slots.appendChild(s);
+      this._slots.push({ node: s, ico: $('.ico', s), qty: $('.qty', s) });
+    }
+    this._lastIcons = ['', '', '', ''];
+  }
+
+  setLabel(text) { this.q.name.textContent = text; }
+
+  update(player, colors) {
+    if (!player) return;
+    this.q.hp.style.transform = `scaleX(${clamp(player.hp / player.hpMax, 0, 1)})`;
+    this.q.st.style.transform = `scaleX(${clamp(player.stamina / player.staminaMax, 0, 1)})`;
+    const p = clamp(player.power / player.powerMax, 0, 1);
+    this.q.pw.style.transform = `scaleX(${p})`;
+    this.q.pwWrap.classList.toggle('drained', p < .12);
+    this.root.classList.toggle('lowhp', player.hp / player.hpMax < .25);
+
+    const inv = player.inv;
+    for (let i = 0; i < 4; i++) {
+      const s = this._slots[i];
+      s.node.classList.toggle('sel', i === player.equippedIndex);
+      const stack = inv[i];
+      const def = stack ? ITEMS[stack.id] : null;
+      const key = (def ? def.id : '') + (colors ? colors.blade.h : '');
+      if (this._lastIcons[i] !== key) {
+        s.ico.style.backgroundImage = def ? `url('${itemIcon(def, colors)}')` : 'none';
+        this._lastIcons[i] = key;
+      }
+      s.qty.textContent = stack && stack.qty > 1 ? stack.qty : '';
+    }
+  }
+
+  show(on) { this.root.style.display = on ? '' : 'none'; }
+  dispose() { this.root.remove(); }
+}

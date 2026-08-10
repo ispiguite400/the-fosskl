@@ -17,10 +17,10 @@ import { Sky } from '../world/sky.js';
 import { Props } from '../world/props.js';
 import { VFX } from './vfx.js';
 import { Player } from './player.js';
-import { Missions, Story, GATE_LEVEL } from './missions.js';
+import { Missions, Story, Tutorial, GATE_LEVEL } from './missions.js';
 import { Enemy, Boss, NPC, Companion, Animal, Chest, Pickup, Projectile } from '../entities/actors.js';
 import { buildWeapon, buildPickup } from '../entities/models.js';
-import { HUD } from '../ui/hud.js';
+import { HUD, SplitHUD } from '../ui/hud.js';
 import { InventoryUI, addItem, removeItem, countItem, hasSpace } from '../ui/inventory.js';
 import { DialogueUI } from '../ui/dialogue.js';
 
@@ -61,6 +61,7 @@ export class Game {
     this.dialogue = new DialogueUI(this);
     this.missions = new Missions(this);
     this.story = new Story(this);
+    this.tutorial = new Tutorial(this);
 
     this._bindResize();
 
@@ -177,6 +178,7 @@ export class Game {
     }
     if (this.mode !== 'single' && !this.player2) {
       this.player2 = new Player(this, this.cameras[1], 1);
+      this.player2.giveLoadout(this.mode === 'versus' ? 'versus' : 'coop');
     }
     if (this.player2) this.scene.add(this.cameras[1]);
 
@@ -797,6 +799,14 @@ export class Game {
   start(mode = 'single') {
     this.mode = mode;
     document.body.classList.toggle('split', mode !== 'single');
+    if (mode !== 'single' && !this.splitHUD) {
+      this.splitHUD = [new SplitHUD('top'), new SplitHUD('bottom')];
+      this.splitHUD[0].setLabel('PLAYER ONE');
+      this.splitHUD[1].setLabel('PLAYER TWO');
+    } else if (mode === 'single' && this.splitHUD) {
+      this.splitHUD.forEach(h => h.dispose());
+      this.splitHUD = null;
+    }
     this._updateCameraAspects();
     this.running = true;
     this.hud.show(true);
@@ -807,6 +817,7 @@ export class Game {
   stop() {
     this.running = false;
     if (this._vsEl) this._vsEl.style.display = 'none';
+    if (this.splitHUD) { this.splitHUD.forEach(h => h.dispose()); this.splitHUD = null; }
     this.hud.show(false);
     Audio.stop();
     Audio.stopRain();
@@ -814,6 +825,16 @@ export class Game {
   }
 
   returnToMenu() {
+    // Hand the campaign inventory back if we were duelling.
+    if (this.mode === 'versus') {
+      this.player?.popTempLoadout();
+      this.player2?.popTempLoadout();
+      if (this._versusPrevBlock !== undefined) {
+        Save.data.flags.blockUnlocked = this._versusPrevBlock;
+        this._versusPrevBlock = undefined;
+      }
+      Save.write(true);
+    }
     this.stop();
     this._teardownWorld();
     this.input.releaseLock();
@@ -874,6 +895,12 @@ export class Game {
 
     /* --- players --- */
     for (const p of players) p.update(dt, this.world);
+
+    /* --- player two interacts with the world too --- */
+    if (this.player2 && this.mode === 'coop') {
+      const i2 = this._findInteractable(this.player2);
+      if (i2 && this.input.players[1].justPressed('interact')) i2.act();
+    }
 
     /* --- interaction prompt --- */
     const inter = this._findInteractable(this.player);
@@ -938,6 +965,7 @@ export class Game {
 
     this.vfx.update(dt, this.cameras[0]);
     this.missions.update(dt);
+    this.tutorial.update(dt);
 
     /* --- combat state (drives health regen and music) --- */
     const near = this.nearestEnemy(this.player.pos, 32);
@@ -1009,6 +1037,10 @@ export class Game {
   _updateHUD() {
     const p = this.player;
     if (!p) return;
+    if (this.splitHUD) {
+      this.splitHUD[0].update(this.player, Save.data.colors);
+      this.splitHUD[1].update(this.player2, Save.data.colors);
+    }
     this.hud.setVitals({
       hp: p.hp, hpMax: p.hpMax,
       stamina: p.stamina, staminaMax: p.staminaMax,
@@ -1089,10 +1121,14 @@ export class Game {
     for (const a of this.animals) a.dispose();
     this.animals.length = 0;
 
-    // Both duellists get the kontana and full guard.
+    // Both duellists get the same kit and full guard, so the duel is decided
+    // by play rather than by whose campaign save is further along.
+    this._versusPrevBlock = Save.data.flags.blockUnlocked;
     Save.data.flags.blockUnlocked = true;
     this.player2 ??= new Player(this, this.cameras[1], 1);
     this.scene.add(this.cameras[1]);
+    this.player.pushTempLoadout('versus');
+    this.player2.pushTempLoadout('versus');
 
     const c = this.props.hubCenter;
     this.player.spawnAt(new THREE.Vector3(c.x - 8, 0, c.z), Math.PI / 2);

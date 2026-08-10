@@ -72,6 +72,12 @@ This is the part everything else hangs off:
 5. **Dash into an enemy** and you damage them and get launched again — so a
    good player chains dashes and never touches the ground.
 
+World one teaches as you go. Rather than dumping the controls on you, it
+watches what you have actually tried and prompts the next thing you have not:
+looking, moving, sprinting, swinging, baiting out a guard, striking from
+behind, swapping weapons, and — once you have the Kontana — guarding, and
+holding jump in the air to Wind Dash. Each prompt fires once and is remembered.
+
 Guarding yourself is unlocked when you find the Kontana in world one. Hold it;
 it drains power while raised. Buy **Deflection** from the Sage and a guard
 raised within a quarter-second of an incoming hit becomes a parry instead.
@@ -169,6 +175,14 @@ From the main menu:
   horizontal split screen. Progress saves to your file.
 
 Player one uses keyboard and mouse or pad 1; player two uses pad 2.
+
+Each half of the screen carries its own compact HUD — health, stamina, power
+and four weapon slots — and **each player carries their own bag**. Player two
+is not reaching into player one's satchel: in co-op they start with a mirror of
+your four slots plus their own potions, and in versus both duellists are given
+matched kit (kontana, yumi, smoke bombs, iron shield) so the fight is decided
+by play rather than by whose save is further along. Your campaign inventory is
+handed straight back when you leave the arena.
 
 ---
 

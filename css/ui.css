@@ -461,3 +461,38 @@ body.split #hud{display:none}
 ::-webkit-scrollbar-track{background:rgba(255,255,255,.04)}
 ::-webkit-scrollbar-thumb{background:rgba(240,162,74,.35)}
 ::-webkit-scrollbar-thumb:hover{background:var(--ember)}
+
+/* ---------------- split-screen per-player HUD --------------- */
+.mini-hud{
+  position:absolute;left:0;right:0;height:50%;pointer-events:none;display:none;
+}
+body.split .mini-hud{display:block}
+.mini-hud.top{top:0}
+.mini-hud.bottom{top:50%}
+.mini-hud .mini-left{position:absolute;left:22px;bottom:16px;width:236px}
+.mini-hud .mini-name{
+  font-family:Cinzel,serif;font-size:11px;letter-spacing:.22em;color:#efe6d8;
+  opacity:.8;margin-bottom:6px;text-shadow:0 2px 8px #000
+}
+.mini-hud .vital{margin-bottom:5px}
+.mini-hud .vital .track{height:8px}
+.mini-hud .vital.hp .track{height:11px}
+.mini-hud .mini-slots{position:absolute;right:22px;bottom:16px;display:flex;gap:6px}
+.mini-hud .slot{width:48px;height:48px}
+.mini-hud .slot .qty{font-size:11px}
+.mini-hud .mini-reticle{
+  position:absolute;left:50%;top:50%;width:5px;height:5px;margin:-2.5px 0 0 -2.5px;
+  border-radius:50%;background:rgba(255,255,255,.72);box-shadow:0 0 4px #000
+}
+
+/* ---------------- tutorial prompt --------------------------- */
+#tutorial{
+  position:absolute;left:50%;bottom:19vh;transform:translateX(-50%);
+  max-width:min(680px,80vw);text-align:center;pointer-events:none;
+  font-size:17px;line-height:1.45;letter-spacing:.03em;color:#f4ece0;
+  background:rgba(6,5,4,.66);border-left:2px solid var(--ember);
+  border-right:2px solid var(--ember);padding:11px 26px;
+  text-shadow:0 2px 10px #000;opacity:0;transition:opacity .4s
+}
+#tutorial.on{opacity:1}
+body.split #tutorial{bottom:auto;top:12vh;font-size:14px;padding:8px 18px}

@@ -32,7 +32,6 @@ const BINDINGS = {
   dash:      { keys: ['Space'],        pad: [PAD.CROSS] },   // held in air = wind dash
   interact:  { keys: ['KeyE'],         pad: [PAD.SQUARE] },
   inventory: { keys: ['Tab', 'KeyI'],  pad: [PAD.TOUCHPAD] },
-  map:       { keys: ['KeyM'] },
   pause:     { keys: ['Escape'],       pad: [PAD.OPTIONS] },
   slot1:     { keys: ['Digit1'] },
   slot2:     { keys: ['Digit2'] },

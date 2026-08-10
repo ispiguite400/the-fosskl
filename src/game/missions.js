@@ -425,3 +425,105 @@ export class Story {
     g.returnToMenu();
   }
 }
+
+/* ============================================================
+   TUTORIAL
+   World one is meant to teach the game, so instead of dumping
+   the controls at the player it watches what they have actually
+   done and prompts for the next thing they have not tried.
+   Each step fires once and is remembered in the save.
+   ============================================================ */
+const STEPS = [
+  { id: 'look',    text: 'Move the mouse or the right stick to look around',
+    done: g => g._tut.looked > 2.2 },
+  { id: 'move',    text: 'W A S D or the left stick to move',
+    done: g => g._tut.moved > 3 },
+  { id: 'sprint',  text: 'Hold SHIFT (or press L3) to sprint — it burns the pale stamina bar',
+    done: g => g._tut.sprinted > 1.2 },
+  { id: 'attack',  text: 'LEFT CLICK or R2 to swing. Each swing costs power — the orange bar',
+    done: g => g._tut.swings >= 3 },
+  { id: 'guarded', text: 'They guard about four hits in ten. Bait it out, then punish the opening',
+    done: g => g._tut.enemiesHit >= 2, when: g => g._tut.swings >= 3 },
+  { id: 'kill',    text: 'Strike from behind for bonus damage and experience',
+    done: g => Save.data.kills >= 1, when: g => g._tut.enemiesHit >= 1 },
+  { id: 'slots',   text: '1-4 or the shoulder buttons swap weapons · TAB opens your inventory',
+    done: g => g._tut.swappedSlot || g._tut.openedInv, when: g => Save.data.kills >= 2 },
+  { id: 'block',   text: 'Hold RIGHT CLICK or L2 to guard. Guarding drains power, and empty power costs health',
+    done: g => g._tut.blocked > 1.0, when: g => Save.data.flags.blockUnlocked },
+  { id: 'dash',    text: 'Airborne: HOLD jump to hang, then RELEASE to Wind Dash where you are looking',
+    done: g => g._tut.dashes >= 1, when: g => Save.data.flags.blockUnlocked },
+  { id: 'chain',   text: 'Dash into an enemy and it launches you again — a good player never lands',
+    done: g => g._tut.dashHits >= 1, when: g => g._tut.dashes >= 1 }
+];
+
+export class Tutorial {
+  constructor(game) {
+    this.game = game;
+    this.active = null;
+    this.holdT = 0;
+    this.gapT = 0;
+    game._tut = {
+      looked: 0, moved: 0, sprinted: 0, blocked: 0,
+      swings: 0, enemiesHit: 0, dashes: 0, dashHits: 0,
+      swappedSlot: false, openedInv: false
+    };
+    this._node = null;
+  }
+
+  get seen() {
+    Save.data.tutorial ??= {};
+    return Save.data.tutorial;
+  }
+
+  _ensureNode() {
+    if (this._node) return this._node;
+    const n = document.createElement('div');
+    n.id = 'tutorial';
+    document.getElementById('layer-game').appendChild(n);
+    return this._node = n;
+  }
+
+  update(dt) {
+    // Only world one teaches, and only while the player is actually playing.
+    if (this.game.world?.id !== 1 || this.game.uiFocus || this.game.freeze) {
+      if (this._node) this._node.classList.remove('on');
+      return;
+    }
+
+    const g = this.game, p = g.player, t = g._tut;
+    const inp = g.input.players[0];
+
+    /* --- watch what they do --- */
+    if (Math.abs(inp.look.x) + Math.abs(inp.look.y) > .004) t.looked += dt;
+    if (inp.move.x || inp.move.y) t.moved += dt;
+    if (inp.isDown('sprint') && (inp.move.x || inp.move.y)) t.sprinted += dt;
+    if (p?.blocking) t.blocked += dt;
+    if (inp.justPressed('slot2') || inp.justPressed('slot3') ||
+        inp.justPressed('slot4') || inp.justPressed('nextSlot')) t.swappedSlot = true;
+    if (g.inventory.open) t.openedInv = true;
+
+    /* --- pick the next unfinished step --- */
+    if (this.active && this.active.done(g)) {
+      this.seen[this.active.id] = true;
+      Save.write();
+      Audio.sfx('questDone', { volume: .4 });
+      this.active = null;
+      this.gapT = 1.4;
+      this._ensureNode().classList.remove('on');
+    }
+    if (this.gapT > 0) { this.gapT -= dt; return; }
+
+    if (!this.active) {
+      this.active = STEPS.find(s =>
+        !this.seen[s.id] && (!s.when || s.when(g)) && !s.done(g)) || null;
+      if (this.active) {
+        const n = this._ensureNode();
+        n.innerHTML = this.active.text;
+        n.classList.add('on');
+        Audio.sfx('uiMove', { volume: .5 });
+      }
+    }
+  }
+
+  dispose() { this._node?.remove(); this._node = null; }
+}

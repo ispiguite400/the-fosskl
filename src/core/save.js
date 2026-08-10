@@ -52,6 +52,7 @@ export function freshSave() {
       forgeDone: false
     },
     missions: { active: null, completed: [] },
+    tutorial: {},
     sideQuests: {},
 
     /* transform — restored on continue */
@@ -84,6 +85,7 @@ function migrate(s) {
   out.flags = { ...base.flags, ...(s.flags || {}) };
   out.stats = { ...base.stats, ...(s.stats || {}) };
   out.missions = { ...base.missions, ...(s.missions || {}) };
+  out.tutorial = { ...(s.tutorial || {}) };
   if (!Array.isArray(out.inventory)) out.inventory = base.inventory;
   if (out.inventory.length < 36) {
     out.inventory = out.inventory.concat(new Array(36 - out.inventory.length).fill(null));
