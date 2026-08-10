@@ -386,7 +386,7 @@ export class Sky {
 
     // Sky fill only — kept low so cast shadows stay dark and legible.
     this.hemi.intensity = lerp(.20, .48, daylight) * (1 - this.rain * .3) * (1 + this.rain * .8)
-                        + night * .78;
+                        + night * .42;
     /* ---- moon ---- */
     this.moon.intensity = this.moonBase * clamp(night * 1.25, 0, 1) * (1 - this.rain * .6);
     this.moon.visible = this.moon.intensity > .01;
@@ -403,7 +403,7 @@ export class Sky {
     this.hemi.color.copy(hor);
     this.hemi.groundColor.copy(new THREE.Color(p.ground).multiplyScalar(lerp(.5, 1, daylight)));
     // A little moonlight so night is navigable rather than pitch black.
-    this.ambient.intensity = lerp(.20, .07, daylight) + night * .52;
+    this.ambient.intensity = lerp(.20, .07, daylight) + night * .30;
     this.ambient.color.setHex(night > .5 ? 0x5a72a8 : 0xffffff);
 
     /* ---- fog ---- */

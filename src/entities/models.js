@@ -41,6 +41,73 @@ function mesh(geo, material, x = 0, y = 0, z = 0) {
   return m;
 }
 
+
+/* Cross-sections, given as a closed loop of [across, through] in units of
+ * half-width / half-thickness. A katana is an elongated hexagon: a sharp ha
+ * (edge) on one side, the shinogi ridge two thirds of the way back, and a
+ * flat mune along the spine. A double-edged sword is a diamond. */
+const BLADE_PROFILE = {
+  katana: [
+    [-1, 0],            // ha — the cutting edge, sharp
+    [.30, .92], [.86, .74],  // shinogi ridge, then the mune shoulder
+    [1, .30], [1, -.30],     // flat mune (spine)
+    [.86, -.74], [.30, -.92]
+  ],
+  double: [
+    [-1, 0], [-.25, .78], [.25, .78], [1, 0], [.25, -.78], [-.25, -.78]
+  ],
+  flat: [
+    [-1, .18], [1, .30], [1, -.30], [-1, -.18]
+  ]
+};
+
+/** Builds a single smooth blade mesh by sweeping a cross-section along a
+ *  curved spine. Stacking boxes reads as a staircase up close, which is
+ *  exactly what a blade must not do. Vertices are duplicated per profile
+ *  face so the shinogi ridge stays crisp while the length stays smooth. */
+function bladeGeometry({
+  length = 1.0, width = .032, thick = .009, curve = .07,
+  taper = .34, tip = .13, segments = 44, profile = 'katana'
+} = {}) {
+  const P = BLADE_PROFILE[profile] || BLADE_PROFILE.katana;
+  const E = P.length;                       // one quad strip per profile edge
+  const pos = [], idx = [];
+
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const y = t * length;
+    const z = Math.pow(t, 1.7) * curve * length;
+    // Width eases off along the blade, then closes to a point over the kissaki.
+    const inTip = t > 1 - tip;
+    const k = inTip ? Math.sqrt(Math.max(0, (1 - t) / tip)) : 1;
+    const w = width * (1 - taper * t) * k;
+    const th = thick * (1 - taper * t * .6) * k;
+    // Spine tangent, so each section sits square to the curve.
+    const tz = Math.pow(Math.max(t, .001), .7) * curve * 1.7;
+    const tl = Math.hypot(1, tz), ty = 1 / tl, tzn = tz / tl;
+
+    for (let j = 0; j < E; j++) {
+      for (const q of [P[j], P[(j + 1) % E]]) {
+        const cx = q[0] * w, cz = q[1] * th;
+        pos.push(cx, y - cz * tzn, z + cz * ty);
+      }
+    }
+  }
+  const ring = E * 2;
+  for (let i = 0; i < segments; i++) {
+    for (let j = 0; j < E; j++) {
+      const a = i * ring + j * 2, b = a + 1;
+      const c = (i + 1) * ring + j * 2, d = c + 1;
+      idx.push(a, c, b, b, c, d);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
 /* ============================================================
    HUMANOID
    Returns a group with a named rig so animation code can pose it.
@@ -280,159 +347,60 @@ export function buildWeapon(id, colors) {
   switch (id) {
     case 'kontana':
     case 'katana': {
-      // Slight curve built from stacked segments.
-      const blade = new THREE.Group();
-      const SEG = 12, L = .92;
-      for (let i = 0; i < SEG; i++) {
-        const t = i / SEG;
-        const s = new THREE.Mesh(box(.028, L / SEG + .004, .009 - t * .002), i === SEG - 1 ? m.blade : m.blade);
-        s.position.set(0, L * t + L / SEG / 2, Math.pow(t, 1.7) * .07);
-        s.rotation.x = -t * .12;
-        s.castShadow = true;
-        blade.add(s);
-      }
-      // Kissaki, the point.
-      const tip = new THREE.Mesh(cone(.018, .07, 4), m.blade);
-      tip.position.set(0, L + .03, .075); tip.rotation.x = -.2;
-      blade.add(tip);
+      const blade = new THREE.Mesh(
+        G('blade:katana', () => bladeGeometry({ length: .98, width: .038, thick: .0075, curve: .085 })),
+        m.blade);
       blade.position.y = .1;
+      blade.castShadow = true;
       g.add(blade);
 
-      const tsuba = new THREE.Mesh(cyl(.055, .055, .012, 12), m.dark);
+      const tsuba = new THREE.Mesh(cyl(.055, .055, .012, 16), m.dark);
       tsuba.position.y = .09; tsuba.rotation.x = Math.PI / 2; tsuba.scale.z = .5;
       g.add(tsuba);
 
       const tsuka = grip(.26); tsuka.position.y = -.05; g.add(tsuka);
-      // Ito wrap.
+      // Ito wrap: diamond bindings down the handle.
       for (let i = 0; i < 7; i++) {
         const w = new THREE.Mesh(box(.05, .012, .05), m.dark);
         w.position.y = -.16 + i * .035; w.rotation.y = .4;
         g.add(w);
       }
+      const kashira = new THREE.Mesh(cyl(.026, .03, .02, 10), m.dark);
+      kashira.position.y = -.185; g.add(kashira);
+
       if (id === 'kontana') {
         const l = new THREE.PointLight(0xffd48a, .8, 3, 2);
         l.position.y = .5; g.add(l);
       }
       break;
     }
-    case 'naginata': {
-      const haft = new THREE.Mesh(cyl(.026, .03, 1.5, 8), m.grip);
-      haft.position.y = .55; g.add(haft);
-      // Curved blade on the end, built from short segments.
-      for (let i = 0; i < 8; i++) {
-        const t = i / 8;
-        const seg = new THREE.Mesh(box(.032, .07, .01), m.blade);
-        seg.position.set(0, 1.34 + t * .48, Math.pow(t, 1.6) * .12);
-        seg.rotation.x = -t * .3;
-        g.add(seg);
-      }
-      const tip = new THREE.Mesh(cone(.02, .09, 4), m.blade);
-      tip.position.set(0, 1.86, .14); tip.rotation.x = -.35; g.add(tip);
-      const collar = new THREE.Mesh(cyl(.038, .038, .07, 8), m.dark);
-      collar.position.y = 1.3; g.add(collar);
-      break;
-    }
-    case 'kusarigama': {
-      const handle = grip(.3); handle.position.y = .1; g.add(handle);
-      // Sickle head.
-      const blade = new THREE.Mesh(new THREE.TorusGeometry(.16, .022, 5, 10, Math.PI * .9), m.blade);
-      blade.position.set(.08, .3, 0); blade.rotation.z = -.6; g.add(blade);
-      // Chain running off to a weight.
-      for (let i = 0; i < 12; i++) {
-        const link = new THREE.Mesh(new THREE.TorusGeometry(.022, .008, 4, 7), m.bladeDark);
-        link.position.set(-.03 * i, -.08 - i * .05, 0);
-        link.rotation.y = i % 2 ? Math.PI / 2 : 0;
-        g.add(link);
-      }
-      const weight = new THREE.Mesh(sph(.05, 8, 6), m.bladeDark);
-      weight.position.set(-.38, -.66, 0); g.add(weight);
-      break;
-    }
-    case 'warfan': {
-      const handle = grip(.14, .016); g.add(handle);
-      // Iron ribs fanned out from the pivot.
-      for (let i = 0; i < 9; i++) {
-        const a = -.7 + (i / 8) * 1.4;
-        const rib = new THREE.Mesh(box(.012, .34, .006), m.blade);
-        rib.position.set(Math.sin(a) * .16, .08 + Math.cos(a) * .16, 0);
-        rib.rotation.z = -a;
-        g.add(rib);
-      }
-      const web = new THREE.Mesh(new THREE.CircleGeometry(.32, 14, Math.PI / 2 - .7, 1.4),
-        new THREE.MeshStandardMaterial({ color: 0x8c2f2f, roughness: .9, side: THREE.DoubleSide }));
-      web.position.y = .06; g.add(web);
-      break;
-    }
-    case 'frostblade': {
-      const fm = new THREE.MeshStandardMaterial({
-        color: 0x9fd8f0, metalness: .85, roughness: .12,
-        emissive: 0x2a7ac0, emissiveIntensity: .9, transparent: true, opacity: .92
-      });
-      const blade = new THREE.Mesh(box(.05, .88, .014), fm);
-      blade.position.y = .58; g.add(blade);
-      const tip = new THREE.Mesh(cone(.03, .12, 4), fm); tip.position.y = 1.08; g.add(tip);
-      // Frost spurs along the edge.
-      for (let i = 0; i < 5; i++) {
-        const sp = new THREE.Mesh(cone(.016, .07, 4), fm);
-        sp.position.set(.035, .3 + i * .16, 0); sp.rotation.z = -1.1; g.add(sp);
-      }
-      const tsuba = new THREE.Mesh(cyl(.055, .055, .012, 12), m.dark);
-      tsuba.position.y = .1; tsuba.rotation.x = Math.PI / 2; tsuba.scale.z = .5; g.add(tsuba);
-      const h = grip(.26); h.position.y = -.04; g.add(h);
-      const l = new THREE.PointLight(0x6ab4ff, 2.4, 8, 2); l.position.y = .6; g.add(l);
-      break;
-    }
-    case 'chakram': {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(.16, .018, 6, 20), m.blade);
-      ring.rotation.x = Math.PI / 2; g.add(ring);
-      // Outer cutting edge.
-      const edge = new THREE.Mesh(new THREE.CylinderGeometry(.19, .19, .006, 20), m.blade);
-      g.add(edge);
-      const inner = new THREE.Mesh(new THREE.CylinderGeometry(.1, .1, .008, 16), m.grip);
-      g.add(inner);
-      break;
-    }
-    case 'greatbow': {
-      const limb = new THREE.Group();
-      const SEG = 14, R = .95;
-      for (let i = 0; i < SEG; i++) {
-        const t = i / (SEG - 1);
-        const a = lerp(-1.25, 1.25, t);
-        const seg = new THREE.Mesh(box(.036, .18, .05), m.bladeDark);
-        seg.position.set(Math.sin(a) * .26, Math.cos(a) * R - R * .1, 0);
-        seg.rotation.z = -a;
-        limb.add(seg);
-      }
-      g.add(limb);
-      const string = new THREE.Mesh(cyl(.007, .007, 1.8, 4), mat(0xe8e2d4));
-      string.position.set(.24, -.09, 0); g.add(string);
-      const gripWrap = grip(.3, .034); gripWrap.position.y = -.06; g.add(gripWrap);
-      break;
-    }
     case 'odachi': {
-      const blade = new THREE.Mesh(box(.036, 1.42, .012), m.blade);
-      blade.position.y = .82; blade.castShadow = true; g.add(blade);
-      const tip = new THREE.Mesh(cone(.024, .1, 4), m.blade); tip.position.y = 1.58; g.add(tip);
+      const blade = new THREE.Mesh(
+        G('blade:odachi', () => bladeGeometry({ length: 1.5, width: .045, thick: .0085, curve: .07 })),
+        m.blade);
+      blade.position.y = .12; blade.castShadow = true; g.add(blade);
       const tsuba = new THREE.Mesh(cyl(.07, .07, .014, 12), m.dark);
       tsuba.position.y = .1; tsuba.rotation.x = Math.PI / 2; tsuba.scale.z = .5; g.add(tsuba);
       const h = grip(.38); h.position.y = -.1; g.add(h);
       break;
     }
     case 'voidblade': {
-      const blade = new THREE.Mesh(box(.04, 1.1, .014), new THREE.MeshStandardMaterial({
+      const vm = new THREE.MeshStandardMaterial({
         color: 0x080510, metalness: 1, roughness: .05,
         emissive: 0x4a1f7a, emissiveIntensity: .8
-      }));
-      blade.position.y = .66; g.add(blade);
-      const tip = new THREE.Mesh(cone(.026, .1, 4), blade.material); tip.position.y = 1.26; g.add(tip);
+      });
+      const blade = new THREE.Mesh(
+        G('blade:void', () => bladeGeometry({ length: 1.16, width: .046, thick: .011, curve: .04, profile: 'double' })), vm);
+      blade.position.y = .1; g.add(blade);
       const h = grip(.3); h.position.y = -.02; g.add(h);
       const l = new THREE.PointLight(0x8a3fd8, 2.2, 7, 2); l.position.y = .7; g.add(l);
       break;
     }
     case 'sword': {
-      const blade = new THREE.Mesh(box(.05, .86, .014), m.blade);
-      blade.position.y = .55; g.add(blade);
-      const tip = new THREE.Mesh(cone(.03, .1, 4), m.blade); tip.position.y = 1.02; g.add(tip);
+      const blade = new THREE.Mesh(
+        G('blade:sword', () => bladeGeometry({ length: .96, width: .056, thick: .010, curve: 0, taper: .40, tip: .18, profile: 'double' })),
+        m.blade);
+      blade.position.y = .12; blade.castShadow = true; g.add(blade);
       const cross = new THREE.Mesh(box(.28, .026, .03), m.bladeDark); cross.position.y = .11; g.add(cross);
       const h = grip(.2); h.position.y = 0; g.add(h);
       const pommel = new THREE.Mesh(sph(.035, 10, 8), m.bladeDark); pommel.position.y = -.11; g.add(pommel);
@@ -443,9 +411,9 @@ export function buildWeapon(id, colors) {
         color: 0x3a1408, metalness: .8, roughness: .3,
         emissive: 0xff5a10, emissiveIntensity: 1.4
       });
-      const blade = new THREE.Mesh(box(.055, .9, .016), fm);
-      blade.position.y = .58; g.add(blade);
-      const tip = new THREE.Mesh(cone(.032, .12, 4), fm); tip.position.y = 1.08; g.add(tip);
+      const blade = new THREE.Mesh(
+        G('blade:fire', () => bladeGeometry({ length: 1.0, width: .060, thick: .012, curve: .02, taper: .38, profile: 'double' })), fm);
+      blade.position.y = .11; g.add(blade);
       const cross = new THREE.Mesh(box(.3, .03, .034), m.bladeDark); cross.position.y = .11; g.add(cross);
       const h = grip(.22); g.add(h);
       const l = new THREE.PointLight(0xff6a20, 3.2, 9, 2); l.position.y = .6; g.add(l);
@@ -485,6 +453,118 @@ export function buildWeapon(id, colors) {
       head.position.y = 1.86; g.add(head);
       const collar = new THREE.Mesh(cyl(.032, .032, .06, 8), m.dark);
       collar.position.y = 1.7; g.add(collar);
+      break;
+    }
+    case 'naginata': {
+      const haft = new THREE.Mesh(cyl(.024, .027, 1.55, 10), m.grip);
+      haft.position.y = .55; g.add(haft);
+      for (let i = 0; i < 5; i++) {
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(.027, .005, 5, 12), m.dark);
+        ring.position.y = .1 + i * .26; ring.rotation.x = Math.PI / 2; g.add(ring);
+      }
+      const blade = new THREE.Mesh(
+        G('blade:naginata', () => bladeGeometry({ length: .62, width: .048, thick: .009, curve: .16, taper: .18 })),
+        m.blade);
+      blade.position.y = 1.34; blade.castShadow = true; g.add(blade);
+      const collar = new THREE.Mesh(cyl(.034, .03, .07, 10), m.dark);
+      collar.position.y = 1.32; g.add(collar);
+      const butt = new THREE.Mesh(cyl(.026, .03, .05, 8), m.dark);
+      butt.position.y = -.22; g.add(butt);
+      break;
+    }
+    case 'kusarigama': {
+      // Sickle in one hand, weighted chain trailing from the pommel.
+      const handle = grip(.3, .02); handle.position.y = .08; g.add(handle);
+      const kama = new THREE.Mesh(
+        G('blade:kama', () => bladeGeometry({ length: .38, width: .034, thick: .007, curve: .42, taper: .3 })),
+        m.blade);
+      kama.position.y = .23; kama.rotation.z = -.55; kama.castShadow = true; g.add(kama);
+      for (let i = 0; i < 9; i++) {
+        const link = new THREE.Mesh(new THREE.TorusGeometry(.022, .006, 5, 10), m.bladeDark);
+        link.position.set(.02 + i * .012, -.1 - i * .042, 0);
+        link.rotation.set(Math.PI / 2, 0, i % 2 ? .8 : 0);
+        g.add(link);
+      }
+      const weight = new THREE.Mesh(sph(.045, 10, 8), m.bladeDark);
+      weight.position.set(.13, -.5, 0); g.add(weight);
+      break;
+    }
+    case 'warfan': {
+      // Tessen: iron ribs fanned out from a pivot, paper between them.
+      const paper = mat(0xf2e6cf, { roughness: .95, side: THREE.DoubleSide });
+      for (let i = 0; i < 9; i++) {
+        const a = -.62 + (i / 8) * 1.24;
+        const rib = new THREE.Mesh(box(.012, .34, .006), m.blade);
+        rib.position.set(Math.sin(a) * .17, Math.cos(a) * .17 + .04, 0);
+        rib.rotation.z = -a; g.add(rib);
+        if (i < 8) {
+          const web = new THREE.Mesh(box(.05, .2, .002), paper);
+          const b = a + .078;
+          web.position.set(Math.sin(b) * .2, Math.cos(b) * .2 + .04, 0);
+          web.rotation.z = -b; g.add(web);
+        }
+      }
+      const pivot = new THREE.Mesh(cyl(.026, .026, .05, 12), m.dark);
+      pivot.rotation.x = Math.PI / 2; pivot.position.y = -.06; g.add(pivot);
+      const h = grip(.1, .018); h.position.y = -.12; g.add(h);
+      break;
+    }
+    case 'frostblade': {
+      const im = new THREE.MeshStandardMaterial({
+        color: 0xbfe8ff, metalness: .55, roughness: .1,
+        transparent: true, opacity: .88,
+        emissive: 0x2a6ea8, emissiveIntensity: .5
+      });
+      const blade = new THREE.Mesh(
+        G('blade:frost', () => bladeGeometry({ length: 1.02, width: .046, thick: .011, curve: .05 })), im);
+      blade.position.y = .12; blade.castShadow = true; g.add(blade);
+      // Rime shards crusting the lower third.
+      for (let i = 0; i < 6; i++) {
+        const sh = new THREE.Mesh(cone(.018, .07, 4), im);
+        sh.position.set((i % 2 ? .03 : -.03), .2 + i * .075, 0);
+        sh.rotation.z = (i % 2 ? -1 : 1) * (.7 + i * .05);
+        g.add(sh);
+      }
+      const tsuba = new THREE.Mesh(cyl(.058, .058, .014, 12), m.dark);
+      tsuba.position.y = .1; tsuba.rotation.x = Math.PI / 2; tsuba.scale.z = .5; g.add(tsuba);
+      const h = grip(.26); h.position.y = -.05; g.add(h);
+      const l = new THREE.PointLight(0x7ec8ff, 1.6, 6, 2); l.position.y = .6; g.add(l);
+      break;
+    }
+    case 'chakram': {
+      const ringG = new THREE.TorusGeometry(.19, .016, 8, 40);
+      const ring = new THREE.Mesh(ringG, m.blade);
+      ring.scale.z = .35; g.add(ring);
+      // Outer cutting edge: a thin cone skirt around the ring.
+      const edge = new THREE.Mesh(new THREE.TorusGeometry(.205, .006, 5, 40), m.blade);
+      edge.scale.z = .3; g.add(edge);
+      for (let i = 0; i < 3; i++) {
+        const wrap = new THREE.Mesh(box(.035, .05, .05), m.grip);
+        const a = (i / 3) * Math.PI * 2;
+        wrap.position.set(Math.cos(a) * .19, Math.sin(a) * .19, 0);
+        wrap.rotation.z = a; g.add(wrap);
+      }
+      break;
+    }
+    case 'greatbow': {
+      const limb = new THREE.Group();
+      const SEG = 14, R = .95;
+      for (let i = 0; i < SEG; i++) {
+        const t = i / (SEG - 1);
+        const a = lerp(-1.25, 1.25, t);
+        const thick = .03 - Math.abs(t - .5) * .022;
+        const s = new THREE.Mesh(box(.03, .17, thick + .02), m.grip);
+        s.position.set(Math.sin(a) * .26, Math.cos(a) * R - R * .1, 0);
+        s.rotation.z = -a;
+        limb.add(s);
+      }
+      g.add(limb);
+      const gripWrap = new THREE.Mesh(cyl(.03, .03, .2, 10), m.dark);
+      gripWrap.position.y = R * .9 - R * .1; g.add(gripWrap);
+      const string = new THREE.Mesh(cyl(.005, .005, 1.78, 4), mat(0xe8e2d4));
+      string.position.set(.235, -.09, 0); g.add(string);
+      const nock = new THREE.Mesh(sph(.02, 8, 6), m.bladeDark);
+      nock.position.set(.235, .0, 0); g.add(nock);
       break;
     }
     case 'bow':

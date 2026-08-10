@@ -301,7 +301,14 @@ export class Screens {
     const root = el('div', 'screen', `
       ${firstRun ? '' : '<div class="backbtn">BACK</div>'}
       <div class="wrap">
-        <div class="preview"><canvas id="forgeCanvas"></canvas></div>
+        <div class="preview">
+          <canvas id="forgeCanvas"></canvas>
+          <div class="forge-bar">
+            <button class="forge-arrow" id="forgePrev">&#10094;</button>
+            <span id="forgeName">Kontana</span>
+            <button class="forge-arrow" id="forgeNext">&#10095;</button>
+          </div>
+        </div>
         <div class="side">
           <h2>${firstRun ? 'Before You Begin' : 'The Forge'}</h2>
           <div class="sub">${firstRun
@@ -447,7 +454,13 @@ export class Screens {
 
     /* --- live 3D weapon preview --- */
     let preview = null;
-    previewMount?.($('#forgeCanvas', root)).then(p => { preview = p; preview.setColors(colors); });
+    previewMount?.($('#forgeCanvas', root)).then(p => {
+      preview = p;
+      p.onName?.(n => { $('#forgeName', root).textContent = n; });
+      p.setColors(colors);
+    });
+    $('#forgePrev', root).addEventListener('click', () => { preview?.next(-1); Audio.sfx('uiMove'); });
+    $('#forgeNext', root).addEventListener('click', () => { preview?.next(1); Audio.sfx('uiMove'); });
 
     const finish = () => {
       Save.write(true);

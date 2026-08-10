@@ -186,10 +186,28 @@ body.playing{cursor:none}
 /* ---------------- Edit (forge) screen ---------------------- */
 #edit .wrap{position:absolute;inset:0;display:grid;grid-template-columns:1fr 460px}
 #edit .preview{position:relative;min-width:0}
+#edit .forge-bar{position:absolute;left:0;right:0;bottom:22px;display:flex;align-items:center;
+  justify-content:center;gap:18px;pointer-events:none}
+#edit .forge-bar span{font-family:Cinzel,serif;font-size:17px;letter-spacing:.24em;
+  color:#e8d5ae;text-shadow:0 2px 10px #000;min-width:190px;text-align:center}
+#edit .forge-arrow{pointer-events:auto;background:rgba(10,8,6,.55);border:1px solid rgba(220,180,110,.35);
+  color:#e8d5ae;width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:14px;line-height:1;
+  transition:background .15s,border-color .15s}
+#edit .forge-arrow:hover{background:rgba(220,180,110,.22);border-color:rgba(220,180,110,.8)}
 #forgeCanvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 #edit .side{
   background:linear-gradient(180deg,rgba(8,6,5,.94),rgba(4,3,2,.97));
-  border-left:1px solid rgba(240,162,74,.18);padding:6vh 34px;overflow-y:auto;pointer-events:auto
+  border-left:1px solid rgba(240,162,74,.18);padding:4vh 34px;overflow-y:auto;pointer-events:auto
+}
+/* On short screens the whole panel must still fit without scrolling past
+   the BLADE / HANDLE tabs, so the wheel gives up the space. */
+@media (max-height:860px){
+  #edit .sub{margin-bottom:16px;font-size:13px}
+  .wheelbox{max-width:min(320px,26vh);margin-bottom:10px}
+  .slider{margin:8px 0 12px}
+  .swatches{margin-bottom:14px}
+  .hexline{margin-bottom:14px}
+  #edit h2{font-size:20px}
 }
 #edit h2,.panel-h{
   font-family:Cinzel,serif;font-size:24px;letter-spacing:.22em;color:var(--ember);

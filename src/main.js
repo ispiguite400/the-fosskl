@@ -45,68 +45,136 @@ async function makeForgePreview(canvasEl) {
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.3;
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(38, 1, .1, 60);
-  camera.position.set(0, .55, 3.1);
-  camera.lookAt(0, .5, 0);
+  const camera = new THREE.PerspectiveCamera(34, 1, .05, 80);
 
-  scene.add(new THREE.AmbientLight(0xffffff, .35));
-  const key = new THREE.DirectionalLight(0xffe0c0, 3.2);
-  key.position.set(3, 5, 4); scene.add(key);
-  const rim = new THREE.DirectionalLight(0xf0a24a, 2.4);
-  rim.position.set(-4, 2, -3); scene.add(rim);
-  const fill = new THREE.PointLight(0x6ab4ff, 1.6, 14);
-  fill.position.set(-2, 1, 3); scene.add(fill);
+  /* --- backdrop: a lit stage rather than a black void --- */
+  const backdrop = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 512;
+    const ctx = c.getContext('2d');
+    const g = ctx.createRadialGradient(256, 200, 20, 256, 300, 340);
+    g.addColorStop(0, '#3a2a1c');
+    g.addColorStop(.45, '#1a1410');
+    g.addColorStop(1, '#070605');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 512, 512);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(30, 30),
+      new THREE.MeshBasicMaterial({ map: tex, depthWrite: false })
+    );
+    m.position.z = -9;
+    m.renderOrder = -10;
+    return m;
+  })();
+  scene.add(backdrop);
+
+  scene.add(new THREE.AmbientLight(0xffffff, .75));
+  const key = new THREE.DirectionalLight(0xffe6c8, 4.2);
+  key.position.set(4, 6, 5); scene.add(key);
+  const rim = new THREE.DirectionalLight(0xf0a24a, 3.4);
+  rim.position.set(-5, 2, -4); scene.add(rim);
+  const fill = new THREE.PointLight(0x7ab8ff, 2.4, 22);
+  fill.position.set(-3, 1.5, 4); scene.add(fill);
+
+  // Environment map so metal actually reflects something.
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envScene = new THREE.Scene();
+  envScene.background = new THREE.Color(0x2a2018);
+  const envRT = pmrem.fromScene(envScene, 0, .1, 100);
+  scene.environment = envRT.texture;
 
   const pedestal = new THREE.Mesh(
-    new THREE.CylinderGeometry(.7, .9, .18, 32),
-    new THREE.MeshStandardMaterial({ color: 0x14110e, roughness: .7, metalness: .3 })
+    new THREE.CylinderGeometry(.62, .82, .16, 40),
+    new THREE.MeshStandardMaterial({ color: 0x171310, roughness: .55, metalness: .45 })
   );
-  pedestal.position.y = -.62;
   scene.add(pedestal);
 
   const holder = new THREE.Group();
   scene.add(holder);
 
-  // Cycle through a representative weapon of each colourable kind.
-  const SHOWCASE = ['kontana', 'sword', 'axe', 'bow', 'iron_shield', 'knives'];
-  let idx = 0, swapT = 0, current = null;
+  /* Cycle through one weapon of each colourable kind, starting on the blade
+   * the player actually wakes up holding. */
+  const SHOWCASE = [
+    ['kontana', 'Kontana'], ['sword', 'Longsword'], ['naginata', 'Naginata'],
+    ['axe', 'War Axe'], ['bow', 'Yumi'], ['iron_shield', 'Iron Shield']
+  ];
+  let idx = 0, swapT = 0, current = null, radius = 1;
 
   const rebuild = colors => {
     if (current) holder.remove(current);
-    current = buildWeapon(SHOWCASE[idx], colors);
-    current.traverse(o => { if (o.isMesh) { o.castShadow = false; } });
-    // Centre whatever we built inside the pedestal.
+    current = buildWeapon(SHOWCASE[idx][0], colors);
+    onName?.(SHOWCASE[idx][1]);
+    current.traverse(o => { if (o.isMesh) o.castShadow = false; });
+
+    // Normalise: centre the model on the origin and scale it to a known
+    // size, so the camera framing below works for a knife or a polearm.
     const bb = new THREE.Box3().setFromObject(current);
     const c = bb.getCenter(new THREE.Vector3());
-    current.position.sub(c);
     const size = bb.getSize(new THREE.Vector3());
-    const s = 1.5 / Math.max(size.length(), .001) * 1.1;
+    const longest = Math.max(size.x, size.y, size.z, .001);
+    const s = 2.4 / longest;
     current.scale.setScalar(s);
+    current.position.copy(c).multiplyScalar(-s);
     holder.add(current);
+
+    // Sphere that encloses it, used to fit the camera.
+    radius = (longest * s) * .62;
+    holder.position.y = radius * .55 + .1;
+    pedestal.position.y = -.05;
+    frame();
   };
 
-  let colors = null;
+  /* Pull the camera back until the whole piece fits, with margin, in
+   * whichever direction is tighter for this pane's aspect ratio. */
+  const frame = () => {
+    const vFov = camera.fov * Math.PI / 180;
+    const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+    const need = Math.max(radius / Math.sin(vFov / 2), radius / Math.sin(hFov / 2));
+    const dist = need * .96 + .18;   // tight framing: fill the pane
+    const look = new THREE.Vector3(0, holder.position.y * .75, 0);
+    camera.position.set(0, look.y + dist * .16, dist);
+    camera.lookAt(look);
+  };
+
+  let colors = null, onName = null;
   const resize = () => {
     const r = canvasEl.getBoundingClientRect();
-    if (r.width < 4 || r.height < 4) return;
+    if (r.width < 8 || r.height < 8) return;
+    if (r.width === camera.userData.w && r.height === camera.userData.h) return;
+    camera.userData.w = r.width; camera.userData.h = r.height;
     renderer.setSize(r.width, r.height, false);
     camera.aspect = r.width / r.height;
     camera.updateProjectionMatrix();
+    frame();
   };
 
+  let spin = 0;
   return {
     setColors(c) { colors = c; rebuild(c); },
+    onName(fn) { onName = fn; if (current) fn(SHOWCASE[idx][1]); },
+    next(step = 1) {
+      idx = (idx + step + SHOWCASE.length) % SHOWCASE.length;
+      swapT = 0; rebuild(colors);
+    },
     update(dt) {
       resize();
-      holder.rotation.y += dt * .7;
+      // Swing through three-quarter views instead of spinning: a full spin
+      // parks a blade edge-on half the time, where you cannot see its colour.
+      spin += dt;
+      holder.rotation.y = Math.sin(spin * .5) * .8 + .22;
+      holder.rotation.x = Math.sin(spin * .31) * .05;
+      pedestal.rotation.y -= dt * .18;
       swapT += dt;
-      if (swapT > 4) { swapT = 0; idx = (idx + 1) % SHOWCASE.length; rebuild(colors); }
-      pedestal.rotation.y -= dt * .2;
+      if (swapT > 6) { swapT = 0; idx = (idx + 1) % SHOWCASE.length; rebuild(colors); }
+      // Keep the backdrop behind the camera's view at any distance.
+      backdrop.position.set(0, camera.position.y * .6, -camera.position.z * 1.2);
       renderer.render(scene, camera);
     },
-    dispose() { renderer.dispose(); }
+    dispose() { envRT.dispose(); pmrem.dispose(); renderer.dispose(); }
   };
 }
 

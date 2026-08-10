@@ -177,9 +177,11 @@ export class Terrain {
 
     switch (w.theme) {
       case 'ruins': {
+        // Trampled earth with surviving grass in patches, then soot on top.
         const burn = clamp(fbm(x * .01, z * .01, 3) * .5 + .5, 0, 1);
-        c = new THREE.Color().lerpColors(new THREE.Color(0x6a5a42), new THREE.Color(0x9c8a5c), burn);
-        c.lerp(new THREE.Color(0x2e2620), clamp(fbm(x * .04 + 9, z * .04, 2) * .8, 0, .45)); // scorch
+        c = new THREE.Color().lerpColors(new THREE.Color(p.ground), new THREE.Color(p.grass), burn);
+        c.lerp(new THREE.Color(0x241e18), clamp(fbm(x * .04 + 9, z * .04, 2) * .9, 0, .5)); // scorch
+        c.lerp(rock, clamp((slope - .3) * 2.6, 0, 1));
         break;
       }
       case 'snow': {
@@ -289,35 +291,48 @@ export class Terrain {
     // Low quality gets thinner, shorter grass — never a bald world.
     if (density <= 0) { this.grass = null; return; }
 
-    const count = Math.floor(({ low: 9000, medium: 22000, high: 52000, ultra: 90000 }[this.quality] ?? 52000) * clamp(density, .5, 1.6));
+    const count = Math.floor(({ low: 10000, medium: 26000, high: 55000, ultra: 90000 }[this.quality] ?? 55000) * clamp(density, .5, 1.3));
     this.grassCount = count;
     // Tighter radius, same instance budget: a dense carpet underfoot that
     // fades into the terrain colour rather than sparse spikes to the horizon.
-    this.grassRadius = { low: 30, medium: 46, high: 68, ultra: 92 }[this.quality] ?? 68;
+    this.grassRadius = { low: 24, medium: 32, high: 42, ultra: 58 }[this.quality] ?? 42;
 
-    // A single blade: two crossed quads tapering to a point.
+    // One instance is a tuft, not a blade: three quads fanned around the
+    // stem, each leaning a different way. Crossed quads alone read as two
+    // solid fins up close; a fan reads as grass.
     const blade = new THREE.BufferGeometry();
-    // A single blade is ~55cm tall and 5cm wide at the base; anything larger
-    // reads as scenery rather than ground cover.
-    const H = .95, W = .055;
-    const verts = [], uvs = [], idx = [];
-    for (let k = 0; k < 2; k++) {
-      const a = k * Math.PI / 2;
-      const dx = Math.cos(a) * W, dz = Math.sin(a) * W;
+    const H = .58, W = .019;
+    const verts = [], uvs = [], cols = [], idx = [];
+    const TUFT = [
+      { a: 0.0, lean: .10, h: 1.00 },
+      { a: 1.05, lean: -.14, h: .78 },
+      { a: 2.10, lean: .06, h: .90 }
+    ];
+    TUFT.forEach((t, k) => {
+      const dx = Math.cos(t.a) * W, dz = Math.sin(t.a) * W;
+      const th = H * t.h;
+      const lx = Math.cos(t.a + 1.57) * t.lean, lz = Math.sin(t.a + 1.57) * t.lean;
       const base = k * 4;
-      verts.push(-dx, 0, -dz, dx, 0, dz, dx * .28, H, dz * .28, -dx * .28, H, -dz * .28);
+      verts.push(
+        -dx, 0, -dz,
+         dx, 0, dz,
+         dx * .18 + lx, th, dz * .18 + lz,
+        -dx * .18 + lx, th, -dz * .18 + lz);
       uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
+      // Roots sit in shadow, tips catch the light — without this the tuft is
+      // a flat slab of colour and reads as plastic.
+      cols.push(.52, .52, .48, .52, .52, .48, 1.12, 1.12, 1.05, 1.12, 1.12, 1.05);
       idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
-    }
+    });
     blade.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
     blade.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    blade.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
     blade.setIndex(idx);
     blade.computeVertexNormals();
 
     const grassColor = new THREE.Color(this.world.palette.grass).multiplyScalar(1.15);
     const mat = new THREE.MeshStandardMaterial({
-      color: grassColor, roughness: .92, side: THREE.DoubleSide,
-      transparent: true, alphaTest: .35,
+      color: grassColor, roughness: .92, side: THREE.DoubleSide, vertexColors: true,
       // Blades are near-vertical, so a low sun would otherwise render them
       // as black slivers. A touch of self-colour keeps them readable.
       emissive: grassColor.clone().multiplyScalar(.16)
@@ -373,11 +388,15 @@ export class Terrain {
       const ok = slope < .62 && patch < clamp(density, .35, 1) * 1.2 &&
                  (!this.world.water || y > (this.world.waterLevel || 0) + .5) &&
                  y > -100;
-      const h = ok ? (.85 + rng() * .95) * (this.world.theme === 'savanna' ? 2.2 : 1) : 0;
+      // Ankle-to-shin height: the geometry is .58m tall, so this lands
+      // between 22cm and 41cm — grass you walk through, not wade through.
+      // The outer tenth shrinks away so the patch has no hard rim.
+      const edge = clamp((R - r) / (R * .16), 0, 1);
+      const h = ok ? (.38 + rng() * .32) * edge * (this.world.theme === 'savanna' ? 2.2 : 1) : 0;
 
       pos.set(x, y, z);
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * Math.PI);
-      scl.set(.75 + rng() * .55, h, .75 + rng() * .55);
+      scl.set(.8 + rng() * .45, h, .8 + rng() * .45);
       m.compose(pos, q, scl);
       this.grass.setMatrixAt(i, m);
     }

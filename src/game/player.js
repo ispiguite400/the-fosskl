@@ -196,9 +196,18 @@ export class Player {
     model.position.y = -bb.min.y * s - .06;
     this.viewWeapon.add(model);
 
-    // View models must not be clipped by the world or cast shadows.
+    // View models must not be clipped by the world or cast shadows. They also
+    // carry a little of their own colour: at night the scene light alone
+    // renders the held weapon as a black silhouette, which hides the colours
+    // the player chose in the forge.
     this.viewWeapon.traverse(o => {
-      if (o.isMesh) { o.castShadow = false; o.receiveShadow = false; o.renderOrder = 1000; }
+      if (!o.isMesh) return;
+      o.castShadow = false; o.receiveShadow = false; o.renderOrder = 1000;
+      if (o.material?.isMeshStandardMaterial) {
+        o.material = o.material.clone();
+        const lift = o.material.color.clone().multiplyScalar(.30);
+        o.material.emissive.add(lift);
+      }
     });
     this.viewHand.add(this.viewWeapon);
   }

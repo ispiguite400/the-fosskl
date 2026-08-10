@@ -248,10 +248,10 @@ export const WORLDS = [
     music: 'world1', tutorial: true, hub: false, size: 3600,
     subtitle: 'Where you were left for dead',
     mountains: 1.6,
-    palette: { fog: 0x3a4668, sky: 0x2e3c60, ground: 0x6e6250, grass: 0x7a7350, water: 0x243040 },
+    palette: { fog: 0x3a4668, sky: 0x2e3c60, ground: 0x574c3d, grass: 0x6b6b45, water: 0x243040 },
     sun: { elevation: 14, azimuth: 130, intensity: 2.2, color: 0xff9a4a },
-    moon: { intensity: 4.6, color: 0xb4caf5 },
-    density: { trees: .22, rocks: .6, grass: .85, buildings: 1.0 },
+    moon: { intensity: 1.9, color: 0xb4caf5 },
+    density: { trees: .22, rocks: .6, grass: .8, buildings: 1.0 },
     enemyLevel: 1, enemyTypes: ['ashigaru', 'ronin', 'archer'], boss: 'wizard',
     ambient: 'ember',
     intro: 'Night, and smoke where the roofs were. Somewhere under it, a blade with your name on it.'
