@@ -286,7 +286,7 @@ export const WORLDS = [
                ground: 0x2a3c24, grass: 0x355c2c, water: 0x27503f },
     // Little of it reaches the floor: a low, green, filtered light.
     sun: { elevation: 58, azimuth: 240, intensity: .55, color: 0xc8dfa0 },
-    density: { trees: 3.4, rocks: .45, grass: .55, buildings: .18 },
+    density: { trees: 2.6, rocks: .45, grass: .5, buildings: .18 }, bamboo: 190,
     enemyLevel: 13, enemyTypes: ['ronin', 'bandit', 'shadow', 'archer', 'monk'], boss: 'forest_warden',
     ambient: 'forest', motes: 0x9fe8b0, kodama: 14,
     intro: 'The canopy holds the light out. Whatever lives here has never needed eyes.'

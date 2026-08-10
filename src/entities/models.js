@@ -822,6 +822,94 @@ export function bambooParts() {
   };
 }
 
+/* ---- instanced forests ----
+ *
+ * A tree is a dozen little meshes, so a wood built out of Groups costs a
+ * draw call per branch and the count is capped by the renderer long before
+ * it is capped by taste. Instead a tree is described as a *plan*: a list of
+ * (piece, local transform) records drawn from a fixed per-theme piece set.
+ * A whole streaming cell's worth of plans then collapses into one
+ * InstancedMesh per piece — five or six calls for a thousand trees.
+ *
+ * `treeParts` is the palette, `treePlan` the recipe. Foliage colour varies
+ * per tree, so instead of per-instance colour (which would fight the
+ * self-colour lift in `mat`) each shade is simply its own piece. */
+const LEAF_SHADES = {
+  ruins:   [0xb03a24, 0xd06a26, 0x8c2a1e],
+  savanna: [0x6a7a34, 0x76853c, 0x5e6e2c],
+  def:     [0x3f6a2a, 0x4a7a34, 0x35602a]
+};
+
+export function treeParts(theme) {
+  const barkColor = { snow: 0x4a4038, desert: 0x8a6a44, savanna: 0x5a4428 }[theme] ?? 0x4a3626;
+  const bark = mat(barkColor, { roughness: 1 });
+  const p = { limb: { geo: cyl(.05, .1, 1, 5), mat: bark } };
+
+  if (theme === 'desert') {
+    p.trunk = { geo: cyl(.16, .26, 1, 7), mat: bark };
+    p.frond = { geo: box(.1, .06, 1), mat: mat(0x5a7a32, { roughness: .95, side: THREE.DoubleSide }) };
+    return p;
+  }
+  if (theme === 'snow' || theme === 'kingdom') {
+    p.trunk = { geo: cyl(.14, .3, 1, 7), mat: bark };
+    p.cone = { geo: cone(1, 1, 8), mat: mat(theme === 'snow' ? 0x2a4a34 : 0x2f5a34, { roughness: 1 }) };
+    if (theme === 'snow') p.cap = { geo: cone(1, 1, 8), mat: mat(0xeef4fa, { roughness: .8 }) };
+    return p;
+  }
+  p.trunk = { geo: cyl(.16, .38, 1, 8), mat: bark };
+  const shades = LEAF_SHADES[theme] ?? LEAF_SHADES.def;
+  shades.forEach((c, i) => { p['blob' + i] = { geo: sph(1, 8, 6), mat: mat(c, { roughness: .95 }) }; });
+  return p;
+}
+
+/** A tree as piece records: { k, p:[x,y,z], r:[x,y,z], s:[x,y,z] }. */
+export function treePlan(theme, rng) {
+  const h = rng.range(6, 14);
+  const out = [];
+  const push = (k, p, r, s) => out.push({ k, p, r, s });
+
+  if (theme === 'desert') {
+    const lean = rng.range(-.12, .12);
+    push('trunk', [0, h * .4, 0], [0, 0, lean], [1, h * .8, 1]);
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2;
+      push('frond', [Math.cos(a) * 1.2, h * .8, Math.sin(a) * 1.2],
+           [rng.range(.2, .5), -a, 0], [1, 1, 3.4]);
+    }
+    return { parts: out, h };
+  }
+
+  if (theme === 'snow' || theme === 'kingdom') {
+    push('trunk', [0, h / 2, 0], [0, 0, 0], [1, h, 1]);
+    const tiers = rng.int(5, 8);
+    for (let i = 0; i < tiers; i++) {
+      const t = i / tiers;
+      const r = (1 - t) * h * .3 + .4;
+      push('cone', [0, h * (.28 + t * .68), 0], [0, 0, 0], [r, h * .3, r]);
+      if (theme === 'snow')
+        push('cap', [0, h * (.28 + t * .68) + h * .1, 0], [0, 0, 0], [r * .92, h * .1, r * .92]);
+    }
+    return { parts: out, h };
+  }
+
+  /* broadleaf / maple */
+  push('trunk', [0, h * .31, 0], [0, 0, rng.range(-.07, .07)], [1, h * .62, 1]);
+  const shade = 'blob' + rng.int(0, 2);
+  const blobs = rng.int(4, 7);
+  for (let i = 0; i < blobs; i++) {
+    const r = rng.range(1.4, 2.9);
+    const yf = theme === 'savanna' ? .38 : rng.range(.7, 1);
+    push(shade, [rng.range(-1.6, 1.6), h * .62 + rng.range(0, 2.4), rng.range(-1.6, 1.6)],
+         [0, 0, 0], [r, r * yf, r]);
+  }
+  for (let i = 0; i < 3; i++) {
+    const a = rng() * 6.28;
+    push('limb', [Math.cos(a) * .5, h * .55, Math.sin(a) * .5],
+         [Math.cos(a) * .7, 0, Math.sin(a) * .7], [1, 2.4, 1]);
+  }
+  return { parts: out, h };
+}
+
 export function buildTree(theme, rng) {
   const g = new THREE.Group();
   const h = rng.range(6, 14);

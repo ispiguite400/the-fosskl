@@ -13,9 +13,14 @@ import {
   buildTree, buildRock, buildHouse, buildPagoda, buildTorii, buildTemple,
   buildGate, buildStall, buildBrazier, buildWell, buildCart, buildFence,
   buildWatchtower, buildBarricade, buildStuckSpear, buildRubble, buildLantern,
-  buildStatue, buildGraves, buildBridge, buildBanner, buildPlatform, mat, bambooParts } from '../entities/models.js';
+  buildStatue, buildGraves, buildBridge, buildBanner, buildPlatform, mat, bambooParts,
+  treeParts, treePlan } from '../entities/models.js';
 
 export const CELL = 256;
+/* Collider bucket size. Woods carry tens of thousands of trunk colliders and
+ * every actor tests twice a frame, so the list is spatially hashed: a query
+ * touches the handful in one bucket instead of walking the whole world. */
+const CGRID = 16;
 
 export class Props {
   constructor(scene, terrain, world, seed, quality = 'high') {
@@ -35,8 +40,11 @@ export class Props {
     this.radius = { low: 2, medium: 3, high: 4, ultra: 5 }[quality] ?? 4;
     this.animated = [];        // braziers etc. that need a per-frame tick
     this.colliders = [];       // simple cylinder colliders for buildings/rocks
+    this.grid = new Map();     // `gx,gz` -> collider[]
 
     this._buildLandmarks();
+    // Landmarks never unload, so their colliders go in with no owning cell.
+    for (const c of this.colliders) this._gridAdd(c, null);
   }
 
   /* ==========================================================
@@ -338,33 +346,86 @@ export class Props {
     // Dense worlds get a superlinear share: a wood is not a meadow with more
     // trees in it, and the fog closes the near field so the illusion holds.
     const td = w.density?.trees ?? .5;
-    // Bamboo is instanced, so the wood can be genuinely thick: the count is
-    // set by what the non-bamboo remainder costs, not by the total.
-    const treeCount = Math.floor((td + Math.max(0, td - 1) * 1.9) * 82 * scale);
+    // Trees are instanced piece by piece, so the wood costs a fixed handful
+    // of draw calls however thick it grows. The count is now set by how a
+    // forest ought to look, not by what the renderer will tolerate.
+    const treeCount = Math.floor((td + Math.max(0, td - 1) * 1.9) * 150 * scale);
     const bamboo = [];                       // instanced: stalk transforms
+    const tmpP = new THREE.Vector3();
+
+    /* Bamboo grows in thickets, not as evenly spaced saplings, and it costs
+     * three draw calls a cell however many stalks there are. So it is placed
+     * as clumps: pick a stand, crowd fifteen-odd stalks into a couple of
+     * metres, leave the gaps between stands walkable. That is what makes a
+     * grove read as a grove rather than as a lawn with sticks in it. */
+    if (w.bamboo) {
+      const stands = Math.floor(w.bamboo * scale);
+      for (let c = 0; c < stands; c++) {
+        const cxp = ox + rng.range(-CELL / 2, CELL / 2);
+        const czp = oz + rng.range(-CELL / 2, CELL / 2);
+        if (Math.max(Math.abs(cxp), Math.abs(czp)) > T.half - 40) continue;
+        if (!T.isFlatGround(cxp, czp, .8)) continue;
+        if (this.inHub(tmpP.set(cxp, 0, czp), 70)) continue;
+        const n = rng.int(11, 24);
+        const spread = rng.range(1.3, 3.1);
+        for (let k = 0; k < n; k++) {
+          const a = rng() * 6.28, r = Math.sqrt(rng()) * spread;
+          const x = cxp + Math.cos(a) * r, z = czp + Math.sin(a) * r;
+          const s = rng.range(.7, 1.25);
+          bamboo.push({ x, y: T.heightAt(x, z) - .3, z, h: rng.range(8, 17) * s,
+                        lean: rng.range(-.08, .08), spin: rng() * 6.28, s });
+        }
+        // One collider per stand: a thicket blocks, individual stalks do not.
+        colliders.push({ x: cxp, z: czp, r: spread * .8 });
+      }
+    }
+
+    /* Trees are gathered as per-piece transform lists and baked into
+     * InstancedMeshes at the end of the cell. Clumping matters here as much
+     * as it does for bamboo: woods grow in stands with clearings between,
+     * and evenly scattered trunks read as an orchard. */
+    const parts = treeParts(w.theme);
+    const buckets = new Map();
+    const treeM = new THREE.Matrix4(), partM = new THREE.Matrix4();
+    const tq = new THREE.Quaternion(), te = new THREE.Euler(), tv = new THREE.Vector3(), ts = new THREE.Vector3();
+    const clumpR = w.theme === 'forest' ? 22 : 34;
+    let placed = 0, standX = 0, standZ = 0, standLeft = 0;
+
     for (let i = 0; i < treeCount; i++) {
-      const x = ox + rng.range(-CELL / 2, CELL / 2);
-      const z = oz + rng.range(-CELL / 2, CELL / 2);
+      if (standLeft <= 0) {
+        standX = ox + rng.range(-CELL / 2, CELL / 2);
+        standZ = oz + rng.range(-CELL / 2, CELL / 2);
+        standLeft = rng.int(6, 18);
+      }
+      standLeft--;
+      const a = rng() * 6.28, rr = Math.sqrt(rng()) * clumpR;
+      const x = standX + Math.cos(a) * rr, z = standZ + Math.sin(a) * rr;
       if (Math.max(Math.abs(x), Math.abs(z)) > T.half - 40) continue;
       if (!T.isFlatGround(x, z, w.theme === 'forest' ? .68 : .42)) continue;
-      if (this.inHub(new THREE.Vector3(x, 0, z), 70)) continue;
+      if (this.inHub(tmpP.set(x, 0, z), 70)) continue;
       const y = T.heightAt(x, z) - .3;
       const s = rng.range(.75, 1.3);
-
-      // In the wood most trees are bamboo, and bamboo instances.
-      if (w.theme === 'forest' && rng.chance(.82)) {
-        bamboo.push({ x, y, z, h: rng.range(7, 15) * s, lean: rng.range(-.06, .06),
-                      spin: rng() * 6.28, s });
-        colliders.push({ x, z, r: .45 * s });
-        continue;
+      treeM.compose(tv.set(x, y, z), tq.setFromEuler(te.set(0, rng() * 6.28, 0)), ts.set(s, s, s));
+      const plan = treePlan(w.theme, rng);
+      for (const part of plan.parts) {
+        partM.compose(tv.fromArray(part.p), tq.setFromEuler(te.fromArray(part.r)), ts.fromArray(part.s));
+        let list = buckets.get(part.k);
+        if (!list) buckets.set(part.k, list = []);
+        list.push(new THREE.Matrix4().multiplyMatrices(treeM, partM));
       }
-      const t = buildTree(w.theme, rng);
-      t.position.set(x, y, z);
-      t.rotation.y = rng() * 6.28;
-      t.scale.setScalar(s);
-      g.add(t);
       colliders.push({ x, z, r: .8 * s });
+      placed++;
     }
+    for (const [k, list] of buckets) {
+      const P = parts[k];
+      if (!P) continue;
+      const im = new THREE.InstancedMesh(P.geo, P.mat, list.length);
+      list.forEach((m, i) => im.setMatrixAt(i, m));
+      im.instanceMatrix.needsUpdate = true;
+      im.castShadow = true; im.receiveShadow = true;
+      g.add(im);
+    }
+    g.userData.treeCount = placed;
     if (bamboo.length) g.add(...this._bambooMeshes(bamboo));
 
     /* --- rocks --- */
@@ -514,20 +575,27 @@ export class Props {
         const gone = new Set(g.userData.animated || []);
         if (gone.size) this.animated = this.animated.filter(a => !gone.has(a));
         g.traverse(o => { if (o.isMesh && o.geometry?.dispose && o.userData.oneOff) o.geometry.dispose(); });
+        this._gridRemoveCell(key, g.userData.colliders);
         this.cells.delete(key);
       }
     }
 
     // One cell per frame keeps steady play smooth, but after a teleport, a
     // world load or a hard gallop the backlog is dozens of cells and the
-    // world stays visibly empty while it catches up. Spend more when behind.
+    // world stays visibly empty while it catches up. Spend more when behind —
+    // but measured in milliseconds, not cells: a cell of open savanna is
+    // under two, a cell of the Everdark Wood is fifteen, and a fixed count
+    // that is generous for one is a visible hitch in the other.
     const missing = wanted.size - this.cells.size;
-    let budget = missing > 6 ? 4 : 1;
+    const deadline = performance.now() + (missing > 6 ? 12 : 4);
+    let first = true;
     for (const key of wanted) {
       if (this.cells.has(key)) continue;
-      if (budget-- <= 0) break;
+      if (!first && performance.now() > deadline) break;
+      first = false;
       const [cx, cz] = key.split(',').map(Number);
       const g = this._buildCell(cx, cz);
+      for (const c of g.userData.colliders || []) this._gridAdd(c, key);
       this.cells.set(key, g);
       this.group.add(g);
     }
@@ -566,18 +634,50 @@ export class Props {
     return [stalks, leafA, leafB];
   }
 
+  /** File a collider into every grid bucket its circle touches. */
+  _gridAdd(c, cellKey) {
+    c._cell = cellKey;
+    const x0 = Math.floor((c.x - c.r) / CGRID), x1 = Math.floor((c.x + c.r) / CGRID);
+    const z0 = Math.floor((c.z - c.r) / CGRID), z1 = Math.floor((c.z + c.r) / CGRID);
+    for (let gx = x0; gx <= x1; gx++)
+      for (let gz = z0; gz <= z1; gz++) {
+        const k = gx + ',' + gz;
+        let b = this.grid.get(k);
+        if (!b) this.grid.set(k, b = []);
+        b.push(c);
+      }
+  }
+
+  /** Drop everything a streamed-out cell had filed. */
+  _gridRemoveCell(cellKey, colliders) {
+    const touched = new Set();
+    for (const c of colliders || []) {
+      const x0 = Math.floor((c.x - c.r) / CGRID), x1 = Math.floor((c.x + c.r) / CGRID);
+      const z0 = Math.floor((c.z - c.r) / CGRID), z1 = Math.floor((c.z + c.r) / CGRID);
+      for (let gx = x0; gx <= x1; gx++)
+        for (let gz = z0; gz <= z1; gz++) touched.add(gx + ',' + gz);
+    }
+    for (const k of touched) {
+      const b = this.grid.get(k);
+      if (!b) continue;
+      const kept = b.filter(c => c._cell !== cellKey);
+      if (kept.length) this.grid.set(k, kept); else this.grid.delete(k);
+    }
+  }
+
   /** Nearest blocking prop within `r` of a point, or null. */
   collideAt(x, z, radius = .5) {
-    for (const c of this.colliders) {
-      const d = Math.hypot(c.x - x, c.z - z);
-      if (d < c.r + radius) return c;
-    }
-    for (const [, g] of this.cells) {
-      for (const c of g.userData.colliders || []) {
-        const d = Math.hypot(c.x - x, c.z - z);
-        if (d < c.r + radius) return c;
+    const x0 = Math.floor((x - radius) / CGRID), x1 = Math.floor((x + radius) / CGRID);
+    const z0 = Math.floor((z - radius) / CGRID), z1 = Math.floor((z + radius) / CGRID);
+    for (let gx = x0; gx <= x1; gx++)
+      for (let gz = z0; gz <= z1; gz++) {
+        const b = this.grid.get(gx + ',' + gz);
+        if (!b) continue;
+        for (const c of b) {
+          const dx = c.x - x, dz = c.z - z, rr = c.r + radius;
+          if (dx * dx + dz * dz < rr * rr) return c;
+        }
       }
-    }
     return null;
   }
 
@@ -608,5 +708,6 @@ export class Props {
     this.cells.clear();
     this.animated.length = 0;
     this.colliders.length = 0;
+    this.grid.clear();
   }
 }
