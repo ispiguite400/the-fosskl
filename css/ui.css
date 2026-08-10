@@ -75,38 +75,39 @@ body.playing{cursor:none}
 @keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
 
 /* ---------------- Main menu (reference 3 + 4) -------------- */
-#menu .gears{position:absolute;right:-7vw;top:50%;transform:translateY(-50%);
-  width:42vw;height:104vh;opacity:.62;pointer-events:none;
-  filter:drop-shadow(0 0 40px rgba(0,0,0,.5))}
+#menu .gears{position:absolute;right:-6vw;top:50%;transform:translateY(-50%);
+  width:40vw;height:98vh;opacity:.88;pointer-events:none;
+  filter:drop-shadow(0 0 46px rgba(0,0,0,.75))}
 #menu .gears svg{width:100%;height:100%;transform-origin:62% 50%}
 #menu .title{
-  position:absolute;right:5.5vw;top:6vh;text-align:right;text-shadow:0 4px 24px rgba(0,0,0,.8)
+  position:absolute;right:3.6vw;top:7vh;text-align:right;text-shadow:0 4px 24px rgba(0,0,0,.85)
 }
 #menu .title .jp{
-  font-family:"Noto Serif JP",serif;font-weight:700;font-size:clamp(34px,5.2vw,86px);
-  letter-spacing:.06em;color:#fff;line-height:1
+  font-family:"Noto Serif JP",serif;font-weight:700;font-size:clamp(36px,5.7vw,96px);
+  letter-spacing:.05em;color:#fff;line-height:1
 }
 #menu .title .en{
-  font-family:Cinzel,serif;font-size:clamp(10px,1.15vw,17px);letter-spacing:.42em;
-  color:#efe6d8;opacity:.88;margin-top:.5em;font-variant:small-caps
+  font-family:Cinzel,serif;font-size:clamp(10px,1.2vw,18px);letter-spacing:.46em;
+  color:#f4ece0;opacity:.92;margin-top:.42em;font-variant:small-caps;
+  padding-right:.18em
 }
 #menu .tabs{
-  position:absolute;right:4vw;top:50%;transform:translateY(-46%);
-  display:flex;flex-direction:column;align-items:flex-end;gap:.35vh
+  position:absolute;right:3vw;top:50%;transform:translateY(-44%);
+  display:flex;flex-direction:column;align-items:flex-end;gap:.5vh
 }
 .tab{
   pointer-events:auto;cursor:pointer;position:relative;
-  font-family:Cinzel,serif;font-size:clamp(20px,3.1vw,50px);letter-spacing:.06em;
-  color:#efe9df;padding:.16em .9em .16em 1.9em;
-  text-shadow:0 3px 18px rgba(0,0,0,.85);
+  font-family:Cinzel,serif;font-size:clamp(22px,3.4vw,56px);letter-spacing:.05em;
+  color:#f2ece2;padding:.14em 1.1em .14em 2.2em;
+  text-shadow:0 3px 18px rgba(0,0,0,.9);
   transition:color .18s, transform .18s, letter-spacing .18s;
-  background:linear-gradient(90deg,transparent,rgba(6,5,4,.62) 22%,rgba(6,5,4,.78));
+  background:linear-gradient(90deg,transparent,rgba(4,3,3,.55) 18%,rgba(4,3,3,.88));
   clip-path:var(--slant);
 }
 .tab:hover{transform:translateX(-6px)}
 .tab.sel{
   color:var(--ember);
-  background:linear-gradient(90deg,transparent,rgba(0,0,0,.55) 18%,rgba(0,0,0,.86));
+  background:linear-gradient(90deg,transparent,rgba(26,12,3,.5) 16%,rgba(10,5,2,.92));
   text-shadow:0 0 26px rgba(240,162,74,.55),0 3px 18px #000;
 }
 .tab.sel::before{
@@ -116,13 +117,14 @@ body.playing{cursor:none}
 }
 .tab.locked{color:#6d665c;cursor:not-allowed}
 #menu .tier{
-  position:absolute;left:4vw;bottom:7vh;font-family:Cinzel,serif;font-weight:600;
-  font-size:clamp(16px,1.9vw,30px);letter-spacing:.3em;color:#fff;
+  position:absolute;left:4.4vw;bottom:6vh;font-family:Cinzel,serif;font-weight:600;
+  font-size:clamp(18px,2.2vw,34px);letter-spacing:.32em;color:#fff;
   text-shadow:0 3px 18px #000
 }
 .hintbar{
   position:absolute;right:3vw;bottom:3.2vh;font-family:Cinzel,serif;
-  font-size:clamp(9px,.85vw,13px);letter-spacing:.22em;color:#d9d0c2;opacity:.8
+  font-size:clamp(9px,.9vw,14px);letter-spacing:.24em;color:#efe6d8;opacity:.95;
+  text-shadow:0 2px 10px #000
 }
 .hintbar b{color:var(--ember);font-weight:600}
 .hintbar span{margin-left:1.6em}

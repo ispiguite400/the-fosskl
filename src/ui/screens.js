@@ -82,6 +82,9 @@ export class Screens {
 
     const ctrl = {
       setProgress: v => { target = clamp(v, 0, 1); },
+      // The screen has to exist before the art manifest can be fetched, so the
+      // custom backdrop arrives a moment late. Repaint when it lands.
+      refreshArt: () => { $('.bg', root).style.backgroundImage = loadingBG(); },
       update: (dt, nav) => {
         shown += (target - shown) * Math.min(1, dt * 4.5);
         fill.style.strokeDashoffset = C * (1 - shown);

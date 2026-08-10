@@ -1,13 +1,18 @@
 # Custom artwork (optional)
 
-The game paints its own menu backdrops at load time. If you would rather use
-your own images, drop them here and list them in `manifest.json` next to this file. Anything
-listed is used instead of the generated art; anything left `null` falls back.
-The names below are only a suggestion — the manifest decides.
+The game paints its own menu backdrops at load time. To use your own images
+instead, **just drop them in this folder** with the names in the table below —
+`manifest.json` already lists those names as candidates, so there is nothing to
+edit. The first candidate that actually exists is used; anything missing falls
+back to the generated art.
+
+`.jpg`, `.jpeg`, `.png` and `.webp` are all accepted for the two backdrops.
+
+A manifest entry may be a single filename or a list of candidates:
 
 ```json
 {
-  "loading": "loading.jpg",
+  "loading": ["loading.jpg", "loading.png"],
   "menu": "menu.jpg",
   "classes": { "shrine": "class-shrine.jpg" }
 }

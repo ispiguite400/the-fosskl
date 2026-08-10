@@ -14,15 +14,32 @@ import { makeRNG, clamp, lerp, fbm, hsl2hex } from '../core/util.js';
  * for each file keeps the console free of 404s on a default checkout. */
 export const ART_FILES = { loading: null, menu: null, classes: {} };
 
+/** Resolve one manifest entry. A string names a single file and is taken on
+ *  trust; an array is a list of candidates and the first one that actually
+ *  exists wins. The array form is what lets someone drop `menu.jpg` (or .png,
+ *  or .webp) into the folder and have it picked up with no config to edit. */
+async function resolveArt(entry, base) {
+  if (!entry) return null;
+  if (typeof entry === 'string') return base + entry;
+  for (const name of entry) {
+    try {
+      const r = await fetch(base + name, { method: 'HEAD', cache: 'no-cache' });
+      if (r.ok) return base + name;
+    } catch { /* keep looking */ }
+  }
+  return null;
+}
+
 export async function loadArtManifest(base = 'assets/images/') {
   try {
     const res = await fetch(base + 'manifest.json', { cache: 'no-cache' });
     if (!res.ok) return ART_FILES;
     const m = await res.json();
-    if (m.loading) ART_FILES.loading = base + m.loading;
-    if (m.menu) ART_FILES.menu = base + m.menu;
+    ART_FILES.loading = await resolveArt(m.loading, base);
+    ART_FILES.menu = await resolveArt(m.menu, base);
     for (const [k, v] of Object.entries(m.classes || {})) {
-      if (v) ART_FILES.classes[k] = base + v;
+      const url = await resolveArt(v, base);
+      if (url) ART_FILES.classes[k] = url;
     }
   } catch {
     // No manifest, or it is malformed: the generated art is the answer.

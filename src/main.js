@@ -219,7 +219,7 @@ async function boot() {
 
   // Real work drives the bar: art generation is genuinely the slow part.
   const steps = [
-    ['Reading custom artwork', () => loadArtManifest()],
+    ['Reading custom artwork', async () => { await loadArtManifest(); loader.refreshArt(); }],
     ['Painting the ridgeline', () => loadingArt()],
     ['Painting the charge', () => menuArt()],
     ['Waking the classes', () => { ['shrine', 'bamboo', 'temple'].forEach(n => classArt(n)); }],
@@ -234,7 +234,8 @@ async function boot() {
     loader.setProgress(i / steps.length);
     // Yield so the ring actually animates between chunks of work.
     await new Promise(r => requestAnimationFrame(() => r()));
-    try { steps[i][1](); } catch (e) { console.warn('[boot]', steps[i][0], e); }
+    // Steps may be async — the art manifest is fetched, not computed.
+    try { await steps[i][1](); } catch (e) { console.warn('[boot]', steps[i][0], e); }
   }
   loader.setProgress(1);
   window.__booted = true;

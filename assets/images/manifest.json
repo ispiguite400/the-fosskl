@@ -1,6 +1,6 @@
 {
-  "_comment": "Add filenames here after dropping the images into this folder. Anything listed is used in place of the generated artwork; anything absent falls back automatically.",
-  "loading": null,
-  "menu": null,
+  "_comment": "Each entry may be a filename or a list of candidates; the first file that actually exists wins, so you can just drop an image in with one of these names and nothing here needs editing. Anything that resolves replaces the generated artwork; anything missing falls back automatically.",
+  "loading": ["loading.jpg", "loading.jpeg", "loading.png", "loading.webp"],
+  "menu": ["menu.jpg", "menu.jpeg", "menu.png", "menu.webp"],
   "classes": {}
 }
