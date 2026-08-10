@@ -64,6 +64,7 @@ export class DialogueUI {
   }
 
   goto(id) {
+    this.tiles = null;
     if (!id) return this.close();
     const node = this.tree.nodes[id];
     if (!node) return this.close();
@@ -141,6 +142,22 @@ export class DialogueUI {
   }
 
   /* ---------- panels rendered inside the dialogue box ---------- */
+  /** Wire the tiles in a shop-style panel for controller navigation. */
+  _wirePanelTiles() {
+    this.tiles = [...this.q.txt.querySelectorAll('.sitem')];
+    this.tileIndex = 0;
+    if (!this.tiles.length) return;
+    this.tiles.forEach((n, i) => n.addEventListener('mouseenter', () => {
+      this.tileIndex = i; this._paintTiles();
+    }));
+    this._paintTiles();
+  }
+
+  _paintTiles() {
+    this.tiles?.forEach((n, i) => n.classList.toggle('padcur', i === this.tileIndex));
+    this.tiles?.[this.tileIndex]?.scrollIntoView({ block: 'nearest' });
+  }
+
   _panel(title, bodyHTML, backFn) {
     this.q.who.textContent = title;
     this.q.txt.innerHTML = bodyHTML;
@@ -185,6 +202,7 @@ export class DialogueUI {
         this.shop();
       });
     });
+    this._wirePanelTiles();
   }
 
   abilities() {
@@ -225,6 +243,7 @@ export class DialogueUI {
         this.abilities();
       });
     });
+    this._wirePanelTiles();
   }
 
   classChange() {
@@ -260,6 +279,7 @@ export class DialogueUI {
         this.classChange();
       });
     });
+    this._wirePanelTiles();
   }
 
   sidequest() {
@@ -312,6 +332,15 @@ export class DialogueUI {
     this.sel = 0; this._paint();
   }
 
+  /** How many shop tiles fit on one row at the current width. */
+  _tilesPerRow() {
+    if (!this.tiles?.length) return 1;
+    const top = this.tiles[0].offsetTop;
+    let n = 0;
+    for (const t of this.tiles) { if (t.offsetTop !== top) break; n++; }
+    return n || 1;
+  }
+
   /* ---------- per-frame nav ---------- */
   update(dt, input) {
     if (!this.open) return;
@@ -319,6 +348,32 @@ export class DialogueUI {
 
     if (this.typing) {
       if (p.justPressed('confirm') || p.justPressed('interact')) this.skip = true;
+      return;
+    }
+
+    /* --- shop / ability / class tiles --- */
+    if (this.tiles?.length) {
+      this._navT -= dt;
+      const dx = p.isDown('menuRight') ? 1 : p.isDown('menuLeft') ? -1 : 0;
+      const dy = p.isDown('menuDown') ? 1 : p.isDown('menuUp') ? -1 : 0;
+      if ((dx || dy) && this._navT <= 0) {
+        // Tiles wrap in a responsive grid, so step by the measured row width.
+        const perRow = Math.max(1, this._tilesPerRow());
+        const next = this.tileIndex + dx + dy * perRow;
+        if (next >= 0 && next < this.tiles.length) {
+          this.tileIndex = next; this._paintTiles(); Audio.sfx('uiMove', { volume: .5 });
+        }
+        this._navT = .2;
+      }
+      if (!dx && !dy) this._navT = 0;
+      if (p.justPressed('confirm') || p.justPressed('interact')) {
+        this.tiles[this.tileIndex]?.click();
+      }
+      if (p.justPressed('cancel')) {
+        this.tiles = null;
+        if (this._panelBack) { const f = this._panelBack; this._panelBack = null; f(); }
+        else this.close();
+      }
       return;
     }
 

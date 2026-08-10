@@ -28,7 +28,17 @@ It also works as-is on GitHub Pages — push the branch and enable Pages on it.
 
 **Requirements:** any current desktop browser with WebGL2. A discrete GPU
 helps; if the frame rate dips, drop **Render Scale** and **Quality** in
-Settings.
+Settings. Quality drives the shadow map (1k → 4k) and how tightly the shadow
+frustum hugs the player, so it makes a large visible difference.
+
+### Lighting and shadows
+
+The sky is baked into a prefiltered environment map (PMREM) every few seconds
+as the sun moves, so metal, water and snow carry real reflections and sky
+bounce rather than looking like flat plastic. The sun is the dominant light —
+ambient and hemisphere fill are deliberately low so cast shadows stay dark and
+readable — and the shadow frustum is a tight box that follows the player,
+snapped to texel steps so the map does not shimmer as you walk.
 
 ---
 
@@ -52,9 +62,25 @@ Settings.
 | Pause | `Esc` | Options |
 | Mute | `M` | — |
 
-A DualSense works over USB or Bluetooth with no setup — it reports as a
-standard gamepad, and rumble is driven through the haptics actuator. Plug in a
-second pad for split-screen; player two is always pad 2.
+A DualSense works over USB or Bluetooth with no setup. Plug in a second pad for
+split screen; player two is always pad 2.
+
+**On how this works:** Three.js has no gamepad module — its only controller
+code is for WebXR headsets. Pads are read through the browser's Gamepad API,
+which is what every Three.js game uses, and it is wired up in
+`src/core/input.js`: sticks with rescaled deadzones, analogue triggers, and
+rumble through `vibrationActuator`. The whole game is playable on a pad —
+every menu, the class strip, the forge colour wheel, dialogue, the shop and
+ability vendors, and the inventory:
+
+| In the inventory | DualSense |
+|---|---|
+| Move the cursor | D-pad / left stick |
+| Take or place a stack | ✕ |
+| Split a stack | □ |
+| Place a single item | R1 |
+| Drop | △ |
+| Close | ○ / touchpad |
 
 ---
 

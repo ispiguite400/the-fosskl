@@ -177,12 +177,16 @@ export class Player {
     if (id === 'fist') { this.viewWeapon = null; return; }
 
     const model = buildWeapon(id, this.save.colors);
+    this._modelRef = model;
     // Weapons range from a 0.2 m knife to a 1.9 m spear, so normalise every
     // one to the same on-screen presence instead of using a fixed scale.
     const bb = new THREE.Box3().setFromObject(model);
     const size = bb.getSize(new THREE.Vector3());
     const longest = Math.max(size.x, size.y, size.z, .001);
-    const s = clamp(.62 / longest, .16, 1.0);
+    // Base size, later multiplied by the viewport factor each frame.
+    this._baseScale = clamp(.62 / longest, .16, 1.0);
+    this._modelMinY = bb.min.y;
+    const s = this._baseScale;
 
     // Wrap it so we can offset the pivot to the grip without fighting the
     // hand transform.
@@ -939,6 +943,24 @@ export class Player {
   /* ==========================================================
      View-model animation
      ========================================================== */
+  /** What the camera actually sees at the hand's depth, and what a
+   *  reference 16:9 full-height view would see there. Offsets are authored
+   *  against the reference and rescaled, so the weapon sits in the same
+   *  place whatever the viewport shape is. */
+  _viewFrame(depth) {
+    const halfH = Math.abs(depth) * Math.tan(this.camera.fov * Math.PI / 360);
+    return {
+      halfH,
+      halfW: halfH * this.camera.aspect,
+      refHalfW: halfH * (16 / 9)          // vertical fov is unchanged, so refHalfH === halfH
+    };
+  }
+
+  /** Split screen gives each player half the vertical pixels, so a model
+   *  covering the same fraction of the viewport looks physically smaller.
+   *  Scale up to compensate. */
+  get _viewportScale() { return this.game.mode === 'single' ? 1 : 1.75; }
+
   _animateViewModel(dt) {
     if (!this.viewHand) return;
     const hs = Math.hypot(this.vel.x, this.vel.z);
@@ -988,6 +1010,18 @@ export class Player {
       pz += this.recoil * .16;
       rx -= this.recoil * .5;
       this.recoil = damp(this.recoil, 0, 9, dt);
+    }
+
+    /* --- make the placement independent of viewport shape --- */
+    const frame = this._viewFrame(pz);
+    // Re-express the authored x as the same fraction of the visible width.
+    // Vertical fov does not change with the split, so py is left alone.
+    px = frame.halfW * (px / frame.refHalfW);
+
+    if (this._modelRef && this._baseScale) {
+      const s = this._baseScale * this._viewportScale;
+      this._modelRef.scale.setScalar(s);
+      this._modelRef.position.y = -this._modelMinY * s - .06;
     }
 
     const rate = this.attackT > 0 ? 26 : 12;

@@ -127,18 +127,25 @@ export class Sky {
     /* ---- lighting ---- */
     this.sun = new THREE.DirectionalLight(world.sun.color, world.sun.intensity);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
-    const S = 190;
-    Object.assign(this.sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 1, far: 900 });
-    this.sun.shadow.bias = -0.0006;
-    this.sun.shadow.normalBias = .035;
+    // Shadow detail is (frustum width / map size). A tight box around the
+    // player at 4k gives ~2cm per texel instead of ~19cm, which is the
+    // difference between readable contact shadows and grey mush.
+    const q = renderer?.shadowQuality ?? 'high';
+    const MAP = { low: 1024, medium: 2048, high: 4096, ultra: 4096 }[q] ?? 4096;
+    const S = { low: 70, medium: 60, high: 55, ultra: 45 }[q] ?? 55;
+    this.sun.shadow.mapSize.set(MAP, MAP);
+    Object.assign(this.sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 1, far: 600 });
+    this.sun.shadow.bias = -0.00022;
+    this.sun.shadow.normalBias = .022;
+    this.sun.shadow.radius = 2.2;
+    this.shadowSpan = S;
     scene.add(this.sun);
     scene.add(this.sun.target);
 
-    this.hemi = new THREE.HemisphereLight(p.sky, p.ground, .8);
+    this.hemi = new THREE.HemisphereLight(p.sky, p.ground, .45);
     scene.add(this.hemi);
 
-    this.ambient = new THREE.AmbientLight(0xffffff, .3);
+    this.ambient = new THREE.AmbientLight(0xffffff, .14);
     scene.add(this.ambient);
 
     /* ---- fog ---- */
@@ -148,6 +155,38 @@ export class Sky {
     this._buildClouds();
     /* ---- rain ---- */
     this._buildRain();
+
+    /* ---- image-based lighting ----
+     * Baking the sky into a prefiltered cube map gives every PBR material
+     * real reflections and sky bounce. Without it, metal reads as flat
+     * plastic no matter how the roughness is set. */
+    this.renderer = renderer;
+    if (renderer) {
+      this._pmrem = new THREE.PMREMGenerator(renderer);
+      this._pmrem.compileEquirectangularShader();
+      this._envScene = new THREE.Scene();
+      // A private copy of the dome so baking never disturbs the live one.
+      this._envDome = new THREE.Mesh(this.dome.geometry, this.dome.material);
+      this._envDome.scale.setScalar(10);
+      this._envScene.add(this._envDome);
+      this._envT = 0;
+      this._bakeEnvironment();
+    }
+  }
+
+  /** Re-bake the environment map. Cheap enough for a few times a minute. */
+  _bakeEnvironment() {
+    if (!this._pmrem) return;
+    try {
+      const rt = this._pmrem.fromScene(this._envScene, 0, .1, 100);
+      this.scene.environment?.dispose?.();
+      this.scene.environment = rt.texture;
+      this._envRT?.dispose();
+      this._envRT = rt;
+    } catch (e) {
+      console.warn('[sky] environment bake failed', e);
+      this._pmrem = null;
+    }
   }
 
   _baseFog() {
@@ -306,32 +345,46 @@ export class Sky {
       .lerp(new THREE.Color(0xff6a2b), dusk);
 
     /* ---- lights ---- */
-    const sunI = this.world.sun.intensity * daylight * (1 - this.rain * .68);
+    // Push the key light harder and pull the fill down — flat ambient was
+    // washing the shadows out entirely.
+    const sunI = this.world.sun.intensity * 1.45 * daylight * (1 - this.rain * .68);
     this.sun.intensity = sunI;
     this.sun.color.copy(this.uniforms.uSunColor.value);
     this.sun.visible = sunI > .01;
 
     // Keep the shadow frustum locked to the player.
     if (playerPos) {
-      this.sun.target.position.copy(playerPos);
-      this.sun.position.copy(playerPos).add(dir.clone().multiplyScalar(220));
+      // Snap the shadow centre to texel-sized steps or the map crawls and
+      // shimmers as the player walks.
+      const texel = (this.shadowSpan * 2) / this.sun.shadow.mapSize.x;
+      const sx = Math.round(playerPos.x / texel) * texel;
+      const sz = Math.round(playerPos.z / texel) * texel;
+      this.sun.target.position.set(sx, playerPos.y, sz);
+      this.sun.position.set(sx, playerPos.y, sz).add(dir.clone().multiplyScalar(180));
       this.sun.target.updateMatrixWorld();
+      this.sun.shadow.camera.updateProjectionMatrix();
       this.dome.position.copy(playerPos);
       this.clouds.position.set(playerPos.x, 0, playerPos.z);
     }
 
-    // Floor the sky light so a low sun never leaves the ground unreadable.
-    this.hemi.intensity = lerp(.30, .90, daylight) * (1 - this.rain * .3);
+    // Sky fill only — kept low so cast shadows stay dark and legible.
+    this.hemi.intensity = lerp(.20, .48, daylight) * (1 - this.rain * .3) * (1 + this.rain * .8);
     this.hemi.color.copy(hor);
     this.hemi.groundColor.copy(new THREE.Color(p.ground).multiplyScalar(lerp(.5, 1, daylight)));
     // A little moonlight so night is navigable rather than pitch black.
-    this.ambient.intensity = lerp(.34, .20, daylight) + night * .14;
+    this.ambient.intensity = lerp(.20, .07, daylight) + night * .13;
     this.ambient.color.setHex(night > .5 ? 0x5a72a8 : 0xffffff);
 
     /* ---- fog ---- */
     const base = this._baseFog();
     this.scene.fog.density = base * (1 + this.rain * 1.7) * lerp(1.35, 1, daylight);
     this.scene.fog.color.copy(hor).lerp(new THREE.Color(0x9aa4ad), this.rain * .7);
+
+    /* ---- refresh the environment map as the light turns over ---- */
+    if (this._pmrem) {
+      this._envT -= dt;
+      if (this._envT <= 0) { this._bakeEnvironment(); this._envT = 6; }
+    }
 
     /* ---- clouds drift ---- */
     for (const c of this.clouds.children) {
@@ -378,6 +431,9 @@ export class Sky {
   get isNight() { return this.uniforms.uStars.value > .4; }
 
   dispose() {
+    this._envRT?.dispose();
+    this._pmrem?.dispose();
+    this.scene.environment = null;
     this.scene.remove(this.dome, this.sun, this.sun.target, this.hemi, this.ambient, this.clouds, this.rainMesh);
     this.dome.geometry.dispose(); this.dome.material.dispose();
     this.rainMesh.geometry.dispose(); this.rainMesh.material.dispose();

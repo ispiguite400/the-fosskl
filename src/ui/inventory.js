@@ -81,6 +81,10 @@ export function hasSpace(inv, id, qty = 1) {
 /* ============================================================
    The window
    ============================================================ */
+/* Grid geometry: storage is 8 wide, the four weapon slots sit on their own
+ * row underneath. The pad cursor walks this layout. */
+const COLS = 8;
+
 export class InventoryUI {
   constructor(game) {
     this.game = game;
@@ -90,6 +94,8 @@ export class InventoryUI {
     this.mode = 'inventory';     // inventory | sell
     this.root = null;
     this._mouse = { x: 0, y: 0 };
+    this.padIndex = 0;           // cursor position for controller navigation
+    this._navT = 0;
     this._bind();
   }
 
@@ -121,8 +127,9 @@ export class InventoryUI {
         <div class="invhead">
           <h3>${mode === 'sell' ? 'Sell — Ash Broker' : 'Inventory'}</h3>
           <div class="hlp">${mode === 'sell'
-            ? 'CLICK an item to sell it for shekels and experience · ESC to leave'
-            : 'CLICK take · SHIFT+CLICK split · RIGHT CLICK place one · Q drop · drag onto the four slots to equip'}</div>
+            ? 'CLICK or ✕ to sell for shekels and experience · ESC / ○ to leave'
+            : 'CLICK take · SHIFT+CLICK split · RIGHT CLICK place one · Q drop'
+              + '<br>PAD: D-pad move · ✕ take/place · □ split · R1 place one · △ drop · ○ close'}</div>
         </div>
         <div class="grid"></div>
         <div class="hotrow"></div>
@@ -162,10 +169,83 @@ export class InventoryUI {
     if (this.held) { addItem(this.inv, this.held.id, this.held.qty); this.held = null; }
     this._clearDrag(); this._clearTip();
     removeEventListener('keydown', this._key);
+    this._padActive = false;
     this.root?.remove(); this.root = null;
     Save.write();
     this.game?.onInventoryClosed?.();
     Audio.sfx('uiBack', { volume: .5 });
+  }
+
+  /** Move the controller cursor. Storage is a grid; the hotbar is one row. */
+  _padMove(dx, dy) {
+    let i = this.padIndex;
+    const inStorage = i >= HOTBAR_SLOTS;
+
+    if (dx) {
+      if (inStorage) {
+        const rel = i - HOTBAR_SLOTS;
+        const row = Math.floor(rel / COLS);
+        const col = clamp(rel % COLS + dx, 0, COLS - 1);
+        i = HOTBAR_SLOTS + row * COLS + col;
+      } else {
+        i = clamp(i + dx, 0, HOTBAR_SLOTS - 1);
+      }
+    }
+    if (dy) {
+      if (inStorage) {
+        const rel = i - HOTBAR_SLOTS;
+        const row = Math.floor(rel / COLS), col = rel % COLS;
+        const rows = Math.ceil((TOTAL_SLOTS - HOTBAR_SLOTS) / COLS);
+        const nr = row + dy;
+        // Falling off the bottom drops onto the weapon slots.
+        if (nr >= rows) i = clamp(col, 0, HOTBAR_SLOTS - 1);
+        else if (nr < 0) i = i;
+        else i = clamp(HOTBAR_SLOTS + nr * COLS + col, HOTBAR_SLOTS, TOTAL_SLOTS - 1);
+      } else if (dy < 0) {
+        // Up from the weapon slots re-enters the last storage row.
+        const rows = Math.ceil((TOTAL_SLOTS - HOTBAR_SLOTS) / COLS);
+        i = clamp(HOTBAR_SLOTS + (rows - 1) * COLS + i, HOTBAR_SLOTS, TOTAL_SLOTS - 1);
+      }
+    }
+    this.padIndex = clamp(i, 0, TOTAL_SLOTS - 1);
+    this._paintCursor();
+    Audio.sfx('uiMove', { volume: .4 });
+  }
+
+  _paintCursor() {
+    if (!this.cells) return;
+    this.cells.forEach((c, i) => c?.node.classList.toggle('padcur', i === this.padIndex));
+    const cur = this.cells[this.padIndex];
+    if (cur) {
+      this.hoverIndex = this.padIndex;
+      const r = cur.node.getBoundingClientRect();
+      this._showTip(this.padIndex, r.right, r.top);
+    }
+  }
+
+  /** Per-frame controller handling while the window is open. */
+  update(dt, input) {
+    if (!this.open) return;
+    const p = input.p;
+    if (!p.usingPad && !this._padActive) return;   // mouse users are unaffected
+    this._padActive = true;
+
+    this._navT -= dt;
+    const dx = p.isDown('menuRight') ? 1 : p.isDown('menuLeft') ? -1 : 0;
+    const dy = p.isDown('menuDown') ? 1 : p.isDown('menuUp') ? -1 : 0;
+    if ((dx || dy) && this._navT <= 0) { this._padMove(dx, dy); this._navT = .18; }
+    if (!dx && !dy) this._navT = 0;
+
+    if (this.mode === 'sell') {
+      if (p.justPressed('confirm') || p.justPressed('attack')) this._sell(this.padIndex);
+    } else {
+      // Cross takes / places a whole stack, Square splits, Triangle drops.
+      if (p.justPressed('confirm')) this._click(this.padIndex, false);
+      if (p.justPressed('interact')) this._click(this.padIndex, true);
+      if (p.justPressed('use')) this._dropSlot(this.padIndex, false);
+      if (p.justPressed('heavy')) this._placeOne(this.padIndex);
+    }
+    if (p.justPressed('cancel') || p.justPressed('inventory')) this.close();
   }
 
   _buildCells() {
@@ -188,6 +268,7 @@ export class InventoryUI {
 
     for (let i = HOTBAR_SLOTS; i < TOTAL_SLOTS; i++) make(i, grid);
     for (let i = 0; i < HOTBAR_SLOTS; i++) make(i, hot);
+    this._paintCursor();
     // Pad the hotbar row out to eight columns so it lines up with the grid.
     for (let i = 0; i < 4; i++) hot.appendChild(el('div', 'cell dead'));
   }

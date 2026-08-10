@@ -496,3 +496,16 @@ body.split .mini-hud{display:block}
 }
 #tutorial.on{opacity:1}
 body.split #tutorial{bottom:auto;top:12vh;font-size:14px;padding:8px 18px}
+
+/* controller cursor inside the inventory */
+.cell.padcur{
+  outline:2px solid var(--ember);outline-offset:-2px;
+  background:rgba(240,162,74,.22);
+  box-shadow:0 0 18px rgba(240,162,74,.45)
+}
+
+/* controller cursor on shop / ability / class tiles */
+.sitem.padcur{
+  border-color:var(--ember);background:rgba(240,162,74,.2);
+  box-shadow:0 0 16px rgba(240,162,74,.3)
+}

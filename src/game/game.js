@@ -88,9 +88,11 @@ export class Game {
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    // Slightly under 1 so highlights roll off instead of clipping to white.
+    this.renderer.toneMappingExposure = .92;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowQuality = Save.settings?.quality ?? 'high';
     this.renderer.setScissorTest(false);
 
     // Far plane has to clear the sky dome and the cloud shell.
@@ -130,6 +132,7 @@ export class Game {
     this._resize();
     const q = s.quality;
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, q === 'low' ? 1 : q === 'ultra' ? 2 : 1.5));
+    this.renderer.shadowQuality = q;
     if (this.sky) this.sky.sun.castShadow = s.shadows;
     this.input.sensitivity = s.sensitivity;
     this.input.padSensitivity = s.padSensitivity;
@@ -876,6 +879,7 @@ export class Game {
     }
 
     if (this.dialogue.open) this.dialogue.update(dt, this.input);
+    if (this.inventory.open) this.inventory.update(dt, this.input);
     if (this.inventory.open || this.dialogue.open || this.paused) {
       this._render();
       return;

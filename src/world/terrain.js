@@ -121,8 +121,10 @@ export class Terrain {
     const p = this.world.palette;
     const mat = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: this.world.theme === 'snow' ? .72 : .95,
-      metalness: 0,
+      // Snow and wet ground pick up a little sheen from the environment map.
+      roughness: this.world.theme === 'snow' ? .58 : .88,
+      metalness: this.world.theme === 'snow' ? .05 : .02,
+      envMapIntensity: .55,
       flatShading: false
     });
     // A cheap detail texture keeps large flat areas from looking plastic.
@@ -147,7 +149,9 @@ export class Terrain {
     }
     ctx.putImageData(img, 0, 0);
     const tex = new THREE.CanvasTexture(c);
-    tex.anisotropy = 4;
+    // Grazing-angle ground is where low anisotropy shows most.
+    tex.anisotropy = 16;
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     return tex;
   }
 
