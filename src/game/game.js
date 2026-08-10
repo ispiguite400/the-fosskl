@@ -50,6 +50,7 @@ export class Game {
     this.chests = [];
     this.pickups = [];
     this.projectiles = [];
+    this.hazards = [];        // lingering area effects (poison clouds)
     this.companion = null;
     this.boss = null;
 
@@ -179,9 +180,7 @@ export class Game {
     }
     if (this.player2) this.scene.add(this.cameras[1]);
 
-    const spawn = spawnPos || (world.hub
-      ? this.terrain.findSpawn({ x: this.props.hubCenter.x, z: this.props.hubCenter.z + 40 }, 40)
-      : this.terrain.findSpawn({ x: 0, z: 0 }, 60));
+    const spawn = spawnPos || this._clearSpawn(world);
     this.terrain.ensureAround(new THREE.Vector3(spawn.x, spawn.y, spawn.z));
     this.player.spawnAt(new THREE.Vector3(spawn.x, spawn.y, spawn.z), Math.PI);
     this.player.refreshStats();
@@ -209,6 +208,18 @@ export class Game {
     this.hud.show(true);
   }
 
+  /** Ground that is flat, in the open, and not inside a building. */
+  _clearSpawn(world) {
+    const near = world.hub
+      ? { x: this.props.hubCenter.x, z: this.props.hubCenter.z + 40 }
+      : { x: this.props.hubCenter.x, z: this.props.hubCenter.z };
+    for (let i = 0; i < 90; i++) {
+      const s = this.terrain.findSpawn(near, 40 + i * 4);
+      if (!this.props.collideAt(s.x, s.z, 3.5)) return s;
+    }
+    return this.terrain.findSpawn(near, 220);
+  }
+
   _teardownWorld() {
     for (const list of [this.enemies, this.npcs, this.animals, this.chests, this.pickups]) {
       for (const a of list) a.dispose?.();
@@ -216,6 +227,7 @@ export class Game {
     }
     for (const p of this.projectiles) p.root?.parent?.remove(p.root);
     this.projectiles.length = 0;
+    this.hazards.length = 0;
     if (this.companion) { this.companion.dispose(); this.companion = null; }
     this.boss = null;
     this.hud.setBoss(null);
@@ -419,6 +431,30 @@ export class Game {
     return p;
   }
 
+  /** A lingering damage-over-time volume, e.g. a poison cloud. */
+  addHazard(h) { this.hazards.push({ ...h, t: 0 }); return h; }
+
+  _updateHazards(dt) {
+    for (let i = this.hazards.length - 1; i >= 0; i--) {
+      const h = this.hazards[i];
+      h.life -= dt;
+      h.t += dt;
+      // Tick damage twice a second rather than every frame.
+      if (h.t >= .5) {
+        h.t = 0;
+        for (const e of this.enemies) {
+          if (!e.dead && e.pos.distanceTo(h.pos) < h.radius) {
+            e.takeHit(h.dps * .5, h.pos, { canBeBlocked: false, attacker: h.owner });
+          }
+        }
+        this.vfx.magicBurst(
+          h.pos.clone().add(new THREE.Vector3((Math.random() - .5) * h.radius, .5,
+            (Math.random() - .5) * h.radius)), h.color, 12);
+      }
+      if (h.life <= 0) this.hazards.splice(i, 1);
+    }
+  }
+
   spawnPickup(pos, itemId, qty = 1) {
     const p = new Pickup(this, pos, itemId, qty);
     this.pickups.push(p);
@@ -530,6 +566,7 @@ export class Game {
   }
 
   onPlayerDeath(player) {
+    if (this.mode === 'versus') return this._versusDown(player);
     this.hud.cine.death(true);
     Audio.play('sorrow', { fade: 1 });
     setTimeout(async () => {
@@ -546,6 +583,54 @@ export class Game {
       Audio.play(this.world.music);
       await this.story.spawnCutscene({ firstTime: false });
     }, 2600);
+  }
+
+  /** A duellist fell: award the point, check for a winner, respawn. */
+  _versusDown(loser) {
+    const winner = loser === this.player ? 1 : 0;
+    this.versusScore[winner]++;
+    Audio.sfx('rankUp');
+    this.hud.toast(`PLAYER ${winner + 1} SCORES — ${this.versusScore[0]} : ${this.versusScore[1]}`, true);
+    this._paintVersusScore();
+
+    if (this.versusScore[winner] >= 5) {
+      this.freeze = true;
+      this.hud.toast(`PLAYER ${winner + 1} WINS`, true);
+      Audio.play('victory');
+      setTimeout(() => {
+        this.freeze = false;
+        this.versusScore = [0, 0];
+        this._paintVersusScore();
+        this._versusRespawn(this.player, -8);
+        this._versusRespawn(this.player2, 8);
+      }, 5000);
+      return;
+    }
+    setTimeout(() => this._versusRespawn(loser, loser === this.player ? -8 : 8), 1800);
+  }
+
+  _versusRespawn(p, offset) {
+    if (!p) return;
+    const c = this.props.hubCenter;
+    const pos = new THREE.Vector3(c.x + offset, 0, c.z + (Math.random() - .5) * 10);
+    pos.y = this.terrain.heightAt(pos.x, pos.z);
+    p.spawnAt(pos, offset < 0 ? Math.PI / 2 : -Math.PI / 2);
+    this.vfx.teleportFlash(pos.clone().setY(pos.y + 1));
+    Audio.sfx('teleport');
+  }
+
+  _paintVersusScore() {
+    this._vsEl ??= (() => {
+      const n = el('div');
+      n.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);' +
+        'font-family:Cinzel,serif;font-size:26px;letter-spacing:.3em;color:#f4ece0;' +
+        'background:rgba(6,5,4,.7);padding:6px 26px;text-shadow:0 2px 10px #000;' +
+        'pointer-events:none;z-index:25';
+      document.getElementById('layer-game').appendChild(n);
+      return n;
+    })();
+    this._vsEl.textContent = `${this.versusScore[0]}  —  ${this.versusScore[1]}`;
+    this._vsEl.style.display = this.mode === 'versus' ? 'block' : 'none';
   }
 
   onMissionComplete(m) {
@@ -721,6 +806,7 @@ export class Game {
 
   stop() {
     this.running = false;
+    if (this._vsEl) this._vsEl.style.display = 'none';
     this.hud.show(false);
     Audio.stop();
     Audio.stopRain();
@@ -822,7 +908,7 @@ export class Game {
     /* --- world streaming --- */
     this.terrain.update(this.player.pos, dt);
     this.props.update(this.player.pos);
-    this.props.tick(dt, this.elapsed);
+    this.props.tick(dt, this.elapsed, this.sky.uniforms.uStars.value);
     this.sky.update(dt, this.player.pos, Audio);
 
     /* --- actors --- */
@@ -848,6 +934,7 @@ export class Game {
       if (pr.remove) this.projectiles.splice(i, 1);
     }
     if (this.companion) this.companion.update(dt, this.player);
+    this._updateHazards(dt);
 
     this.vfx.update(dt, this.cameras[0]);
     this.missions.update(dt);
@@ -1013,6 +1100,7 @@ export class Game {
     this._updateCameraAspects();
 
     this.hud.toast('FIRST TO FIVE FALLS', true);
+    this._paintVersusScore();
     this.start('versus');
   }
 }

@@ -315,6 +315,100 @@ export function buildWeapon(id, colors) {
       }
       break;
     }
+    case 'naginata': {
+      const haft = new THREE.Mesh(cyl(.026, .03, 1.5, 8), m.grip);
+      haft.position.y = .55; g.add(haft);
+      // Curved blade on the end, built from short segments.
+      for (let i = 0; i < 8; i++) {
+        const t = i / 8;
+        const seg = new THREE.Mesh(box(.032, .07, .01), m.blade);
+        seg.position.set(0, 1.34 + t * .48, Math.pow(t, 1.6) * .12);
+        seg.rotation.x = -t * .3;
+        g.add(seg);
+      }
+      const tip = new THREE.Mesh(cone(.02, .09, 4), m.blade);
+      tip.position.set(0, 1.86, .14); tip.rotation.x = -.35; g.add(tip);
+      const collar = new THREE.Mesh(cyl(.038, .038, .07, 8), m.dark);
+      collar.position.y = 1.3; g.add(collar);
+      break;
+    }
+    case 'kusarigama': {
+      const handle = grip(.3); handle.position.y = .1; g.add(handle);
+      // Sickle head.
+      const blade = new THREE.Mesh(new THREE.TorusGeometry(.16, .022, 5, 10, Math.PI * .9), m.blade);
+      blade.position.set(.08, .3, 0); blade.rotation.z = -.6; g.add(blade);
+      // Chain running off to a weight.
+      for (let i = 0; i < 12; i++) {
+        const link = new THREE.Mesh(new THREE.TorusGeometry(.022, .008, 4, 7), m.bladeDark);
+        link.position.set(-.03 * i, -.08 - i * .05, 0);
+        link.rotation.y = i % 2 ? Math.PI / 2 : 0;
+        g.add(link);
+      }
+      const weight = new THREE.Mesh(sph(.05, 8, 6), m.bladeDark);
+      weight.position.set(-.38, -.66, 0); g.add(weight);
+      break;
+    }
+    case 'warfan': {
+      const handle = grip(.14, .016); g.add(handle);
+      // Iron ribs fanned out from the pivot.
+      for (let i = 0; i < 9; i++) {
+        const a = -.7 + (i / 8) * 1.4;
+        const rib = new THREE.Mesh(box(.012, .34, .006), m.blade);
+        rib.position.set(Math.sin(a) * .16, .08 + Math.cos(a) * .16, 0);
+        rib.rotation.z = -a;
+        g.add(rib);
+      }
+      const web = new THREE.Mesh(new THREE.CircleGeometry(.32, 14, Math.PI / 2 - .7, 1.4),
+        new THREE.MeshStandardMaterial({ color: 0x8c2f2f, roughness: .9, side: THREE.DoubleSide }));
+      web.position.y = .06; g.add(web);
+      break;
+    }
+    case 'frostblade': {
+      const fm = new THREE.MeshStandardMaterial({
+        color: 0x9fd8f0, metalness: .85, roughness: .12,
+        emissive: 0x2a7ac0, emissiveIntensity: .9, transparent: true, opacity: .92
+      });
+      const blade = new THREE.Mesh(box(.05, .88, .014), fm);
+      blade.position.y = .58; g.add(blade);
+      const tip = new THREE.Mesh(cone(.03, .12, 4), fm); tip.position.y = 1.08; g.add(tip);
+      // Frost spurs along the edge.
+      for (let i = 0; i < 5; i++) {
+        const sp = new THREE.Mesh(cone(.016, .07, 4), fm);
+        sp.position.set(.035, .3 + i * .16, 0); sp.rotation.z = -1.1; g.add(sp);
+      }
+      const tsuba = new THREE.Mesh(cyl(.055, .055, .012, 12), m.dark);
+      tsuba.position.y = .1; tsuba.rotation.x = Math.PI / 2; tsuba.scale.z = .5; g.add(tsuba);
+      const h = grip(.26); h.position.y = -.04; g.add(h);
+      const l = new THREE.PointLight(0x6ab4ff, 2.4, 8, 2); l.position.y = .6; g.add(l);
+      break;
+    }
+    case 'chakram': {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(.16, .018, 6, 20), m.blade);
+      ring.rotation.x = Math.PI / 2; g.add(ring);
+      // Outer cutting edge.
+      const edge = new THREE.Mesh(new THREE.CylinderGeometry(.19, .19, .006, 20), m.blade);
+      g.add(edge);
+      const inner = new THREE.Mesh(new THREE.CylinderGeometry(.1, .1, .008, 16), m.grip);
+      g.add(inner);
+      break;
+    }
+    case 'greatbow': {
+      const limb = new THREE.Group();
+      const SEG = 14, R = .95;
+      for (let i = 0; i < SEG; i++) {
+        const t = i / (SEG - 1);
+        const a = lerp(-1.25, 1.25, t);
+        const seg = new THREE.Mesh(box(.036, .18, .05), m.bladeDark);
+        seg.position.set(Math.sin(a) * .26, Math.cos(a) * R - R * .1, 0);
+        seg.rotation.z = -a;
+        limb.add(seg);
+      }
+      g.add(limb);
+      const string = new THREE.Mesh(cyl(.007, .007, 1.8, 4), mat(0xe8e2d4));
+      string.position.set(.24, -.09, 0); g.add(string);
+      const gripWrap = grip(.3, .034); gripWrap.position.y = -.06; g.add(gripWrap);
+      break;
+    }
     case 'odachi': {
       const blade = new THREE.Mesh(box(.036, 1.42, .012), m.blade);
       blade.position.y = .82; blade.castShadow = true; g.add(blade);
@@ -469,8 +563,11 @@ export function buildWeapon(id, colors) {
     case 'smoke_bomb':
     case 'fire_bomb':
     case 'thunder_bomb':
+    case 'ice_bomb':
+    case 'poison_bomb':
     case 'teleport_bomb': {
-      const tint = { smoke_bomb: 0x4a4a52, fire_bomb: 0x8c3a14, thunder_bomb: 0x2a4a8c, teleport_bomb: 0x5a2a8c }[id];
+      const tint = { smoke_bomb: 0x4a4a52, fire_bomb: 0x8c3a14, thunder_bomb: 0x2a4a8c,
+                     ice_bomb: 0x2a6a9c, poison_bomb: 0x3a6a2a, teleport_bomb: 0x5a2a8c }[id];
       const body = new THREE.Mesh(sph(.09, 12, 10), mat(tint, { roughness: .55, metalness: .4 }));
       g.add(body);
       const neck = new THREE.Mesh(cyl(.03, .035, .05, 8), m.grip);
@@ -479,7 +576,8 @@ export function buildWeapon(id, colors) {
       fuse.position.set(.02, .17, 0); fuse.rotation.z = -.3; g.add(fuse);
       if (id !== 'smoke_bomb') {
         const l = new THREE.PointLight(
-          { fire_bomb: 0xff6a20, thunder_bomb: 0x6ab4ff, teleport_bomb: 0xb45cff }[id], 1.2, 4, 2);
+          { fire_bomb: 0xff6a20, thunder_bomb: 0x6ab4ff, ice_bomb: 0x8ad4ff,
+            poison_bomb: 0x7ad84a, teleport_bomb: 0xb45cff }[id] ?? 0xffffff, 1.2, 4, 2);
         l.position.y = .22; g.add(l);
       }
       break;
@@ -787,9 +885,11 @@ export function buildPagoda(rng, tiers = 3, scale = 1) {
 export function buildHouse(rng, { ruined = false, scale = 1 } = {}) {
   const g = new THREE.Group();
   const w = rng.range(4, 7) * scale, d = rng.range(4, 7) * scale, h = rng.range(2.6, 3.6) * scale;
-  const wallC = ruined ? 0x3a3028 : 0x8a7a5e;
+  // Charred timber still has to read as timber at golden hour, so the
+  // "ruined" palette is scorched rather than black.
+  const wallC = ruined ? 0x6b5a46 : 0x9a8a6a;
   const wall = mat(wallC, { roughness: .96 });
-  const beam = mat(ruined ? 0x1a1512 : 0x4a3626, { roughness: .95 });
+  const beam = mat(ruined ? 0x3d3226 : 0x4a3626, { roughness: .95 });
 
   if (ruined && rng.chance(.35)) {
     // Only the frame and a stub of wall left.
@@ -810,7 +910,7 @@ export function buildHouse(rng, { ruined = false, scale = 1 } = {}) {
   g.add(mesh(box(w + .04, .16, d + .04), beam, 0, h * .55, 0));
 
   // Hip roof.
-  const roofM = mat(ruined ? 0x2a2420 : 0x3a3a42, { roughness: .9 });
+  const roofM = mat(ruined ? 0x4a4038 : 0x50505c, { roughness: .9 });
   const roof = mesh(cone(Math.max(w, d) * .82, h * .7, 4), roofM, 0, h + h * .35, 0);
   roof.rotation.y = Math.PI / 4;
   g.add(roof);
@@ -822,7 +922,7 @@ export function buildHouse(rng, { ruined = false, scale = 1 } = {}) {
     g.add(mesh(box(w * .62, h * .5, .06), paper, 0, h * .42, d / 2 + .02));
   } else if (rng.chance(.5)) {
     // Collapsed section + charring.
-    const rubble = mesh(box(w * .5, .8, d * .5), mat(0x241d18, { roughness: 1, flatShading: true }),
+    const rubble = mesh(box(w * .5, .8, d * .5), mat(0x453a30, { roughness: 1, flatShading: true }),
       rng.range(-1, 1), .4, rng.range(-1, 1));
     rubble.rotation.y = rng() * 3;
     g.add(rubble);
@@ -1004,4 +1104,292 @@ export function disposeObject(obj) {
       for (const m of mats) if (m && ![...matCache.values()].includes(m)) m.dispose();
     }
   });
+}
+
+/* ============================================================
+   SETTLEMENT + BATTLEFIELD DRESSING
+   Used to fill the ruined village in world 1 and to give every
+   other world something to find between the landmarks.
+   ============================================================ */
+
+/** Stone-rimmed well with a roof and a bucket. */
+export function buildWell(rng) {
+  const g = new THREE.Group();
+  const stone = mat(0x6f6a60, { roughness: .95 });
+  const wood = mat(0x4a3626, { roughness: .95 });
+
+  const ring = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.2, .9, 14, 1, true), stone);
+  ring.position.y = .45; g.add(ring);
+  g.add(mesh(cyl(1.25, 1.25, .18, 14), stone, 0, .9, 0));
+  // Dark water down the shaft.
+  g.add(mesh(cyl(1.0, 1.0, .05, 12), mat(0x101a1e, { roughness: .2, metalness: .4 }), 0, .2, 0));
+
+  for (const s of [-1, 1]) g.add(mesh(box(.16, 2.2, .16), wood, s * 1.05, 1.1, 0));
+  g.add(mesh(box(2.6, .14, 1.6), wood, 0, 2.2, 0));
+  const roof = mesh(cone(1.7, .9, 4), mat(0x3a3a42, { roughness: .9 }), 0, 2.6, 0);
+  roof.rotation.y = Math.PI / 4; g.add(roof);
+  g.add(mesh(cyl(.05, .05, 2.1, 6), wood, 0, 2.0, 0).rotateZ(Math.PI / 2));
+  g.add(mesh(box(.4, .4, .4), wood, 0, 1.5, 0));
+  return g;
+}
+
+/** Two-wheeled cart, optionally tipped over and broken. */
+export function buildCart(rng, { wrecked = false } = {}) {
+  const g = new THREE.Group();
+  const wood = mat(wrecked ? 0x2f2318 : 0x6a4a2e, { roughness: .95 });
+  const iron = mat(0x2f2b26, { roughness: .6, metalness: .5 });
+
+  const bed = mesh(box(2.6, .22, 1.5), wood, 0, .9, 0);
+  g.add(bed);
+  for (const s of [-1, 1]) g.add(mesh(box(2.6, .5, .1), wood, 0, 1.15, s * .7));
+  g.add(mesh(box(.1, .5, 1.5), wood, -1.3, 1.15, 0));
+
+  const wheel = (x, broken) => {
+    const w = new THREE.Group();
+    const r = broken ? .5 : .62;
+    w.add(mesh(new THREE.TorusGeometry(r, .08, 6, broken ? 9 : 16, broken ? 4 : Math.PI * 2), iron));
+    for (let i = 0; i < (broken ? 3 : 6); i++) {
+      const sp = mesh(box(.06, r * 2, .06), wood);
+      sp.rotation.z = i * Math.PI / (broken ? 3 : 6);
+      w.add(sp);
+    }
+    w.position.set(x, .62, 0);
+    w.rotation.y = Math.PI / 2;
+    return w;
+  };
+  for (const s of [-1, 1]) g.add(wheel(s * .75, wrecked && rng.chance(.6)));
+
+  // Shafts for the animal.
+  for (const s of [-1, 1]) {
+    const shaft = mesh(cyl(.06, .07, 2.0, 6), wood, 1.9, .95, s * .5);
+    shaft.rotation.z = Math.PI / 2;
+    g.add(shaft);
+  }
+
+  if (wrecked) {
+    g.rotation.z = rng.range(.5, 1.2) * rng.sign();
+    g.rotation.x = rng.range(-.2, .2);
+    g.position.y = -.3;
+  } else {
+    for (let i = 0; i < rng.int(1, 4); i++) {
+      g.add(mesh(box(.42, .42, .42), mat(0x8a6a3a, { roughness: 1 }),
+        rng.range(-.9, .9), 1.25, rng.range(-.4, .4)));
+    }
+  }
+  return g;
+}
+
+/** Run of bamboo or timber fence, `len` panels long. */
+export function buildFence(rng, len = 6, { broken = false } = {}) {
+  const g = new THREE.Group();
+  const wood = mat(broken ? 0x3a2f22 : 0x5f4630, { roughness: .96 });
+  for (let i = 0; i < len; i++) {
+    if (broken && rng.chance(.35)) continue;
+    const x = i * 1.5;
+    g.add(mesh(box(.14, 1.8, .14), wood, x, .9, 0));
+    for (const y of [.6, 1.25]) {
+      const rail = mesh(box(1.5, .1, .08), wood, x + .75, y, 0);
+      if (broken && rng.chance(.3)) rail.rotation.z = rng.range(-.4, .4);
+      g.add(rail);
+    }
+  }
+  return g;
+}
+
+/** Timber watchtower with a ladder and a roofed platform. */
+export function buildWatchtower(rng, { ruined = false } = {}) {
+  const g = new THREE.Group();
+  const wood = mat(ruined ? 0x2a2018 : 0x4f3a26, { roughness: .95 });
+  const H = ruined ? rng.range(4, 7) : 8;
+
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const leg = mesh(box(.22, H, .22), wood, sx * 1.4, H / 2, sz * 1.4);
+    leg.rotation.x = -sz * .03; leg.rotation.z = sx * .03;
+    g.add(leg);
+  }
+  // Cross bracing.
+  for (let i = 1; i < 3; i++) {
+    const y = (H / 3) * i;
+    for (const sz of [-1, 1]) g.add(mesh(box(3.0, .1, .1), wood, 0, y, sz * 1.4));
+    for (const sx of [-1, 1]) g.add(mesh(box(.1, .1, 3.0), wood, sx * 1.4, y, 0));
+  }
+  if (!ruined) {
+    g.add(mesh(box(3.6, .16, 3.6), wood, 0, H, 0));
+    for (const s of [-1, 1]) {
+      g.add(mesh(box(3.6, .6, .1), wood, 0, H + .4, s * 1.7));
+      g.add(mesh(box(.1, .6, 3.6), wood, s * 1.7, H + .4, 0));
+    }
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      g.add(mesh(box(.14, 1.5, .14), wood, sx * 1.6, H + .9, sz * 1.6));
+    }
+    const roof = mesh(cone(3.0, 1.2, 4), mat(0x33333b, { roughness: .9 }), 0, H + 2.2, 0);
+    roof.rotation.y = Math.PI / 4;
+    g.add(roof);
+    // Ladder.
+    for (let i = 0; i < Math.floor(H / .45); i++) {
+      g.add(mesh(box(.9, .06, .06), wood, 0, .4 + i * .45, 1.5));
+    }
+  }
+  return g;
+}
+
+/** Defensive barricade: crossed stakes behind a low earth bank. */
+export function buildBarricade(rng) {
+  const g = new THREE.Group();
+  const wood = mat(0x3f2f20, { roughness: .96 });
+  g.add(mesh(box(3.4, .5, 1.0), mat(0x4a3a2a, { roughness: 1 }), 0, .25, 0));
+  for (let i = 0; i < 5; i++) {
+    const x = -1.5 + i * .75;
+    for (const s of [-1, 1]) {
+      const stake = mesh(cyl(.07, .09, 2.2, 6), wood, x, .9, 0);
+      stake.rotation.x = s * .6;
+      g.add(stake);
+      const tip = mesh(cone(.08, .3, 5), wood, x, 1.9, s * -.7);
+      g.add(tip);
+    }
+  }
+  g.add(mesh(box(3.4, .12, .12), wood, 0, 1.1, 0));
+  return g;
+}
+
+/** A spear or banner driven into the ground — battlefield litter. */
+export function buildStuckSpear(rng) {
+  const g = new THREE.Group();
+  const wood = mat(0x4a3626, { roughness: .95 });
+  const steel = mat(0x6a7078, { roughness: .5, metalness: .7 });
+  const h = rng.range(1.8, 2.6);
+  g.add(mesh(cyl(.035, .04, h, 6), wood, 0, h / 2 - .3, 0));
+  g.add(mesh(cone(.07, .3, 4), steel, 0, h - .3, 0));
+  if (rng.chance(.45)) {
+    // Torn sashimono still attached.
+    const cloth = mat([0x8c2f2f, 0x2f4a8c, 0x3a5a3a][rng.int(0, 2)],
+      { roughness: .96, side: THREE.DoubleSide });
+    const flag = mesh(box(.5, .8, .02), cloth, .28, h - .9, 0);
+    flag.rotation.y = rng.range(-.3, .3);
+    g.add(flag);
+  }
+  g.rotation.z = rng.range(-.45, .45);
+  g.rotation.x = rng.range(-.35, .35);
+  return g;
+}
+
+/** Charred rubble pile with beams sticking out. */
+export function buildRubble(rng) {
+  const g = new THREE.Group();
+  const ash = mat(0x4e4238, { roughness: 1, flatShading: true });
+  const beam = mat(0x352c22, { roughness: 1 });
+  for (let i = 0; i < rng.int(4, 9); i++) {
+    const s = rng.range(.3, 1.1);
+    const b = mesh(box(s, s * .6, s), ash,
+      rng.range(-1.4, 1.4), s * .3, rng.range(-1.4, 1.4));
+    b.rotation.set(rng() * 3, rng() * 3, rng() * 3);
+    g.add(b);
+  }
+  for (let i = 0; i < rng.int(1, 4); i++) {
+    const l = rng.range(1.6, 3.4);
+    const bm = mesh(box(.16, l, .16), beam, rng.range(-1, 1), l * .3, rng.range(-1, 1));
+    bm.rotation.set(rng.range(.8, 1.5) * rng.sign(), rng() * 3, rng.range(-.6, .6));
+    g.add(bm);
+  }
+  return g;
+}
+
+/** Stone lantern (tōrō) — lights up at night. */
+export function buildLantern(rng) {
+  const g = new THREE.Group();
+  const stone = mat(0x7a746a, { roughness: .95 });
+  g.add(mesh(cyl(.22, .3, .3, 8), stone, 0, .15, 0));
+  g.add(mesh(cyl(.13, .13, .9, 8), stone, 0, .75, 0));
+  g.add(mesh(cyl(.34, .28, .14, 8), stone, 0, 1.27, 0));
+  const box6 = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, .46, 6), stone);
+  box6.position.y = 1.57; box6.castShadow = true; g.add(box6);
+  const cap = mesh(cone(.46, .34, 6), stone, 0, 1.96, 0);
+  g.add(cap);
+  g.add(mesh(sph(.09, 6, 5), stone, 0, 2.18, 0));
+
+  const flame = new THREE.Mesh(sph(.13, 8, 6), new THREE.MeshBasicMaterial({
+    color: 0xffca6a, transparent: true, opacity: .9
+  }));
+  flame.position.y = 1.57;
+  g.add(flame);
+  const l = new THREE.PointLight(0xffb14a, 2.4, 14, 2);
+  l.position.y = 1.6; g.add(l);
+  g.userData.fire = flame;
+  g.userData.light = l;
+  g.userData.nightOnly = true;
+  return g;
+}
+
+/** Roadside stone statue / jizō. */
+export function buildStatue(rng) {
+  const g = new THREE.Group();
+  const stone = mat(0x8a8478, { roughness: .96 });
+  g.add(mesh(box(1.0, .3, 1.0), stone, 0, .15, 0));
+  g.add(mesh(cyl(.34, .4, 1.5, 10), stone, 0, 1.05, 0));
+  const head = mesh(sph(.3, 10, 8), stone, 0, 1.95, 0);
+  g.add(head);
+  // Red bib, the way jizō are dressed.
+  const bib = mesh(cyl(.36, .42, .34, 10), mat(0xa8342c, { roughness: .95 }), 0, 1.6, 0);
+  g.add(bib);
+  return g;
+}
+
+/** Small graveyard: a cluster of leaning stone markers. */
+export function buildGraves(rng) {
+  const g = new THREE.Group();
+  const stone = mat(0x74706a, { roughness: .97 });
+  for (let i = 0; i < rng.int(5, 12); i++) {
+    const h = rng.range(.6, 1.4);
+    const m = mesh(box(.3, h, .14), stone,
+      rng.range(-3, 3), h / 2, rng.range(-3, 3));
+    m.rotation.z = rng.range(-.22, .22);
+    m.rotation.y = rng() * 3;
+    g.add(m);
+  }
+  return g;
+}
+
+/** Plank bridge on stone piers. */
+export function buildBridge(rng, span = 10) {
+  const g = new THREE.Group();
+  const wood = mat(0x5a4128, { roughness: .95 });
+  const stone = mat(0x6f6a60, { roughness: .96 });
+  g.add(mesh(box(span, .2, 2.6), wood, 0, 1.6, 0));
+  for (let i = 0; i < Math.floor(span / 1.2); i++) {
+    g.add(mesh(box(.9, .06, 2.6), wood, -span / 2 + .6 + i * 1.2, 1.72, 0));
+  }
+  for (const s of [-1, 1]) {
+    for (let i = 0; i <= 4; i++) {
+      g.add(mesh(box(.12, 1.0, .12), wood, -span / 2 + (span / 4) * i, 2.2, s * 1.2));
+    }
+    g.add(mesh(box(span, .1, .1), wood, 0, 2.7, s * 1.2));
+  }
+  for (const s of [-1, 1]) g.add(mesh(box(1.2, 3.2, 3.0), stone, s * (span / 2 - .6), .2, 0));
+  return g;
+}
+
+/** Hanging cloth banner on a pole. */
+export function buildBanner(rng, { torn = false } = {}) {
+  const g = new THREE.Group();
+  const wood = mat(0x4a3626, { roughness: .95 });
+  g.add(mesh(cyl(.06, .07, 4.4, 6), wood, 0, 2.2, 0));
+  const cloth = mat([0x8c2f2f, 0x2f3f7a, 0x2f5a3a, 0x6a2f6a][rng.int(0, 3)],
+    { roughness: .96, side: THREE.DoubleSide });
+  const h = torn ? rng.range(1.0, 1.8) : 2.4;
+  const flag = mesh(box(.06, h, 1.1), cloth, .0, 4.0 - h / 2, .6);
+  g.add(flag);
+  g.add(mesh(box(.08, .08, 1.3), wood, 0, 4.05, .6));
+  return g;
+}
+
+/** A raised wooden platform / market floor for village squares. */
+export function buildPlatform(rng, w = 6, d = 6) {
+  const g = new THREE.Group();
+  const wood = mat(0x5f4630, { roughness: .95 });
+  g.add(mesh(box(w, .2, d), wood, 0, .5, 0));
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    g.add(mesh(box(.2, .5, .2), wood, sx * (w / 2 - .3), .25, sz * (d / 2 - .3)));
+  }
+  for (let i = 0; i < 3; i++) g.add(mesh(box(w * .5, .06, .5), wood, 0, .16 + i * .16, d / 2 + .3 - i * .2));
+  return g;
 }

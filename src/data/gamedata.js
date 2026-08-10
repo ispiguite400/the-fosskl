@@ -139,6 +139,15 @@ export const ITEMS = {
   tetsubo:     { id: 'tetsubo', name: 'Tetsubo', kind: 'melee', icon: 'axe', damage: 55, speed: .95, reach: 3.0, power: 20, stack: 1, tier: 4, rarity: 'epic',
                  knockback: 2.4,
                  desc: 'A studded iron club. Armour is a suggestion.' },
+  naginata:    { id: 'naginata', name: 'Naginata', kind: 'melee', icon: 'axe', damage: 36, speed: .62, reach: 4.0, power: 12, stack: 1, tier: 2, rarity: 'rare',
+                 desc: 'A curved blade on a long haft. Sweeps a whole doorway.' },
+  kusarigama:  { id: 'kusarigama', name: 'Kusarigama', kind: 'melee', icon: 'knife', damage: 26, speed: .38, reach: 4.8, power: 8, stack: 1, tier: 3, rarity: 'epic',
+                 desc: 'Sickle on a weighted chain. Outranges anything its size.' },
+  warfan:      { id: 'warfan', name: 'Tessen', kind: 'melee', icon: 'axe', damage: 22, speed: .3, reach: 2.4, power: 4, stack: 1, tier: 2,
+                 desc: 'An iron fan. Deceptively fast, and it counts as unarmed.' },
+  frostblade:  { id: 'frostblade', name: 'Winterfang', kind: 'melee', icon: 'katana', damage: 42, speed: .48, reach: 3.1, power: 11, stack: 1, tier: 3,
+                 element: 'frost', rarity: 'epic',
+                 desc: 'The air around it aches. Slows whatever it cuts.' },
   voidblade:   { id: 'voidblade', name: 'Nothing-Blade', kind: 'melee', icon: 'katana', damage: 72, speed: .42, reach: 3.4, power: 12, stack: 1, tier: 5,
                  rarity: 'legend', element: 'void',
                  desc: 'Forged from the space where a god used to be.' },
@@ -156,6 +165,12 @@ export const ITEMS = {
   shuriken:    { id: 'shuriken', name: 'Shuriken', kind: 'range', icon: 'knife', damage: 14, speed: .2, power: 3, stack: 64, tier: 1,
                  projectile: 'shuriken', velocity: 58, drop: 11, consumes: true,
                  desc: 'Thrown in threes. Meant to annoy, not to end.' },
+  chakram:     { id: 'chakram', name: 'Chakram', kind: 'range', icon: 'knife', damage: 24, speed: .34, power: 5, stack: 24, tier: 2, rarity: 'rare',
+                 projectile: 'shuriken', velocity: 64, drop: 4, consumes: true,
+                 desc: 'A thrown ring that barely drops. Comes back if you are lucky.' },
+  greatbow:    { id: 'greatbow', name: 'Siege Bow', kind: 'range', icon: 'bow', damage: 78, speed: 1.5, power: 18, stack: 1, tier: 5, rarity: 'legend',
+                 projectile: 'arrow', velocity: 110, drop: 2, charge: .9,
+                 desc: 'Meant for gates, not people. Draws slowly, ends arguments.' },
   stormbow:    { id: 'stormbow', name: 'Stormcaller', kind: 'range', icon: 'bow', damage: 58, speed: .8, power: 14, stack: 1, tier: 4, rarity: 'epic',
                  projectile: 'arrow', velocity: 96, drop: 3, charge: .5, element: 'shock',
                  desc: 'Each shot pulls a thread of the sky down with it.' },
@@ -170,6 +185,12 @@ export const ITEMS = {
   thunder_bomb:{ id: 'thunder_bomb', name: 'Thunder Bomb', kind: 'bomb', icon: 'bomb', damage: 88, speed: .8, power: 13, stack: 12, tier: 3, rarity: 'epic',
                  effect: 'shock', radius: 11, fuse: .8,
                  desc: 'Stuns everything it does not kill.' },
+  ice_bomb:    { id: 'ice_bomb', name: 'Frost Bomb', kind: 'bomb', icon: 'bomb', damage: 46, speed: .7, power: 8, stack: 16, tier: 2, rarity: 'rare',
+                 effect: 'frost', radius: 9, fuse: .8, tint: '#6ab4ff',
+                 desc: 'Freezes everything in the blast where it stands.' },
+  poison_bomb: { id: 'poison_bomb', name: 'Miasma Jar', kind: 'bomb', icon: 'bomb', damage: 30, speed: .7, power: 7, stack: 16, tier: 3, rarity: 'rare',
+                 effect: 'poison', radius: 10, fuse: .7, tint: '#7ad84a',
+                 desc: 'A cloud that keeps working long after it lands.' },
   teleport_bomb:{ id: 'teleport_bomb', name: 'Teleport Bomb', kind: 'bomb', icon: 'bomb', damage: 0, speed: .5, power: 12, stack: 8, tier: 3, rarity: 'epic',
                  effect: 'teleport', radius: 2, fuse: .55,
                  desc: 'Where it lands, you are. Mind the drop.' },
@@ -223,13 +244,13 @@ export const RARITY_CLASS = { rare: 'rare', epic: 'epic', legend: 'legend' };
    ============================================================ */
 export const WORLDS = [
   {
-    id: 1, name: 'Ashen Village', startPhase: 0.62, jp: '灰の里', theme: 'ruins', art: 'shrine',
+    id: 1, name: 'Ashen Village', startPhase: 0.735, lightFloor: .60, dayScale: .35, jp: '灰の里', theme: 'ruins', art: 'shrine',
     music: 'world1', tutorial: true, hub: false, size: 3600,
     subtitle: 'Where you were left for dead',
-    palette: { fog: 0x9a7048, sky: 0xc07a3c, ground: 0x7a6448, grass: 0x8a7a48, water: 0x5a5040 },
-    sun: { elevation: 14, azimuth: 130, intensity: 1.4, color: 0xffb066 },
+    palette: { fog: 0xc4703a, sky: 0xe07a2c, ground: 0x7a6448, grass: 0x8a7a48, water: 0x5a5040 },
+    sun: { elevation: 14, azimuth: 130, intensity: 2.2, color: 0xff9a4a },
     density: { trees: .18, rocks: .5, grass: .35, buildings: 1.0 },
-    enemyLevel: 1, enemyTypes: ['ashigaru', 'ronin'], boss: 'wizard',
+    enemyLevel: 1, enemyTypes: ['ashigaru', 'ronin', 'archer'], boss: 'wizard',
     ambient: 'ember',
     intro: 'Smoke where the roofs were. Somewhere under it, a blade with your name on it.'
   },
@@ -240,7 +261,7 @@ export const WORLDS = [
     palette: { fog: 0xbcd9a8, sky: 0x8fc4e8, ground: 0x4d7a35, grass: 0x74a844, water: 0x2f6f9e },
     sun: { elevation: 46, azimuth: 200, intensity: 1.6, color: 0xfff2d0 },
     density: { trees: .55, rocks: .3, grass: 1.4, buildings: .25 },
-    enemyLevel: 6, enemyTypes: ['ashigaru', 'ronin', 'bandit'], boss: 'oni_general',
+    enemyLevel: 6, enemyTypes: ['ashigaru', 'ronin', 'bandit', 'archer'], boss: 'oni_general',
     ambient: 'birds',
     intro: 'Grass to the horizon, and a child at the edge of it who will not stop looking for her parents.'
   },
@@ -251,7 +272,7 @@ export const WORLDS = [
     palette: { fog: 0x2e4a30, sky: 0x6f8f6a, ground: 0x30442a, grass: 0x3f6a34, water: 0x27503f },
     sun: { elevation: 58, azimuth: 240, intensity: 1.0, color: 0xdfeec0 },
     density: { trees: 2.6, rocks: .45, grass: .9, buildings: .18 },
-    enemyLevel: 13, enemyTypes: ['ronin', 'bandit', 'shadow'], boss: 'forest_warden',
+    enemyLevel: 13, enemyTypes: ['ronin', 'bandit', 'shadow', 'archer', 'monk'], boss: 'forest_warden',
     ambient: 'forest',
     intro: 'The canopy holds the light out. Whatever lives here has never needed eyes.'
   },
@@ -262,7 +283,7 @@ export const WORLDS = [
     palette: { fog: 0xe0c48a, sky: 0x9ec9e8, ground: 0xc9a15c, grass: 0xa8894a, water: 0x2f8fa8 },
     sun: { elevation: 74, azimuth: 180, intensity: 2.1, color: 0xfff0c0 },
     density: { trees: .06, rocks: .9, grass: .2, buildings: .3 },
-    enemyLevel: 21, enemyTypes: ['bandit', 'shadow', 'husk'], boss: 'dune_colossus',
+    enemyLevel: 21, enemyTypes: ['bandit', 'shadow', 'husk', 'crossbowman'], boss: 'dune_colossus',
     ambient: 'wind',
     intro: 'Dunes over drowned cities. The heat lies about distance.'
   },
@@ -273,7 +294,7 @@ export const WORLDS = [
     palette: { fog: 0xd8e4ef, sky: 0x9fc0e0, ground: 0xe8eef5, grass: 0xc0cfdc, water: 0x2a5a7f },
     sun: { elevation: 22, azimuth: 300, intensity: 1.1, color: 0xd8e8ff },
     density: { trees: .8, rocks: .6, grass: .1, buildings: .2 },
-    enemyLevel: 30, enemyTypes: ['husk', 'shadow', 'frost_knight'], boss: 'frost_sovereign',
+    enemyLevel: 30, enemyTypes: ['husk', 'shadow', 'frost_knight', 'crossbowman'], boss: 'frost_sovereign',
     ambient: 'wind', storyBeat: 'girl_dies',
     intro: 'Snow swallows sound. You will wish it had swallowed this too.'
   },
@@ -284,7 +305,7 @@ export const WORLDS = [
     palette: { fog: 0xd9a860, sky: 0xe8b96a, ground: 0xa8813a, grass: 0xc9a04a, water: 0x3f7f8f },
     sun: { elevation: 36, azimuth: 260, intensity: 1.8, color: 0xffd090 },
     density: { trees: .3, rocks: .4, grass: 1.8, buildings: .2 },
-    enemyLevel: 40, enemyTypes: ['frost_knight', 'husk', 'beast'], boss: 'amber_beast',
+    enemyLevel: 40, enemyTypes: ['frost_knight', 'husk', 'beast', 'oni', 'crossbowman'], boss: 'amber_beast',
     ambient: 'insects',
     intro: 'Nothing here hides. It simply waits until you are closer.'
   },
@@ -295,7 +316,7 @@ export const WORLDS = [
     palette: { fog: 0xa8cfe0, sky: 0x5fa8d8, ground: 0xd8c9a0, grass: 0x6f9a5a, water: 0x1a6f9e },
     sun: { elevation: 30, azimuth: 100, intensity: 1.7, color: 0xffe0b0 },
     density: { trees: .5, rocks: .7, grass: .5, buildings: .35 }, water: true, waterLevel: 6,
-    enemyLevel: 50, enemyTypes: ['beast', 'shadow', 'drowned'], boss: 'tide_warden',
+    enemyLevel: 50, enemyTypes: ['beast', 'shadow', 'drowned', 'monk'], boss: 'tide_warden',
     ambient: 'waves',
     intro: 'The towers below still have lights in them. Do not look too long.'
   },
@@ -306,7 +327,7 @@ export const WORLDS = [
     palette: { fog: 0xd9cdb0, sky: 0x8fbfe0, ground: 0xb8a888, grass: 0x7f8f4a, water: 0x3f8fa8 },
     sun: { elevation: 52, azimuth: 220, intensity: 1.9, color: 0xfff2d8 },
     density: { trees: .25, rocks: .5, grass: .6, buildings: 1.6 },
-    enemyLevel: 60, enemyTypes: ['drowned', 'legionary', 'shadow'], boss: 'marble_praetor',
+    enemyLevel: 60, enemyTypes: ['drowned', 'legionary', 'shadow', 'crossbowman', 'oni'], boss: 'marble_praetor',
     ambient: 'wind',
     intro: 'Colonnades running to the horizon. Someone built all this to be remembered, and was not.'
   },
@@ -317,7 +338,7 @@ export const WORLDS = [
     palette: { fog: 0x8f8a96, sky: 0x6f7f9f, ground: 0x6a6258, grass: 0x4f5a3a, water: 0x3a5060 },
     sun: { elevation: 26, azimuth: 320, intensity: 1.3, color: 0xffd0a0 },
     density: { trees: .4, rocks: 1.4, grass: .5, buildings: 2.0 }, mountains: 2.2,
-    enemyLevel: 72, enemyTypes: ['legionary', 'frost_knight', 'kingsguard'], boss: 'iron_king',
+    enemyLevel: 72, enemyTypes: ['legionary', 'frost_knight', 'kingsguard', 'sniper', 'oni'], boss: 'iron_king',
     ambient: 'wind',
     intro: 'The last throne standing. It is still warm, and that should frighten you.'
   },
@@ -328,7 +349,7 @@ export const WORLDS = [
     palette: { fog: 0xd8e8f0, sky: 0x7fc0e8, ground: 0x7a6a58, grass: 0x5f9a4a, water: 0x8fd0e8 },
     sun: { elevation: 40, azimuth: 160, intensity: 2.0, color: 0xfff8e8 },
     density: { trees: .5, rocks: .8, grass: 1.0, buildings: .8 }, floating: true,
-    enemyLevel: 88, enemyTypes: ['kingsguard', 'seraph', 'shadow'], boss: 'the_hollow_god',
+    enemyLevel: 88, enemyTypes: ['kingsguard', 'seraph', 'shadow', 'sniper'], boss: 'the_hollow_god',
     ambient: 'wind', final: true,
     intro: 'The islands do not fall because He has not told them to. He is at the far end of them.'
   }
@@ -350,7 +371,16 @@ export const ENEMIES = {
   drowned:     { name: 'Drowned',  hp: 175, damage: 21, speed: 3.4, blockChance: .40, xp: 88,  scale: 1.06, weapon: 'spear',   armor: .2, aggro: 28 },
   legionary:   { name: 'Legionary',hp: 230, damage: 26, speed: 4.0, blockChance: .40, xp: 112, scale: 1.08, weapon: 'sword',   armor: .4, aggro: 32, shielded: true },
   kingsguard:  { name: 'Kingsguard', hp: 300, damage: 34, speed: 4.4, blockChance: .40, xp: 150, scale: 1.14, weapon: 'odachi', armor: .45, aggro: 34 },
-  seraph:      { name: 'Seraph',   hp: 340, damage: 40, speed: 5.2, blockChance: .40, xp: 190, scale: 1.2, weapon: 'fire_sword', armor: .35, aggro: 44, flying: true }
+  seraph:      { name: 'Seraph',   hp: 340, damage: 40, speed: 5.2, blockChance: .40, xp: 190, scale: 1.2, weapon: 'fire_sword', armor: .35, aggro: 44, flying: true },
+
+  /* ranged skirmishers — they keep their distance and loose arrows */
+  archer:      { name: 'Archer',   hp: 60,  damage: 14, speed: 4.4, blockChance: .40, xp: 40, scale: .98, weapon: 'bow',      armor: .05, aggro: 46, ranged: { range: 34, keepAway: 15, speed: 54, cooldown: [1.8, 3.2] } },
+  crossbowman: { name: 'Crossbowman', hp: 110, damage: 30, speed: 3.4, blockChance: .40, xp: 76, scale: 1.02, weapon: 'crossbow', armor: .22, aggro: 50, ranged: { range: 44, keepAway: 19, speed: 76, cooldown: [2.6, 4.2] } },
+  sniper:      { name: 'Sky Archer', hp: 200, damage: 46, speed: 5.0, blockChance: .40, xp: 140, scale: 1.05, weapon: 'stormbow', armor: .2, aggro: 60, ranged: { range: 60, keepAway: 26, speed: 92, cooldown: [2.2, 3.4] } },
+
+  /* heavies */
+  oni:         { name: 'Oni',      hp: 380, damage: 38, speed: 4.0, blockChance: .40, xp: 165, scale: 1.42, weapon: 'tetsubo', armor: .3, aggro: 36 },
+  monk:        { name: 'Warrior Monk', hp: 210, damage: 26, speed: 5.4, blockChance: .40, xp: 104, scale: 1.0, weapon: 'spear', armor: .18, aggro: 38 }
 };
 
 /* ============================================================
@@ -451,10 +481,14 @@ export function shopStock(worldId) {
   if (worldId >= 3) base.push({ id: 'katana', price: 260 }, { id: 'bow', price: 300 }, { id: 'wood_shield', price: 140 });
   if (worldId >= 4) base.push({ id: 'fire_bomb', price: 120 }, { id: 'knives', price: 90 }, { id: 'iron_shield', price: 420 });
   if (worldId >= 5) base.push({ id: 'axe', price: 560 }, { id: 'crossbow', price: 640 });
-  if (worldId >= 6) base.push({ id: 'spear', price: 500 }, { id: 'thunder_bomb', price: 340 });
-  if (worldId >= 7) base.push({ id: 'odachi', price: 1400 }, { id: 'tower_shield', price: 1100 });
-  if (worldId >= 8) base.push({ id: 'fire_sword', price: 2200 }, { id: 'teleport_bomb', price: 700 });
-  if (worldId >= 9) base.push({ id: 'tetsubo', price: 3200 }, { id: 'stormbow', price: 3600 });
+  if (worldId >= 6) base.push({ id: 'spear', price: 500 }, { id: 'thunder_bomb', price: 340 },
+                             { id: 'naginata', price: 780 }, { id: 'ice_bomb', price: 260 });
+  if (worldId >= 7) base.push({ id: 'odachi', price: 1400 }, { id: 'tower_shield', price: 1100 },
+                             { id: 'chakram', price: 420 }, { id: 'poison_bomb', price: 500 });
+  if (worldId >= 8) base.push({ id: 'fire_sword', price: 2200 }, { id: 'teleport_bomb', price: 700 },
+                             { id: 'kusarigama', price: 2600 }, { id: 'frostblade', price: 2400 });
+  if (worldId >= 9) base.push({ id: 'tetsubo', price: 3200 }, { id: 'stormbow', price: 3600 },
+                             { id: 'greatbow', price: 6800 });
   if (worldId >= 10) base.push({ id: 'oni_shield', price: 7000 }, { id: 'potion_op', price: 900 });
   return base;
 }
@@ -473,14 +507,14 @@ export const LOOT = [
 export const WEAPON_POOL_BY_WORLD = {
   1: ['sword', 'knives'],
   2: ['sword', 'katana', 'bow', 'knives', 'wood_shield'],
-  3: ['katana', 'bow', 'axe', 'shuriken', 'wood_shield'],
-  4: ['axe', 'crossbow', 'spear', 'iron_shield', 'fire_bomb'],
-  5: ['spear', 'crossbow', 'iron_shield', 'fire_sword', 'thunder_bomb'],
-  6: ['odachi', 'fire_sword', 'stormbow', 'tower_shield'],
-  7: ['odachi', 'stormbow', 'tower_shield', 'teleport_bomb'],
-  8: ['tetsubo', 'stormbow', 'fire_sword', 'oni_shield'],
-  9: ['tetsubo', 'oni_shield', 'voidblade', 'thunder_bomb'],
-  10: ['voidblade', 'oni_shield', 'stormbow', 'potion_op']
+  3: ['katana', 'bow', 'axe', 'shuriken', 'wood_shield', 'warfan'],
+  4: ['axe', 'crossbow', 'spear', 'iron_shield', 'fire_bomb', 'naginata'],
+  5: ['spear', 'crossbow', 'iron_shield', 'fire_sword', 'thunder_bomb', 'ice_bomb', 'frostblade'],
+  6: ['odachi', 'fire_sword', 'stormbow', 'tower_shield', 'chakram', 'naginata'],
+  7: ['odachi', 'stormbow', 'tower_shield', 'teleport_bomb', 'kusarigama', 'poison_bomb'],
+  8: ['tetsubo', 'stormbow', 'fire_sword', 'oni_shield', 'kusarigama', 'frostblade'],
+  9: ['tetsubo', 'oni_shield', 'voidblade', 'thunder_bomb', 'greatbow'],
+  10: ['voidblade', 'oni_shield', 'greatbow', 'potion_op']
 };
 
 /* ============================================================

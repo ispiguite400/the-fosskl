@@ -48,7 +48,8 @@ export function freshSave() {
       girlJoined: false,
       girlDead: false,
       finalDefeated: false,
-      seenIntro: false
+      seenIntro: false,
+      forgeDone: false
     },
     missions: { active: null, completed: [] },
     sideQuests: {},

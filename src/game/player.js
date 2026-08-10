@@ -111,7 +111,7 @@ export class Player {
     this.camera.add(this.viewRoot);
     this.viewHand = new THREE.Group();
     // Sit the weapon low and to the right, angled across the view.
-    this.viewHand.position.set(.46, -.30, -.66);
+    this.viewHand.position.set(.84, -.38, -.74);
     this.viewHand.rotation.set(.30, -.42, .52);
     this.viewRoot.add(this.viewHand);
     this._viewWeaponId = null;
@@ -131,7 +131,7 @@ export class Player {
     const bb = new THREE.Box3().setFromObject(model);
     const size = bb.getSize(new THREE.Vector3());
     const longest = Math.max(size.x, size.y, size.z, .001);
-    const s = clamp(.34 / longest, .08, .6);
+    const s = clamp(.62 / longest, .16, 1.0);
 
     // Wrap it so we can offset the pivot to the grip without fighting the
     // hand transform.
@@ -684,8 +684,10 @@ export class Player {
       const eFace = tmpV.set(Math.sin(e.yaw), 0, Math.cos(e.yaw));
       const toPlayer = tmpV2.copy(this.pos).sub(e.pos).setY(0).normalize();
       const backstab = eFace.dot(toPlayer) < -.35;
+      // "Slaying your enemies from behind will yield bonus points" — every
+      // class gets the damage and XP bonus; the Assassin just gets more.
       let dmg = base;
-      if (backstab && this.cls.id === 'assassin') dmg *= 3;
+      if (backstab) dmg *= this.cls.id === 'assassin' ? 3 : 1.8;
 
       if (this.has('execute') && e.hp / e.hpMax < .18) dmg = e.hp + 1;
 
@@ -702,7 +704,11 @@ export class Player {
         this.game.rumble(this.index, .45, .3, 90);
         if (this.has('life_steal')) this.hp = Math.min(this.hpMax, this.hp + dmg * .12);
         if (this.cls.id === 'warrior' && res === 'killed') this.hp = Math.min(this.hpMax, this.hp + this.hpMax * .08);
-        if (backstab) this.game.hud.toast('+BONUS · FROM BEHIND');
+        if (backstab) {
+          this.game.hud.toast('+BONUS · FROM BEHIND');
+          this.gainXP(Math.round(e.xp * .5));
+          this.game.vfx.damageNumber(e._headPos(), 0, 'crit');
+        }
       }
     }
 
@@ -882,7 +888,7 @@ export class Player {
     const hs = Math.hypot(this.vel.x, this.vel.z);
     const t = this.bobT;
 
-    let px = .46, py = -.30, pz = -.66;
+    let px = .84, py = -.38, pz = -.74;
     let rx = .30, ry = -.42, rz = .52;
 
     // Idle sway + walk bob.
@@ -893,7 +899,7 @@ export class Player {
 
     if (this.blocking) {
       // Bring the guard up centre-screen.
-      px = .16; py = -.2; pz = -.58;
+      px = .30; py = -.22; pz = -.60;
       rx = .1; ry = -1.15; rz = -.35;
     } else if (this.attackT > 0) {
       const def = this.equippedDef();
@@ -902,22 +908,22 @@ export class Player {
       const strike = clamp((k - .3) / .45, 0, 1);
       const alt = this.comboStep % 2 === 0 ? 1 : -1;
 
-      px = lerp(.46, .52 * alt, wind) + strike * -.62 * alt;
-      py = lerp(-.30, -.04, wind) - strike * .34;
-      pz = lerp(-.66, -.5, wind) - strike * .26;
+      px = lerp(.84, .62 * alt, wind) + strike * -.62 * alt;
+      py = lerp(-.38, -.06, wind) - strike * .34;
+      pz = lerp(-.74, -.56, wind) - strike * .26;
       rx = lerp(.30, -.9, wind) + strike * 2.1;
       ry = lerp(-.42, -.9 * alt, wind) + strike * 1.5 * alt;
       rz = lerp(.52, .8 * alt, wind) - strike * 1.9 * alt;
     } else if (this.charging > 0) {
       // Bow draw: pull the model back and toward centre.
-      px = lerp(.46, .10, this.charging);
-      py = lerp(-.30, -.15, this.charging);
-      pz = lerp(-.66, -.52, this.charging);
+      px = lerp(.84, .14, this.charging);
+      py = lerp(-.38, -.18, this.charging);
+      pz = lerp(-.74, -.60, this.charging);
       ry = lerp(-.42, -.05, this.charging);
       rx = lerp(.30, 0, this.charging);
     } else if (this.dashCharge > 0) {
-      px = .46 - this.dashCharge * .09;
-      py = -.30 + this.dashCharge * .1;
+      px = .84 - this.dashCharge * .09;
+      py = -.38 + this.dashCharge * .1;
       rz = .52 + this.dashCharge * .5;
     }
 

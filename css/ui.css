@@ -185,7 +185,8 @@ body.playing{cursor:none}
 
 /* ---------------- Edit (forge) screen ---------------------- */
 #edit .wrap{position:absolute;inset:0;display:grid;grid-template-columns:1fr 460px}
-#edit .preview{position:relative}
+#edit .preview{position:relative;min-width:0}
+#forgeCanvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 #edit .side{
   background:linear-gradient(180deg,rgba(8,6,5,.94),rgba(4,3,2,.97));
   border-left:1px solid rgba(240,162,74,.18);padding:6vh 34px;overflow-y:auto;pointer-events:auto
@@ -425,10 +426,10 @@ body.playing{cursor:none}
 #cine.on .bar{height:11.5vh}
 .fade{position:absolute;inset:0;background:#000;opacity:0;transition:opacity 1s;pointer-events:none}
 .fade.white{background:#fff}
-.sub{position:absolute;left:50%;bottom:16vh;transform:translateX(-50%);text-align:center;
+#cine .sub{position:absolute;left:50%;bottom:16vh;transform:translateX(-50%);text-align:center;
   width:min(880px,86vw);font-size:23px;line-height:1.5;opacity:0;transition:opacity .6s;
   text-shadow:0 3px 18px #000;font-style:italic;color:#f4ece0}
-.sub.on{opacity:1}
+#cine .sub.on{opacity:1}
 .chapter{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;opacity:0;
   transition:opacity 1.2s}
 .chapter.on{opacity:1}

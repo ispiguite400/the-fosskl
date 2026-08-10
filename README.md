@@ -76,7 +76,8 @@ Guarding yourself is unlocked when you find the Kontana in world one. Hold it;
 it drains power while raised. Buy **Deflection** from the Sage and a guard
 raised within a quarter-second of an incoming hit becomes a parry instead.
 
-Hitting an enemy from behind deals bonus damage — triple as an Assassin.
+Hitting an enemy from behind deals bonus damage and bonus experience for
+every class — and triple damage as an Assassin.
 
 ---
 
@@ -99,6 +100,14 @@ Hitting an enemy from behind deals bonus damage — triple as an Assassin.
   Forsaken very rare.
 - **Animals** can be tamed with rice bought at the hub, then ridden. Horses,
   elk, camels, direwolves, and mythic kirin and cloud stags in the late worlds.
+- **Enemies** come in sixteen archetypes. Archers, crossbowmen and sky archers
+  keep their distance, lead your movement and loose arrows at you, so closing
+  the gap is its own problem.
+- **Weapons**: katana, kontana, odachi, arming sword, war axe, yari, naginata,
+  kusarigama, tessen, tetsubo, Emberfang, Winterfang, Nothing-Blade; yumi,
+  crossbow, siege bow, Stormcaller, throwing knives, shuriken, chakram; smoke,
+  fire, frost, thunder, poison and teleport bombs; four shields. Frost bombs
+  freeze what they catch, poison jars leave a cloud that keeps working.
 
 ---
 
@@ -106,7 +115,7 @@ Hitting an enemy from behind deals bonus damage — triple as an Assassin.
 
 | # | Name | Theme |
 |---|---|---|
-| 1 | Ashen Village · 灰の里 | A destroyed village mid-war. Tutorial, no hub. |
+| 1 | Ashen Village · 灰の里 | A destroyed village mid-war, held at sunset. Tutorial, no hub. |
 | 2 | Verdant Reach · 緑の果て | Grassland |
 | 3 | Everdark Wood · 常闇の森 | Forest and bamboo |
 | 4 | Sunless Waste · 陽無き荒野 | Desert |
@@ -116,6 +125,13 @@ Hitting an enemy from behind deals bonus damage — triple as an Assassin.
 | 8 | Marble Dominion · 大理石の領土 | Roman ruins and temples |
 | 9 | The Iron Crown · 鉄の冠 | Mountains and a great kingdom |
 | 10 | Heaven's Anvil · 天の金床 | Above the clouds. The Hollow God. |
+
+World one is a whole burnt town, not a handful of huts: seven streets of
+houses radiating from a fallen shrine, wells, wrecked carts, barricades,
+graves, torn banners, spears left where they landed, and a breached palisade
+with watchtowers around the edge. It is held at golden hour so the smoke reads.
+Every other world scatters wells, shrines, statues, fences, watchtowers and
+small hamlets between its landmarks.
 
 Each has its own palette, weather bias, opening time of day, enemy roster,
 boss, and ambient score. Every world runs a continuous day → sunset → night
@@ -146,7 +162,9 @@ thing that was ever cast out, and the thing still doing the casting.
 From the main menu:
 
 - **Versus** — a duel in a closed arena on horizontal split screen, using the
-  full combat system including guards, launches and the Wind Dash.
+  full combat system including guards, launches and the Wind Dash. First to
+  five falls wins; the score sits between the two views and the loser
+  respawns across the arena.
 - **Co-op** — the whole campaign, worlds one through ten, two players on
   horizontal split screen. Progress saves to your file.
 
@@ -170,7 +188,9 @@ main menu does the same with a confirmation.
 
 ## The forge
 
-**Edit** on the main menu opens the forge. An HSV colour wheel with separate
+The forge opens automatically the first time you start a new game — you pick
+your steel before you ever hold it — and **Edit** on the main menu reopens it
+whenever you want. An HSV colour wheel with separate
 saturation and lightness controls lets you pick very nearly any colour for the
 **blade/metal** and the **handle** independently, with presets and a live
 rotating 3D preview. Your choice applies to every weapon you carry, in every

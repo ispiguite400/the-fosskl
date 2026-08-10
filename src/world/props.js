@@ -11,7 +11,9 @@ import * as THREE from 'three';
 import { makeRNG, clamp, lerp } from '../core/util.js';
 import {
   buildTree, buildRock, buildHouse, buildPagoda, buildTorii, buildTemple,
-  buildGate, buildStall, buildBrazier, mat
+  buildGate, buildStall, buildBrazier, buildWell, buildCart, buildFence,
+  buildWatchtower, buildBarricade, buildStuckSpear, buildRubble, buildLantern,
+  buildStatue, buildGraves, buildBridge, buildBanner, buildPlatform, mat
 } from '../entities/models.js';
 
 export const CELL = 256;
@@ -55,40 +57,7 @@ export class Props {
     }
 
     /* --- world 1: the burnt village the player wakes up in --- */
-    if (w.theme === 'ruins') {
-      const c = this.hubCenter;
-      for (let i = 0; i < 34; i++) {
-        const a = rng() * Math.PI * 2, r = rng.range(18, 190);
-        const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r;
-        if (!this.terrain.isFlatGround(x, z, .32)) continue;
-        const h = buildHouse(rng, { ruined: true });
-        h.position.set(x, this.terrain.heightAt(x, z) - .2, z);
-        h.rotation.y = rng() * Math.PI * 2;
-        this.landmarks.add(h);
-        this.colliders.push({ x, z, r: 4.2 });
-      }
-      // A half-collapsed shrine at the heart of it.
-      const p = buildPagoda(rng, 2, 1.1);
-      p.position.copy(c);
-      p.rotation.z = .07;
-      this.landmarks.add(p);
-      this.colliders.push({ x: c.x, z: c.z, r: 5 });
-
-      const t = buildTorii(rng, 1.2);
-      t.position.set(c.x + 34, this.terrain.heightAt(c.x + 34, c.z + 8), c.z + 8);
-      t.rotation.y = .4; t.rotation.z = -.09;
-      this.landmarks.add(t);
-
-      // Scattered fires still burning.
-      for (let i = 0; i < 9; i++) {
-        const a = rng() * 6.28, r = rng.range(24, 150);
-        const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r;
-        const b = buildBrazier();
-        b.position.set(x, this.terrain.heightAt(x, z), z);
-        this.landmarks.add(b);
-        this.animated.push(b);
-      }
-    }
+    if (w.theme === 'ruins') this._buildRuinedVillage(this.hubCenter, rng);
 
     /* --- the gate to the next world --- */
     if (!w.final) {
@@ -136,6 +105,162 @@ export class Props {
         this.keepPos = new THREE.Vector3(best.x, best.y, best.z);
       }
     }
+  }
+
+  /* ==========================================================
+     World 1 — a whole town, not a handful of huts.
+     Streets radiate from the shrine; houses line both sides of
+     each street, with wells, carts, barricades and litter in the
+     gaps and a broken palisade around the edge.
+     ========================================================== */
+  _buildRuinedVillage(c, rng) {
+    const T = this.terrain;
+    const add = (obj, x, z, { yaw = null, drop = 0, collide = 0, animate = false } = {}) => {
+      obj.position.set(x, T.heightAt(x, z) - drop, z);
+      obj.rotation.y = yaw ?? rng() * Math.PI * 2;
+      this.landmarks.add(obj);
+      if (collide) this.colliders.push({ x, z, r: collide });
+      if (animate) this.animated.push(obj);
+      return obj;
+    };
+    const ok = (x, z, slope = .34) => T.isFlatGround(x, z, slope);
+
+    /* --- the shrine at the heart of it, half fallen --- */
+    const shrine = buildPagoda(rng, 2, 1.15);
+    add(shrine, c.x, c.z, { yaw: rng() * 6.28, collide: 5 });
+    shrine.rotation.z = .07;
+    add(buildPlatform(rng, 14, 14), c.x, c.z, { drop: .1 });
+
+    /* --- streets --- */
+    const STREETS = 7;
+    const streetAngles = [];
+    for (let s = 0; s < STREETS; s++) {
+      streetAngles.push((s / STREETS) * Math.PI * 2 + rng.range(-.18, .18));
+    }
+
+    let built = 0;
+    for (const a of streetAngles) {
+      const dx = Math.cos(a), dz = Math.sin(a);
+      // Perpendicular, for offsetting houses to either side of the road.
+      const px = -dz, pz = dx;
+      const length = rng.range(210, 330);
+
+      for (let d = 22; d < length; d += rng.range(11, 17)) {
+        for (const side of [-1, 1]) {
+          if (rng.chance(.14)) continue;                 // gaps where it burned out
+          const off = rng.range(7.5, 12) * side;
+          const x = c.x + dx * d + px * off;
+          const z = c.z + dz * d + pz * off;
+          if (!ok(x, z)) continue;
+
+          // Further out, more of the village is simply gone.
+          const decay = d / length;
+          const roll = rng();
+          let obj, radius = 4.2;
+
+          if (roll < .06 + decay * .12) {
+            obj = buildRubble(rng); radius = 2.0;
+          } else if (roll < .12 + decay * .14) {
+            obj = buildFence(rng, rng.int(3, 6), { broken: true }); radius = 0;
+          } else if (roll < .16) {
+            obj = buildPagoda(rng, rng.int(2, 3), rng.range(.55, .8)); radius = 4.6;
+          } else {
+            obj = buildHouse(rng, { ruined: true, scale: rng.range(.9, 1.35) });
+          }
+          // Houses face the road.
+          add(obj, x, z, { yaw: a + (side > 0 ? Math.PI / 2 : -Math.PI / 2) + rng.range(-.16, .16),
+                           drop: .2, collide: radius });
+          built++;
+        }
+      }
+
+      /* things along the road itself */
+      for (let d = 30; d < length; d += rng.range(26, 46)) {
+        const x = c.x + dx * d + px * rng.range(-3, 3);
+        const z = c.z + dz * d + pz * rng.range(-3, 3);
+        if (!ok(x, z)) continue;
+        const roll = rng();
+        if (roll < .22) add(buildCart(rng, { wrecked: true }), x, z, { collide: 1.6 });
+        else if (roll < .40) add(buildBarricade(rng), x, z, { yaw: a + Math.PI / 2, collide: 1.8 });
+        else if (roll < .58) add(buildLantern(rng), x, z, { animate: true });
+        else if (roll < .70) add(buildWell(rng), x, z, { collide: 1.4 });
+        else if (roll < .84) add(buildBanner(rng, { torn: true }), x, z);
+        else add(buildStatue(rng), x, z, { collide: .6 });
+      }
+    }
+
+    /* --- infill between the streets so it reads as a town, not spokes --- */
+    for (let i = 0; i < 220; i++) {
+      const a = rng() * Math.PI * 2;
+      const r = 26 + Math.sqrt(rng()) * 300;
+      const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r;
+      if (!ok(x, z)) continue;
+      if (this._tooClose(x, z, 7)) continue;
+      const roll = rng();
+      if (roll < .58) {
+        add(buildHouse(rng, { ruined: true, scale: rng.range(.85, 1.3) }), x, z,
+          { drop: .2, collide: 4.0 });
+        built++;
+      } else if (roll < .74) {
+        add(buildRubble(rng), x, z, { collide: 1.6 });
+      } else if (roll < .86) {
+        add(buildFence(rng, rng.int(4, 9), { broken: true }), x, z);
+      } else {
+        add(buildGraves(rng), x, z);
+      }
+    }
+
+    /* --- battlefield litter --- */
+    for (let i = 0; i < 160; i++) {
+      const a = rng() * 6.28, r = 14 + Math.sqrt(rng()) * 320;
+      const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r;
+      if (!ok(x, z, .5)) continue;
+      add(buildStuckSpear(rng), x, z);
+    }
+
+    /* --- fires still burning through it --- */
+    for (let i = 0; i < 26; i++) {
+      const a = rng() * 6.28, r = 18 + Math.sqrt(rng()) * 290;
+      const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r;
+      if (!ok(x, z, .45)) continue;
+      add(buildBrazier(), x, z, { animate: true });
+    }
+
+    /* --- torii on the approaches --- */
+    for (const a of streetAngles) {
+      const d = rng.range(60, 130);
+      const x = c.x + Math.cos(a) * d, z = c.z + Math.sin(a) * d;
+      if (!ok(x, z, .3)) continue;
+      const t = add(buildTorii(rng, rng.range(.9, 1.4)), x, z, { yaw: a + Math.PI / 2 });
+      t.rotation.z = rng.range(-.12, .12);
+    }
+
+    /* --- broken palisade and towers around the edge --- */
+    const RING = 330;
+    for (let i = 0; i < 74; i++) {
+      const a = (i / 74) * Math.PI * 2;
+      if (rng.chance(.3)) continue;                       // breached sections
+      const x = c.x + Math.cos(a) * RING, z = c.z + Math.sin(a) * RING;
+      if (!ok(x, z, .42)) continue;
+      add(buildFence(rng, 6, { broken: rng.chance(.55) }), x, z, { yaw: a + Math.PI / 2 });
+    }
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + .3;
+      const x = c.x + Math.cos(a) * RING, z = c.z + Math.sin(a) * RING;
+      if (!ok(x, z, .34)) continue;
+      add(buildWatchtower(rng, { ruined: rng.chance(.6) }), x, z, { collide: 2.0 });
+    }
+
+    this.villageRadius = RING;
+    this.villageBuildings = built;
+  }
+
+  /** Cheap spacing test against everything placed so far. */
+  _tooClose(x, z, min) {
+    for (const c of this.colliders) {
+      if ((c.x - x) ** 2 + (c.z - z) ** 2 < min * min) return true;
+    }
+    return false;
   }
 
   _buildHub(center, rng) {
@@ -202,6 +327,7 @@ export class Props {
 
   _buildCell(cx, cz) {
     const g = new THREE.Group();
+    const cellAnimated = [];
     const rng = makeRNG(this._cellSeed(cx, cz));
     const T = this.terrain, w = this.world;
     const ox = cx * CELL, oz = cz * CELL;
@@ -273,6 +399,67 @@ export class Props {
       }
     }
 
+    /* --- roadside dressing: something to find between the landmarks --- */
+    const dressing = Math.round(4 * scale);
+    for (let i = 0; i < dressing; i++) {
+      const x = ox + rng.range(-CELL / 2, CELL / 2);
+      const z = oz + rng.range(-CELL / 2, CELL / 2);
+      if (Math.max(Math.abs(x), Math.abs(z)) > T.half - 40) continue;
+      if (!T.isFlatGround(x, z, .3)) continue;
+      if (this.inHub(new THREE.Vector3(x, 0, z), 72)) continue;
+
+      const roll = rng();
+      let obj = null, radius = 0, animate = false;
+      if (roll < .16)      { obj = buildLantern(rng); animate = true; }
+      else if (roll < .30) { obj = buildStatue(rng); radius = .6; }
+      else if (roll < .44) { obj = buildFence(rng, rng.int(4, 10), { broken: rng.chance(.5) }); }
+      else if (roll < .56) { obj = buildWell(rng); radius = 1.4; }
+      else if (roll < .66) { obj = buildCart(rng, { wrecked: rng.chance(.5) }); radius = 1.6; }
+      else if (roll < .74) { obj = buildGraves(rng); }
+      else if (roll < .82) { obj = buildBanner(rng, { torn: rng.chance(.5) }); }
+      else if (roll < .88) { obj = buildWatchtower(rng, { ruined: rng.chance(.5) }); radius = 2.0; }
+      else if (roll < .94) { obj = buildStuckSpear(rng); }
+      else                 { obj = buildRubble(rng); radius = 1.4; }
+
+      obj.position.set(x, T.heightAt(x, z), z);
+      obj.rotation.y = rng() * 6.28;
+      g.add(obj);
+      if (radius) colliders.push({ x, z, r: radius });
+      if (animate) cellAnimated.push(obj);
+    }
+
+    /* --- small hamlets: three to six houses that share a well --- */
+    if (rng.chance(.22 * (w.density?.buildings ?? .2) * 5)) {
+      const hx = ox + rng.range(-CELL / 3, CELL / 3);
+      const hz = oz + rng.range(-CELL / 3, CELL / 3);
+      if (T.isFlatGround(hx, hz, .2) && !this.inHub(new THREE.Vector3(hx, 0, hz), 130)) {
+        const n = rng.int(3, 7);
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * 6.28 + rng.range(-.3, .3);
+          const r = rng.range(9, 19);
+          const x = hx + Math.cos(a) * r, z = hz + Math.sin(a) * r;
+          if (!T.isFlatGround(x, z, .3)) continue;
+          const h = buildHouse(rng, { ruined: rng.chance(.25), scale: rng.range(.85, 1.15) });
+          h.position.set(x, T.heightAt(x, z) - .2, z);
+          h.rotation.y = -a + Math.PI / 2;
+          g.add(h);
+          colliders.push({ x, z, r: 4 });
+        }
+        const well = buildWell(rng);
+        well.position.set(hx, T.heightAt(hx, hz), hz);
+        g.add(well);
+        colliders.push({ x: hx, z: hz, r: 1.4 });
+        for (let i = 0; i < 3; i++) {
+          const a = rng() * 6.28, r = rng.range(4, 22);
+          const lx = hx + Math.cos(a) * r, lz = hz + Math.sin(a) * r;
+          const l = buildLantern(rng);
+          l.position.set(lx, T.heightAt(lx, lz), lz);
+          g.add(l);
+          cellAnimated.push(l);
+        }
+      }
+    }
+
     /* --- theme flourishes --- */
     if (w.theme === 'sky' && rng.chance(.5)) {
       // Small floating shards under the islands.
@@ -287,6 +474,8 @@ export class Props {
     }
 
     g.userData.colliders = colliders;
+    g.userData.animated = cellAnimated;
+    this.animated.push(...cellAnimated);
     return g;
   }
 
@@ -306,6 +495,9 @@ export class Props {
     for (const [key, g] of this.cells) {
       if (!wanted.has(key)) {
         this.group.remove(g);
+        // Drop this cell's animated props so the tick list cannot grow forever.
+        const gone = new Set(g.userData.animated || []);
+        if (gone.size) this.animated = this.animated.filter(a => !gone.has(a));
         g.traverse(o => { if (o.isMesh && o.geometry?.dispose && o.userData.oneOff) o.geometry.dispose(); });
         this.cells.delete(key);
       }
@@ -337,8 +529,15 @@ export class Props {
     return null;
   }
 
-  tick(dt, t) {
+  tick(dt, t, night = 1) {
     for (const a of this.animated) {
+      if (a.userData.nightOnly) {
+        // Stone lanterns are lit at dusk and put out at dawn.
+        const on = night > .35;
+        if (a.userData.light) a.userData.light.intensity = on ? 2.2 + Math.sin(t * 7 + a.position.x) * .6 : 0;
+        if (a.userData.fire) a.userData.fire.visible = on;
+        continue;
+      }
       if (a.userData.fire) {
         const f = a.userData.fire;
         const s = 1 + Math.sin(t * 9 + a.position.x) * .18 + Math.sin(t * 15.3) * .1;

@@ -240,7 +240,8 @@ export class Sky {
 
   /* ---------------- per frame ---------------- */
   update(dt, playerPos, audio) {
-    this.time += dt;
+    // A world may run its cycle slower, or hold a single hour entirely.
+    this.time += dt * (this.world.dayScale ?? 1);
     this.uniforms.uTime.value += dt;
     const cycle = (this.time % DAY_LENGTH) / DAY_LENGTH;   // 0..1
     this.dayPhase = cycle;
@@ -257,7 +258,9 @@ export class Sky {
     this.uniforms.uSunDir.value.copy(dir);
 
     const above = clamp(elev, -1, 1);
-    const daylight = clamp(above * 1.6 + .18, 0, 1);
+    // lightFloor lets a world sit at golden hour without going dark.
+    const floor = this.world.lightFloor ?? 0;
+    const daylight = Math.max(floor, clamp(above * 1.6 + .18, 0, 1));
     const dusk = clamp(1 - Math.abs(above) * 4.5, 0, 1);      // peaks at the horizon
     const night = clamp(-above * 2.6, 0, 1);
 

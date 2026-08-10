@@ -76,7 +76,7 @@ export class Actor {
 /* ============================================================
    Humanoid animation helper — shared by enemies, NPCs and Hana.
    ============================================================ */
-function poseHumanoid(rig, t, { speed = 0, attack = 0, block = 0, stagger = 0, airborne = false, dead = 0 }) {
+function poseHumanoid(rig, t, { speed = 0, attack = 0, block = 0, stagger = 0, airborne = false, dead = 0, aiming = false }) {
   if (!rig) return;
   const walk = Math.min(1, speed / 5);
   const f = t * (5 + walk * 5);
@@ -100,7 +100,16 @@ function poseHumanoid(rig, t, { speed = 0, attack = 0, block = 0, stagger = 0, a
   rig.torso.rotation.x = walk * .1 + stagger * .5;
 
   // Arms.
-  if (attack > 0) {
+  if (aiming) {
+    // Bow arm out, draw hand back to the cheek.
+    rig.armL.shoulder.rotation.x = -1.55;
+    rig.armL.shoulder.rotation.z = .32;
+    rig.armL.elbow.rotation.x = -.12;
+    rig.armR.shoulder.rotation.x = -1.35;
+    rig.armR.shoulder.rotation.z = -.5;
+    rig.armR.elbow.rotation.x = -1.9;
+    rig.torso.rotation.y = .55;
+  } else if (attack > 0) {
     // Overhead cut: wind up behind the head, then drive down and across.
     const a = 1 - attack;                       // 0 at start, 1 at end
     const wind = clamp(a / .35, 0, 1);
@@ -211,7 +220,12 @@ export class Enemy extends Actor {
       drowned:     { cloth: 0x24403a, armor: 0x35564a, accent: 0x4a8f7a, skin: 0x6a8a7a },
       legionary:   { cloth: 0x7a2020, armor: 0xa88a4a, accent: 0xc9a44a },
       kingsguard:  { cloth: 0x1f1a2a, armor: 0x8f8a96, accent: 0xc9a44a },
-      seraph:      { cloth: 0xe8e0d0, armor: 0xf0e8d8, accent: 0xffc861, skin: 0xf0dcc0 }
+      seraph:      { cloth: 0xe8e0d0, armor: 0xf0e8d8, accent: 0xffc861, skin: 0xf0dcc0 },
+      archer:      { cloth: 0x3f4a30, armor: 0x4f5a3a, accent: 0x8a7a3a },
+      crossbowman: { cloth: 0x3a3428, armor: 0x6a6050, accent: 0x8c5a2f },
+      sniper:      { cloth: 0x2a3448, armor: 0x8f9fb8, accent: 0x4ab4ff, skin: 0xd8c8b0 },
+      oni:         { cloth: 0x4a1f1f, armor: 0x8c2f2f, accent: 0xe8c04a, skin: 0xa8483a },
+      monk:        { cloth: 0x8a5a2a, armor: 0x6a4420, accent: 0xd8b060 }
     };
     return P[id] || P.ashigaru;
   }
@@ -219,7 +233,8 @@ export class Enemy extends Actor {
   _enemyColors(id) {
     const tint = {
       shadow: { h: 275, s: .5, l: .3 }, frost_knight: { h: 200, s: .4, l: .7 },
-      seraph: { h: 45, s: .8, l: .7 }, legionary: { h: 40, s: .6, l: .5 }
+      seraph: { h: 45, s: .8, l: .7 }, legionary: { h: 40, s: .6, l: .5 },
+      sniper: { h: 200, s: .8, l: .65 }, oni: { h: 0, s: .5, l: .35 }
     }[id] || { h: 210, s: .06, l: .62 };
     return { blade: tint, handle: { h: 20, s: .5, l: .2 } };
   }
@@ -323,6 +338,30 @@ export class Enemy extends Actor {
       case 'chase': {
         if (!canSee && dist > this.aggro * 1.8) { this.state = 'idle'; break; }
         this.faceTowards(player.pos, dt);
+
+        /* --- ranged skirmisher --- */
+        const R = this.def.ranged;
+        if (R) {
+          if (dist < R.keepAway) {
+            // Too close: back off while staying face-on.
+            tmpV2.copy(this.pos).sub(player.pos).setY(0).normalize();
+            this.vel.x += tmpV2.x * this.speed * dt * 8;
+            this.vel.z += tmpV2.z * this.speed * dt * 8;
+            this.moveHorizontal(dt);
+          } else if (dist > R.range) {
+            this._walkTo(player.pos, dt, this.speed);
+          } else {
+            // In the pocket: strafe a little and shoot.
+            tmpV2.copy(player.pos).sub(this.pos).setY(0).normalize().cross(UP)
+              .multiplyScalar(this.speed * .35 * (this.rng() < .5 ? 1 : -1));
+            this.vel.x += tmpV2.x * dt * 3;
+            this.vel.z += tmpV2.z * dt * 3;
+            this.moveHorizontal(dt);
+            if (this.attackCooldown <= 0) { this.state = 'aim'; this.stateT = .6; }
+          }
+          break;
+        }
+
         const reach = this._reach();
         if (dist < reach && this.attackCooldown <= 0) {
           this.state = 'windup';
@@ -364,6 +403,17 @@ export class Enemy extends Actor {
         }
         break;
       }
+      case 'aim': {
+        this.faceTowards(player.pos, dt, 6);
+        this.moveHorizontal(dt, 10);
+        if (this.stateT <= 0) {
+          this._loose(player);
+          const R = this.def.ranged;
+          this.attackCooldown = this.rng.range(R.cooldown[0], R.cooldown[1]);
+          this.state = 'chase';
+        }
+        break;
+      }
       case 'block': {
         this.faceTowards(player.pos, dt, 5);
         this.moveHorizontal(dt, 12);
@@ -386,6 +436,7 @@ export class Enemy extends Actor {
       speed,
       attack: this.state === 'windup' ? clamp(this.stateT / .42, 0, 1) * .5 + .5
             : this.state === 'strike' ? clamp(this.stateT / .2, 0, 1) * .5 : 0,
+      aiming: this.state === 'aim',
       block: this.state === 'block' ? 1 : 0,
       stagger: this.state === 'stagger' ? .5 : 0,
       airborne: !this.grounded
@@ -395,6 +446,27 @@ export class Enemy extends Actor {
     if (this.hitFlash > 0) {
       this.root.traverse(o => { if (o.isMesh && o.material.emissive) o.material.emissiveIntensity = 0; });
     }
+  }
+
+  /** Loose an arrow, leading the player's movement a little. */
+  _loose(player) {
+    const R = this.def.ranged;
+    const from = this._chestPos().setY(this.pos.y + this.height * .78);
+    // Aim ahead of where they are going, and up to cover the drop.
+    const lead = tmpV.copy(player.vel ?? new THREE.Vector3()).multiplyScalar(.28);
+    const target = tmpV2.copy(player.pos).add(lead).setY(player.pos.y + 1.1);
+    const dir = target.sub(from).normalize();
+    const dist = this.pos.distanceTo(player.pos);
+    dir.y += dist * 0.006;                     // arc compensation
+    dir.normalize();
+
+    this.game.spawnProjectile({
+      pos: from, dir, speed: R.speed,
+      damage: this.damage, owner: this, fromPlayer: false,
+      kind: this.def.weapon === 'crossbow' ? 'arrow' : 'arrow',
+      itemId: 'knives', drop: 9, radius: .18
+    });
+    this.game.audio.sfxAt('bowShot', this.pos, this.game.listenerPos, 70);
   }
 
   _reach() { return 2.4 * (this.def.scale || 1) + (this.def.weapon === 'spear' ? 1.6 : 0); }
@@ -995,6 +1067,35 @@ export class Projectile {
         V.teleportFlash(this.pos);
         if (this.fromPlayer) this.game.player.teleportTo(this.pos);
         break;
+      case 'frost': {
+        V.explosion(this.pos, this.blastRadius || 8, [.5, .8, 1]);
+        A.sfxAt('bomb', this.pos, this.game.listenerPos, 110, { volume: .7 });
+        const r = this.blastRadius || 8;
+        for (const e of this.game.enemies) {
+          if (e.dead) continue;
+          const d = e.pos.distanceTo(this.pos);
+          if (d < r) {
+            e.takeHit(this.damage * (1 - d / r * .5), this.pos, { canBeBlocked: false, attacker: this.owner });
+            // Frozen in place rather than knocked around.
+            e.state = 'stagger'; e.stateT = 3.2;
+            e.vel.set(0, 0, 0);
+          }
+        }
+        this.destroy();
+        return;
+      }
+      case 'poison': {
+        V.smokeCloud(this.pos, this.blastRadius || 10);
+        V.magicBurst(this.pos, [.48, .85, .29], 60);
+        A.sfxAt('smoke', this.pos, this.game.listenerPos, 90);
+        // A lingering cloud that keeps ticking for eight seconds.
+        this.game.addHazard({
+          pos: this.pos.clone(), radius: this.blastRadius || 10,
+          dps: this.damage * .5, life: 8, owner: this.owner, color: [.48, .85, .29]
+        });
+        this.destroy();
+        return;
+      }
       case 'fire':
       case 'shock':
       default: {

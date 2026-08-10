@@ -230,6 +230,19 @@ async function boot() {
     const firstTime = !d.flags.seenIntro;
     const worldId = d.world || 1;
 
+    // The forge belongs at the start of a run: pick your steel before you
+    // ever hold it. Only on a genuinely new game, and skippable.
+    if (firstTime && !d.flags.forgeDone) {
+      await new Promise(resolve => {
+        screens.edit({
+          firstRun: true,
+          previewMount: makeForgePreview,
+          onBack: () => { d.flags.forgeDone = true; Save.write(true); screens.clear(); resolve(); }
+        });
+      });
+      await wait(650);
+    }
+
     // Restore where they stood, if the save has it and the world matches.
     const spawnPos = (!firstTime && d.pos)
       ? { x: d.pos[0], y: d.pos[1], z: d.pos[2] }

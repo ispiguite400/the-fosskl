@@ -294,17 +294,19 @@ export class Screens {
   /* ==========================================================
      FORGE / EDIT — advanced HSV colour wheel
      ========================================================== */
-  edit({ onBack, previewMount } = {}) {
+  edit({ onBack, previewMount, firstRun = false } = {}) {
     const colors = Save.data.colors;
     let part = 'blade';
 
     const root = el('div', 'screen', `
-      <div class="backbtn">BACK</div>
+      ${firstRun ? '' : '<div class="backbtn">BACK</div>'}
       <div class="wrap">
         <div class="preview"><canvas id="forgeCanvas"></canvas></div>
         <div class="side">
-          <h2>The Forge</h2>
-          <div class="sub">Your chosen colours are applied to every weapon you carry, now and in every world after.</div>
+          <h2>${firstRun ? 'Before You Begin' : 'The Forge'}</h2>
+          <div class="sub">${firstRun
+            ? 'Choose your steel. These colours are applied to every weapon you will ever carry, across all ten worlds. You can come back and change them any time from the main menu.'
+            : 'Your chosen colours are applied to every weapon you carry, now and in every world after.'}</div>
 
           <div class="seg">
             <button data-p="blade" class="on">BLADE / METAL</button>
@@ -330,7 +332,7 @@ export class Screens {
           <div class="panel-h" style="font-size:14px">PRESETS</div>
           <div class="swatches"></div>
 
-          <button class="btn" id="applyBtn">SAVE AND RETURN</button>
+          <button class="btn" id="applyBtn">${firstRun ? 'BEGIN' : 'SAVE AND RETURN'}</button>
           <button class="btn ghost" id="resetBtn">RESET TO DEFAULT</button>
         </div>
       </div>
@@ -454,7 +456,7 @@ export class Screens {
       onBack?.();
     };
     $('#applyBtn', root).addEventListener('click', finish);
-    $('.backbtn', root).addEventListener('click', () => { Audio.sfx('uiBack'); Save.write(true); onBack?.(); });
+    $('.backbtn', root)?.addEventListener('click', () => { Audio.sfx('uiBack'); Save.write(true); onBack?.(); });
     $('#resetBtn', root).addEventListener('click', () => {
       colors.blade = { h: 205, s: .10, l: .78 };
       colors.handle = { h: 18, s: .55, l: .22 };
