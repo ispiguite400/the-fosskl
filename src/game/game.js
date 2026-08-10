@@ -540,6 +540,10 @@ export class Game {
     if (at > 3) { const tmp = inv[0]; inv[0] = inv[at]; inv[at] = tmp; }
     this.player.setEquipped(0);
     Save.write(true);
+    // Holding it is finding it: complete the mission here rather than relying
+    // on the proximity check, so the chain cannot stall if the blade is picked
+    // up from outside the reach radius.
+    if (this.missions.active?.id === 'w1_kontana') this.missions.complete(this.missions.active);
     Audio.sfx('rankUp');
     this.hud.toast('KONTANA — YOU CAN NOW GUARD', true);
     setTimeout(() => this.hud.toast('HOLD RIGHT MOUSE OR L2 TO GUARD'), 2400);
