@@ -6,7 +6,8 @@ instead, **just drop them in this folder** with the names in the table below —
 edit. The first candidate that actually exists is used; anything missing falls
 back to the generated art.
 
-`.jpg`, `.jpeg`, `.png` and `.webp` are all accepted for the two backdrops.
+`.jpg` and `.png` are probed by default for the two backdrops. Any other
+file (`.webp`, a different name) works too — just name it in the manifest.
 
 A manifest entry may be a single filename or a list of candidates:
 

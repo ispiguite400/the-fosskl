@@ -1153,6 +1153,9 @@ export class Game {
       Save.data.colors
     );
     if (this.inventory.open) this.inventory.render();
+    // Co-op player two carries a copy of player one's weapons, so the copy
+    // has to be refreshed every time that hotbar changes.
+    if (this.mode === 'coop') this.player2?.mirrorWeapons(Save.data.inventory);
   }
 
   togglePause() {

@@ -1,6 +1,12 @@
 {
-  "_comment": "Each entry may be a filename or a list of candidates; the first file that actually exists wins, so you can just drop an image in with one of these names and nothing here needs editing. Anything that resolves replaces the generated artwork; anything missing falls back automatically.",
-  "loading": ["loading.jpg", "loading.jpeg", "loading.png", "loading.webp"],
-  "menu": ["menu.jpg", "menu.jpeg", "menu.png", "menu.webp"],
+  "_comment": "Each entry may be a filename or a list of candidates; the first file that actually exists wins, so you can just drop an image in with one of these names and nothing here needs editing. Name any other file explicitly (e.g. \"menu\": \"my-art.webp\"). Anything that resolves replaces the generated artwork; anything missing falls back automatically.",
+  "loading": [
+    "loading.jpg",
+    "loading.png"
+  ],
+  "menu": [
+    "menu.jpg",
+    "menu.png"
+  ],
   "classes": {}
 }

@@ -104,6 +104,25 @@ export class Player {
     this.syncViewModel();
   }
 
+  /** Re-copy player one's four weapon slots into this player's bag. Co-op
+   *  hands player two the same kit, and player one starts world one empty
+   *  handed, so the mirror has to keep working as the run goes on rather
+   *  than being taken once at spawn. Slots 4+ are player two's own. */
+  mirrorWeapons(sourceInv) {
+    if (!this.loadout) return;
+    const inv = this.loadout.inventory;
+    let changed = false;
+    for (let i = 0; i < 4; i++) {
+      const s = sourceInv[i];
+      const mine = inv[i];
+      if (!s && !mine) continue;
+      if (s && mine && s.id === mine.id && s.qty === mine.qty) continue;
+      inv[i] = s ? { id: s.id, qty: s.qty } : null;
+      changed = true;
+    }
+    if (changed) this.syncViewModel();
+  }
+
   /** Kit a player out. Co-op mirrors player one; versus is a fixed duel set. */
   giveLoadout(kind = 'versus') {
     if (!this.loadout) return;
