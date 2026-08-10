@@ -25,9 +25,16 @@ const M = (key, make) => {
 };
 
 export const mat = (color, opts = {}) =>
-  M(`std:${color}:${JSON.stringify(opts)}`, () => new THREE.MeshStandardMaterial({
-    color, roughness: opts.roughness ?? .8, metalness: opts.metalness ?? .05, ...opts
-  }));
+  M(`std:${color}:${JSON.stringify(opts)}`, () => {
+    const m = new THREE.MeshStandardMaterial({
+      color, roughness: opts.roughness ?? .8, metalness: opts.metalness ?? .05, ...opts
+    });
+    // A sliver of self-colour. World one runs at night, and without it every
+    // actor, cart and roof collapses into an unreadable black silhouette the
+    // moment it faces away from the moon.
+    if (opts.emissive === undefined) m.emissive.copy(m.color).multiplyScalar(.10);
+    return m;
+  });
 
 const box = (w, h, d) => G(`box:${w},${h},${d}`, () => new THREE.BoxGeometry(w, h, d));
 const cyl = (rt, rb, h, s = 10) => G(`cyl:${rt},${rb},${h},${s}`, () => new THREE.CylinderGeometry(rt, rb, h, s));
