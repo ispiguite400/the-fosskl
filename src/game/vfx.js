@@ -8,6 +8,8 @@ import * as THREE from 'three';
 import { clamp, lerp, makeRNG } from '../core/util.js';
 
 const MAX = 3000;
+/* Where spent particles go to wait: far below any world. */
+const PARKED = -1e5;
 
 class Pool {
   constructor(scene, { color, size, blending, gravity, drag, fade }) {
@@ -24,20 +26,37 @@ class Pool {
     geo.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
     geo.setAttribute('aAlpha', new THREE.BufferAttribute(this.alpha, 1));
     geo.setAttribute('aScale', new THREE.BufferAttribute(this.scale, 1));
+    for (let i = 0; i < MAX; i++) this.pos[i * 3 + 1] = PARKED;
     geo.setDrawRange(0, 0);
 
     const mat = new THREE.ShaderMaterial({
-      uniforms: { uSize: { value: size } },
+      uniforms: { uSize: { value: size }, uMaxSize: { value: 96 } },
       vertexShader: `
         attribute float aAlpha;
         attribute float aScale;
         uniform float uSize;
+        uniform float uMaxSize;
         varying vec3 vColor;
         varying float vAlpha;
         void main(){
-          vColor = color; vAlpha = aAlpha;
+          vColor = color;
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
-          gl_PointSize = uSize * aScale * (300.0 / -mv.z);
+          // Guard the divide. A particle sitting exactly on the camera gives
+          // -mv.z == 0, and 0.0 * (300.0 / 0.0) is NaN: drivers clamp a NaN
+          // point size to their maximum and smear a full-screen sprite over
+          // the view. Clamping both the depth and the result keeps one stray
+          // particle from whiting out a whole viewport.
+          // gl_PointSize is in framebuffer pixels while uSize is authored
+          // against a 600px-tall view, so a sprite a metre from the camera
+          // asks for thousands of pixels and covers the whole viewport. The
+          // cap is set from the live viewport height each frame.
+          float depth = max(-mv.z, 0.6);
+          gl_PointSize = clamp(uSize * aScale * (300.0 / depth), 0.0, uMaxSize);
+          // Fade out anything sitting on the camera. A burst centred on the
+          // player - a level-up, a heal, a teleport - puts a hundred sprites
+          // at arm's length, and additive blending stacks them into a solid
+          // white screen. Beyond a couple of metres nothing changes.
+          vAlpha = aAlpha * smoothstep(0.5, 2.2, -mv.z);
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: `
@@ -81,7 +100,16 @@ class Pool {
   update(dt) {
     let live = 0;
     for (let i = 0; i < MAX; i++) {
-      if (this.life[i] <= 0) { this.alpha[i] = 0; continue; }
+      if (this.life[i] <= 0) {
+        // Park spent slots far below the world. Left where they died they can
+        // sit exactly where a player spawns, and a sprite on the camera plane
+        // is the one case the vertex shader cannot draw sanely.
+        if (this.alpha[i] !== 0 || this.pos[i * 3 + 1] !== PARKED) {
+          this.alpha[i] = 0; this.scale[i] = 0;
+          this.pos[i * 3] = 0; this.pos[i * 3 + 1] = PARKED; this.pos[i * 3 + 2] = 0;
+        }
+        continue;
+      }
       this.life[i] -= dt;
       const t = clamp(this.life[i] / this.maxLife[i], 0, 1);
       this.alpha[i] = this.fade ? t * t : t;
@@ -99,6 +127,10 @@ class Pool {
     this.geo.attributes.aAlpha.needsUpdate = true;
     this.geo.attributes.aScale.needsUpdate = true;
     return live;
+  }
+
+  setMaxSize(px) {
+    this.points.material.uniforms.uMaxSize.value = px;
   }
 
   dispose() {
@@ -283,7 +315,14 @@ export class VFX {
   }
 
   /* ---------------- per-frame ---------------- */
-  update(dt, camera) {
+  update(dt, camera, viewportPx = 0) {
+    // A sprite may never take more than a quarter of the view, however close
+    // to the camera it happens to sit.
+    if (viewportPx > 0 && viewportPx !== this._viewportPx) {
+      this._viewportPx = viewportPx;
+      const cap = Math.max(16, viewportPx * .26);
+      for (const p of [this.sparks, this.blood, this.smoke, this.wind, this.magic]) p.setMaxSize(cap);
+    }
     this.sparks.update(dt);
     this.blood.update(dt);
     this.smoke.update(dt);

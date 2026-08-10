@@ -196,16 +196,26 @@ export class Player {
     model.position.y = -bb.min.y * s - .06;
     this.viewWeapon.add(model);
 
+    // Glowing weapons (the kontana, the voidblade, the frostblade) carry a
+    // real PointLight for when they are lying in the world or held by an NPC.
+    // Riding inside the camera at a metre's range with inverse-square falloff,
+    // that same light blows the whole viewport to white. Strip the lights out
+    // and let the emissive lift below carry the glow instead.
+    const lights = [];
+    this.viewWeapon.traverse(o => { if (o.isLight) lights.push(o); });
+    for (const l of lights) l.parent?.remove(l);
+
     // View models must not be clipped by the world or cast shadows. They also
     // carry a little of their own colour: at night the scene light alone
     // renders the held weapon as a black silhouette, which hides the colours
     // the player chose in the forge.
+    const glow = lights.length ? .5 : .3;
     this.viewWeapon.traverse(o => {
       if (!o.isMesh) return;
       o.castShadow = false; o.receiveShadow = false; o.renderOrder = 1000;
       if (o.material?.isMeshStandardMaterial) {
         o.material = o.material.clone();
-        const lift = o.material.color.clone().multiplyScalar(.30);
+        const lift = o.material.color.clone().multiplyScalar(glow);
         o.material.emissive.add(lift);
       }
     });

@@ -1053,7 +1053,11 @@ export class Game {
       this._paintStormHUD();
     }
 
-    this.vfx.update(dt, this.cameras[0]);
+    // Split screen halves the viewport, and renderScale shrinks the buffer
+    // again; particle sprites are sized in framebuffer pixels, so they need
+    // to know how tall the view they land in actually is.
+    this.vfx.update(dt, this.cameras[0],
+      this.viewH / (this.mode === 'single' || !this.player2 ? 1 : 2));
     this.missions.update(dt);
     this.tutorial.update(dt);
 
