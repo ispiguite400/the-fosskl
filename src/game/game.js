@@ -18,6 +18,7 @@ import { Props } from '../world/props.js';
 import { VFX } from './vfx.js';
 import { Player } from './player.js';
 import { Missions, Story, Tutorial, GATE_LEVEL } from './missions.js';
+import { Storm } from './storm.js';
 import { Enemy, Boss, NPC, Companion, Animal, Chest, Pickup, Projectile } from '../entities/actors.js';
 import { buildWeapon, buildPickup } from '../entities/models.js';
 import { HUD, SplitHUD } from '../ui/hud.js';
@@ -233,6 +234,7 @@ export class Game {
     for (const p of this.projectiles) p.root?.parent?.remove(p.root);
     this.projectiles.length = 0;
     this.hazards.length = 0;
+    if (this.storm) { this.storm.dispose(); this.storm = null; }
     if (this.companion) { this.companion.dispose(); this.companion = null; }
     this.boss = null;
     this.hud.setBoss(null);
@@ -616,12 +618,38 @@ export class Game {
 
   _versusRespawn(p, offset) {
     if (!p) return;
-    const c = this.props.hubCenter;
-    const pos = new THREE.Vector3(c.x + offset, 0, c.z + (Math.random() - .5) * 10);
+    // Always come back inside the storm, never into the wall.
+    const c = this.storm ? this.storm.center : this.props.hubCenter;
+    const reach = this.storm ? Math.min(Math.abs(offset), this.storm.radius * .55) : Math.abs(offset);
+    const dir = Math.sign(offset) || 1;
+    const pos = new THREE.Vector3(c.x + dir * reach, 0, c.z + (Math.random() - .5) * reach * .6);
     pos.y = this.terrain.heightAt(pos.x, pos.z);
     p.spawnAt(pos, offset < 0 ? Math.PI / 2 : -Math.PI / 2);
     this.vfx.teleportFlash(pos.clone().setY(pos.y + 1));
     Audio.sfx('teleport');
+  }
+
+  _paintStormHUD() {
+    const st = this.storm.status();
+    this._stormEl ??= (() => {
+      const n = el('div');
+      n.id = 'stormhud';
+      document.getElementById('layer-game').appendChild(n);
+      return n;
+    })();
+    const mmss = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    this._stormEl.innerHTML = st.closing
+      ? `<b class="closing">CLOSING</b> <span>${mmss(st.seconds)}</span>`
+      : `<b>PHASE ${st.phase}/${st.phases}</b> <span>${mmss(st.seconds)}</span>`;
+    this._stormEl.classList.toggle('urgent', st.closing);
+
+    // Tell whoever is caught outside how far they have to run.
+    this.splitHUD?.forEach((h, i) => {
+      const p = i === 0 ? this.player : this.player2;
+      if (!p) return;
+      const out = this.storm.distanceOutside(p);
+      h.setStorm(out > 0 ? Math.ceil(out) : 0);
+    });
   }
 
   _paintVersusScore() {
@@ -821,6 +849,8 @@ export class Game {
     this.running = false;
     if (this._vsEl) this._vsEl.style.display = 'none';
     if (this.splitHUD) { this.splitHUD.forEach(h => h.dispose()); this.splitHUD = null; }
+    if (this.storm) { this.storm.dispose(); this.storm = null; }
+    if (this._stormEl) { this._stormEl.remove(); this._stormEl = null; }
     this.hud.show(false);
     Audio.stop();
     Audio.stopRain();
@@ -966,6 +996,10 @@ export class Game {
     }
     if (this.companion) this.companion.update(dt, this.player);
     this._updateHazards(dt);
+    if (this.storm) {
+      this.storm.update(dt, [this.player, this.player2]);
+      this._paintStormHUD();
+    }
 
     this.vfx.update(dt, this.cameras[0]);
     this.missions.update(dt);
@@ -1139,7 +1173,11 @@ export class Game {
     this.player2.spawnAt(new THREE.Vector3(c.x + 8, 0, c.z), -Math.PI / 2);
     this._updateCameraAspects();
 
+    // The closing storm gives a stalling duel a clock.
+    this.storm = new Storm(this, { center: c.clone(), radius: 150 });
+
     this.hud.toast('FIRST TO FIVE FALLS', true);
+    this.hud.toast('THE STORM WILL CLOSE IN');
     this._paintVersusScore();
     this.start('versus');
   }

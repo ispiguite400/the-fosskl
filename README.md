@@ -193,10 +193,20 @@ thing that was ever cast out, and the thing still doing the casting.
 
 From the main menu:
 
-- **Versus** — a duel in a closed arena on horizontal split screen, using the
-  full combat system including guards, launches and the Wind Dash. First to
-  five falls wins; the score sits between the two views and the loser
-  respawns across the arena.
+- **Versus** — a duel on horizontal split screen, using the full combat
+  system including guards, launches and the Wind Dash. First to five falls
+  wins; the score sits between the two views and the loser respawns across
+  the arena.
+
+  **The storm closes in.** A circular safe zone starts 150 m wide and shrinks
+  through seven phases: each holds for a while, then contracts to a smaller
+  circle somewhere inside the last one. A faint blue ring on the ground shows
+  where it is going before it moves. Standing outside the wall costs health,
+  and the bite climbs from 2 to 34 a second as the circle tightens, so a duel
+  that stalls gets decided by the storm instead of by attrition. The readout
+  between the two views gives the phase and the countdown; if you are caught
+  out, your half of the screen tells you how many metres back to safety.
+  Respawns always place you inside the current circle, never in the wall.
 - **Co-op** — the whole campaign, worlds one through ten, two players on
   horizontal split screen. Progress saves to your file.
 

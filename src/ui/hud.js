@@ -282,6 +282,8 @@ export class SplitHUD {
       </div>
       <div class="mini-slots"></div>
       <div class="mini-reticle"></div>
+      <div class="mini-storm"></div>
+      <div class="storm-vig"></div>
     `);
     host.appendChild(this.root);
 
@@ -304,6 +306,16 @@ export class SplitHUD {
   }
 
   setLabel(text) { this.q.name.textContent = text; }
+
+  /** Distance this player must cover to get back inside, 0 if safe. */
+  setStorm(metresOutside) {
+    this._storm ??= $('.mini-storm', this.root);
+    this._stormVig ??= $('.storm-vig', this.root);
+    const caught = metresOutside > 0;
+    this._storm.classList.toggle('on', caught);
+    this._stormVig.classList.toggle('on', caught);
+    if (caught) this._storm.textContent = `IN THE STORM — ${metresOutside} m TO SAFETY`;
+  }
 
   update(player, colors) {
     if (!player) return;
