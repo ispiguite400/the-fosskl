@@ -47,12 +47,15 @@ void main(){
 
   // Denser near the ground and gone well before the top, so the wall never
   // swallows the sky when you are standing in the middle of a wide circle.
-  float vert = pow(smoothstep(0.85, 0.02, vUv.y), 1.6);
+  // NB: smoothstep with edge0 > edge1 is undefined in GLSL and some drivers
+  // return 1.0 everywhere, which turns the wall into an opaque dome that
+  // swallows the whole sky. Write the descending ramp explicitly.
+  float vert = pow(1.0 - smoothstep(0.02, 0.85, vUv.y), 1.6);
   float band = 0.45 + 0.55 * n;
   float a = band * vert * uIntensity;
 
   // Hot leading edge where the wall meets the ground.
-  a += smoothstep(0.14, 0.0, vUv.y) * 0.5 * uIntensity;
+  a += (1.0 - smoothstep(0.0, 0.14, vUv.y)) * 0.5 * uIntensity;
 
   vec3 col = uColor * (0.55 + n * 0.55);
   // Filaments running up the surface — kept subtle, because a cylinder

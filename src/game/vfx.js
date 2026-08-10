@@ -48,7 +48,9 @@ class Pool {
           vec2 c = gl_PointCoord - 0.5;
           float d = length(c);
           if (d > 0.5) discard;
-          float a = vAlpha * smoothstep(0.5, 0.12, d);
+          // Descending ramp written out: smoothstep(edge0 > edge1) is
+          // undefined in GLSL and some drivers return 1.0 flat.
+          float a = vAlpha * (1.0 - smoothstep(0.12, 0.5, d));
           gl_FragColor = vec4(vColor, a);
         }`,
       vertexColors: true, transparent: true, depthWrite: false,
