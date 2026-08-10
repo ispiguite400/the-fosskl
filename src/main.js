@@ -14,7 +14,7 @@ import { Input } from './core/input.js';
 import { Screens } from './ui/screens.js';
 import { Game } from './game/game.js';
 import { TIPS } from './data/gamedata.js';
-import { loadingArt, menuArt, classArt } from './art/art.js';
+import { loadingArt, menuArt, classArt, loadArtManifest } from './art/art.js';
 import { buildWeapon } from './entities/models.js';
 import { wait } from './core/util.js';
 
@@ -151,6 +151,7 @@ async function boot() {
 
   // Real work drives the bar: art generation is genuinely the slow part.
   const steps = [
+    ['Reading custom artwork', () => loadArtManifest()],
     ['Painting the ridgeline', () => loadingArt()],
     ['Painting the charge', () => menuArt()],
     ['Waking the classes', () => { ['shrine', 'bamboo', 'temple'].forEach(n => classArt(n)); }],

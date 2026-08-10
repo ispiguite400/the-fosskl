@@ -230,10 +230,10 @@ holds at 100% until you press a key or a face button.
 ### Artwork
 
 `art/art.js` paints the loading backdrop, the main-menu charge, the ten class
-panels and every item icon into canvases at load time. If you would rather use
-your own images, drop them at `assets/images/loading.jpg` and
-`assets/images/menu.jpg` — they are picked up automatically, and the generated
-art is the fallback.
+panels and every item icon into canvases at load time. To use your own images
+instead, drop them in `assets/images/` and name them in
+`assets/images/manifest.json`; anything you do not list keeps the generated
+art. See the README in that folder.
 
 ---
 

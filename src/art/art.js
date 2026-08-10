@@ -9,11 +9,26 @@
 
 import { makeRNG, clamp, lerp, fbm, hsl2hex } from '../core/util.js';
 
-/** Optional user overrides. Drop files with these names to replace the art. */
-export const ART_FILES = {
-  loading: 'assets/images/loading.jpg',
-  menu:    'assets/images/menu.jpg'
-};
+/* Optional user artwork. assets/images/manifest.json names any files that
+ * should replace the generated art. Reading a manifest rather than probing
+ * for each file keeps the console free of 404s on a default checkout. */
+export const ART_FILES = { loading: null, menu: null, classes: {} };
+
+export async function loadArtManifest(base = 'assets/images/') {
+  try {
+    const res = await fetch(base + 'manifest.json', { cache: 'no-cache' });
+    if (!res.ok) return ART_FILES;
+    const m = await res.json();
+    if (m.loading) ART_FILES.loading = base + m.loading;
+    if (m.menu) ART_FILES.menu = base + m.menu;
+    for (const [k, v] of Object.entries(m.classes || {})) {
+      if (v) ART_FILES.classes[k] = base + v;
+    }
+  } catch {
+    // No manifest, or it is malformed: the generated art is the answer.
+  }
+  return ART_FILES;
+}
 
 const cache = new Map();
 
@@ -23,16 +38,10 @@ function canvas(w, h) {
   return c;
 }
 
-/** Try a real image first; fall back to the generator. */
-export function resolveArt(key, generator, w, h) {
-  const file = ART_FILES[key];
-  if (!file) return Promise.resolve(get(key, generator, w, h));
-  return new Promise(res => {
-    const img = new Image();
-    img.onload = () => res(file);
-    img.onerror = () => res(get(key, generator, w, h));
-    img.src = file;
-  });
+/** A CSS background-image value: the optional override on top of the
+ *  generated fallback. A missing override simply paints nothing. */
+export function layered(url, override) {
+  return override ? `url('${override}'), url('${url}')` : `url('${url}')`;
 }
 
 export function get(key, generator, w = 1920, h = 1080) {
@@ -670,6 +679,11 @@ export function classArt(name, w = 520, h = 1200) {
 
 export const loadingArt = () => get('loading', paintLoading, 1920, 1080);
 export const menuArt = () => get('menu', paintMenu, 1920, 1080);
+
+/** Ready-to-use CSS background values, override-aware. */
+export const loadingBG = () => layered(loadingArt(), ART_FILES.loading);
+export const menuBG = () => layered(menuArt(), ART_FILES.menu);
+export const classBG = name => layered(classArt(name), ART_FILES.classes[name]);
 
 /* ============================================================
    GEAR MOTIF for the main menu (SVG string, crisp at any size)

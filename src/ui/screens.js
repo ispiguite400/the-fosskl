@@ -7,7 +7,7 @@ import { Audio } from '../core/audio.js';
 import { Save } from '../core/save.js';
 import { MenuNav } from '../core/input.js';
 import { CLASSES, TIPS, WORLDS, classById } from '../data/gamedata.js';
-import { loadingArt, menuArt, classArt, gearsSVG, clearIconCache } from '../art/art.js';
+import { loadingBG, menuBG, classBG, gearsSVG, clearIconCache } from '../art/art.js';
 
 const HOST = () => document.getElementById('layer-screens');
 
@@ -61,7 +61,7 @@ export class Screens {
      ========================================================== */
   loading({ tip = TIPS[0], onDone } = {}) {
     const root = el('div', 'screen', `
-      <div class="bg kenburns" style="background-image:url('${loadingArt()}')"></div>
+      <div class="bg kenburns" style="background-image:${loadingBG()}"></div>
       <div class="vignette"></div>
       <div class="ring-wrap">
         <svg viewBox="0 0 74 74">
@@ -121,7 +121,7 @@ export class Screens {
     }
 
     const root = el('div', 'screen', `
-      <div class="bg kenburns" style="background-image:url('${menuArt()}')"></div>
+      <div class="bg kenburns" style="background-image:${menuBG()}"></div>
       <div class="vignette"></div>
       <div class="gears">${gearsSVG()}</div>
       <div class="title">
@@ -221,7 +221,7 @@ export class Screens {
       list.slice(from, from + PER_PAGE).forEach((c, j) => {
         const i = from + j;
         const p = el('div', 'cpanel' + (c.unlocked ? '' : ' locked'), `
-          <div class="art" style="background-image:url('${classArt(c.art)}')"></div>
+          <div class="art" style="background-image:${classBG(c.art)}"></div>
           <div class="shade"></div>
           <div class="lore">${c.unlocked ? c.lore : 'Sealed'}</div>
           ${c.unlocked ? `<div class="stats">
@@ -496,7 +496,7 @@ export class Screens {
   multiplayer({ onBack, onVersus, onCoop }) {
     const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean).length : 0;
     const root = el('div', 'screen', `
-      <div class="bg kenburns" style="background-image:url('${menuArt()}')"></div>
+      <div class="bg kenburns" style="background-image:${menuBG()}"></div>
       <div class="vignette"></div>
       <div class="backbtn">BACK</div>
       <div class="panel">
@@ -579,7 +579,7 @@ export class Screens {
   settings({ onBack, onApply }) {
     const s = Save.settings;
     const root = el('div', 'screen', `
-      <div class="bg kenburns" style="background-image:url('${menuArt()}')"></div>
+      <div class="bg kenburns" style="background-image:${menuBG()}"></div>
       <div class="vignette"></div>
       <div class="backbtn">BACK</div>
       <div class="panel">
