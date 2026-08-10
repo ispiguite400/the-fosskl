@@ -32,7 +32,7 @@ export class Missions {
       this.list = [
         {
           id: 'w1_clear', title: 'MISSION', desc: 'Cut down the soldiers in the village',
-          count: 6, progress: 0, kind: 'kill',
+          count: 35, progress: 0, kind: 'kill',
           hint: 'Left click or R2 to swing. They guard about four hits in ten.'
         },
         {
@@ -446,6 +446,8 @@ const STEPS = [
     done: g => g._tut.enemiesHit >= 2, when: g => g._tut.swings >= 3 },
   { id: 'kill',    text: 'Strike from behind for bonus damage and experience',
     done: g => Save.data.kills >= 1, when: g => g._tut.enemiesHit >= 1 },
+  { id: 'allies',  text: 'The knights in blue are with you — fight beside them',
+    done: g => g._tut.sawAlly > 4, when: g => g._tut.sawAlly > 0 },
   { id: 'slots',   text: '1-4 or the shoulder buttons swap weapons · TAB opens your inventory',
     done: g => g._tut.swappedSlot || g._tut.openedInv, when: g => Save.data.kills >= 2 },
   { id: 'block',   text: 'Hold RIGHT CLICK or L2 to guard. Guarding drains power, and empty power costs health',
@@ -465,7 +467,7 @@ export class Tutorial {
     game._tut = {
       looked: 0, moved: 0, sprinted: 0, blocked: 0,
       swings: 0, enemiesHit: 0, dashes: 0, dashHits: 0,
-      swappedSlot: false, openedInv: false
+      swappedSlot: false, openedInv: false, sawAlly: 0
     };
     this._node = null;
   }
@@ -501,6 +503,8 @@ export class Tutorial {
     if (inp.justPressed('slot2') || inp.justPressed('slot3') ||
         inp.justPressed('slot4') || inp.justPressed('nextSlot')) t.swappedSlot = true;
     if (g.inventory.open) t.openedInv = true;
+    // Count time spent near a friendly knight.
+    if (g.allies?.some(a => !a.dead && a.pos.distanceTo(p.pos) < 22)) t.sawAlly += dt;
 
     /* --- pick the next unfinished step --- */
     if (this.active && this.active.done(g)) {

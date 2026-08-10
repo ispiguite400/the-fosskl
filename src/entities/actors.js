@@ -294,6 +294,18 @@ export class Enemy extends Actor {
     this.hitFlash = Math.max(0, this.hitFlash - dt);
     this.smokeBlind = Math.max(0, this.smokeBlind - dt);
 
+    // Friendly knights are valid targets. Prefer whichever is closer, but
+    // bias slightly toward the player so fights still come to them.
+    this._foeT = (this._foeT ?? 0) - dt;
+    if (this._foeT <= 0) {
+      this._foeT = .7;
+      const ally = this.game.nearestAlly?.(this.pos, 34);
+      this.foe = (ally && ally.pos.distanceTo(this.pos) < player.pos.distanceTo(this.pos) * .8)
+        ? ally : null;
+    }
+    if (this.foe && (this.foe.dead || this.foe.pos.distanceTo(this.pos) > 46)) this.foe = null;
+    if (this.foe) player = this.foe;
+
     if (this.dead) {
       this.deadT += dt;
       this.applyGravity(dt);
@@ -1126,5 +1138,243 @@ export class Projectile {
   destroy() {
     this.remove = true;
     this.root.parent?.remove(this.root);
+  }
+}
+
+/* ============================================================
+   ALLY — knights who fight on your side.
+   Same chassis as an enemy, opposite allegiance: they pick their
+   own targets, guard, take hits, and fall back to the player when
+   there is nothing left to kill.
+   ============================================================ */
+export class Ally extends Actor {
+  constructor(game, pos, kind = 'knight', levelScale = 1) {
+    super(game, pos);
+    const DEFS = {
+      knight:  { name: 'Knight',    hp: 150, damage: 16, speed: 4.4, weapon: 'sword',  armor: .3,  scale: 1.04,
+                 look: { cloth: 0x2a3a6a, armor: 0x8f9fbf, accent: 0x3f7ad8 } },
+      captain: { name: 'Captain',   hp: 260, damage: 26, speed: 4.6, weapon: 'odachi', armor: .38, scale: 1.12,
+                 look: { cloth: 0x1f2a52, armor: 0xb0c0dc, accent: 0x6faaff } },
+      bowman:  { name: 'Bowman',    hp: 110, damage: 15, speed: 4.2, weapon: 'bow',    armor: .12, scale: .99,
+                 look: { cloth: 0x2f4a5a, armor: 0x6a8aa8, accent: 0x4fc0e0 },
+                 ranged: { range: 40, keepAway: 14, speed: 58, cooldown: [1.6, 2.8] } }
+    };
+    const def = DEFS[kind] || DEFS.knight;
+    this.def = def;
+    this.kind = kind;
+    this.name = def.name;
+    this.isAlly = true;
+    this.rng = makeRNG((Math.random() * 0xffffffff) >>> 0);
+
+    this.hpMax = Math.round(def.hp * levelScale);
+    this.hp = this.hpMax;
+    this.damage = def.damage * levelScale;
+    this.speed = def.speed;
+    this.armor = def.armor;
+    this.blockChance = .35;
+    this.radius = .55 * def.scale;
+
+    const built = buildHumanoid({
+      scale: def.scale, ...def.look, helmet: true, heavy: def.armor > .3
+    });
+    this.root = built.root;
+    this.rig = built.rig;
+    this.height = built.height;
+    this.pos.y = this.groundY();
+    this.root.position.copy(this.pos);
+    game.scene.add(this.root);
+
+    if (def.weapon && def.weapon !== 'fist') {
+      this.weapon = buildWeapon(def.weapon, { blade: { h: 205, s: .2, l: .8 }, handle: { h: 220, s: .4, l: .25 } });
+      this.weapon.scale.setScalar(.9);
+      this.weapon.rotation.x = -Math.PI / 2;
+      this.rig.armR.hand.add(this.weapon);
+    }
+    // A pale banner so they read as friendly at a glance in a night fight.
+    const mark = new THREE.Mesh(
+      new THREE.SphereGeometry(.11, 8, 6),
+      new THREE.MeshBasicMaterial({ color: 0x6fc4ff, transparent: true, opacity: .85 })
+    );
+    mark.position.y = this.height + .42;
+    this.root.add(mark);
+    this._mark = mark;
+    const glow = new THREE.PointLight(0x4f9fff, 1.1, 7, 2);
+    glow.position.y = this.height + .4;
+    this.root.add(glow);
+
+    this.state = 'idle';
+    this.t = 0; this.stateT = 0;
+    this.attackCooldown = this.rng.range(.3, 1.4);
+    this.target = null;
+    this.deadT = 0;
+    this.home = this.pos.clone();
+  }
+
+  /** Allies are hit by enemies exactly the way the player is. */
+  takeHit(amount, fromPos, { canBeBlocked = true, attacker = null } = {}) {
+    if (this.dead) return 'dead';
+    if (canBeBlocked && this.rng.chance(this.blockChance)) {
+      this.state = 'block'; this.stateT = .4;
+      this.game.audio.sfxAt('block', this.pos, this.game.listenerPos, 55);
+      return 'blocked';
+    }
+    const dmg = Math.max(1, amount * (1 - this.armor));
+    this.hp -= dmg;
+    this.game.vfx.bloodBurst(this._chestPos(), tmpV.copy(this.pos).sub(fromPos).normalize());
+    this.game.audio.sfxAt('hitFlesh', this.pos, this.game.listenerPos, 55, { volume: .6 });
+    tmpV.copy(this.pos).sub(fromPos).setY(0).normalize().multiplyScalar(3.5);
+    this.vel.add(tmpV);
+    if (this.hp <= 0) { this.die(); return 'killed'; }
+    this.state = 'stagger'; this.stateT = .25;
+    return 'hit';
+  }
+
+  die() {
+    if (this.dead) return;
+    this.dead = true; this.deadT = 0;
+    this.game.audio.sfxAt('death', this.pos, this.game.listenerPos, 70, { volume: .35 });
+    this.game.hud?.toast(`${this.name.toUpperCase()} HAS FALLEN`);
+    if (this._mark) this._mark.visible = false;
+  }
+
+  _chestPos() { return tmpV2.set(this.pos.x, this.pos.y + this.height * .62, this.pos.z).clone(); }
+  _headPos()  { return tmpV2.set(this.pos.x, this.pos.y + this.height * 1.02, this.pos.z).clone(); }
+  _reach() { return 2.5 * this.def.scale; }
+
+  /** Closest living enemy worth walking to. */
+  _pickTarget() {
+    let best = null, bd = 60;
+    for (const e of this.game.enemies) {
+      if (e.dead) continue;
+      const d = e.pos.distanceTo(this.pos);
+      if (d < bd) { bd = d; best = e; }
+    }
+    return best;
+  }
+
+  update(dt, player) {
+    this.t += dt;
+    this.stateT -= dt;
+    this.attackCooldown -= dt;
+
+    if (this.dead) {
+      this.deadT += dt;
+      this.applyGravity(dt);
+      this.moveHorizontal(dt, 5);
+      this.root.position.copy(this.pos);
+      this.root.rotation.y = this.yaw;
+      poseHumanoid(this.rig, this.t, { dead: this.deadT / .6 });
+      if (this.deadT > 6) this.remove = true;
+      return;
+    }
+
+    // Re-target periodically rather than every frame.
+    this._retarget = (this._retarget ?? 0) - dt;
+    if (this._retarget <= 0 || !this.target || this.target.dead) {
+      this.target = this._pickTarget();
+      this._retarget = .8;
+    }
+
+    const R = this.def.ranged;
+
+    if (!this.target) {
+      // Nothing to fight: regroup on the player, but keep out of their way.
+      const d = this.pos.distanceTo(player.pos);
+      if (d > 9) this._walkTo(player.pos, dt, this.speed * .9);
+      else { this.faceTowards(player.pos, dt, 3); this.moveHorizontal(dt, 6); }
+      this.state = 'idle';
+    } else if (R) {
+      const d = this.pos.distanceTo(this.target.pos);
+      if (d < R.keepAway) {
+        tmpV2.copy(this.pos).sub(this.target.pos).setY(0).normalize();
+        this.vel.x += tmpV2.x * this.speed * dt * 8;
+        this.vel.z += tmpV2.z * this.speed * dt * 8;
+        this.moveHorizontal(dt);
+      } else if (d > R.range) {
+        this._walkTo(this.target.pos, dt, this.speed);
+      } else {
+        this.faceTowards(this.target.pos, dt, 6);
+        this.moveHorizontal(dt, 10);
+        if (this.attackCooldown <= 0) { this.state = 'aim'; this.stateT = .5; }
+      }
+      if (this.state === 'aim' && this.stateT <= 0) {
+        this._loose(this.target);
+        this.attackCooldown = this.rng.range(R.cooldown[0], R.cooldown[1]);
+        this.state = 'idle';
+      }
+    } else {
+      const d = this.pos.distanceTo(this.target.pos);
+      this.faceTowards(this.target.pos, dt);
+      if (this.state === 'strike') {
+        this.moveHorizontal(dt, 12);
+        if (!this._struck && this.stateT < .12) {
+          this._struck = true;
+          if (this.pos.distanceTo(this.target.pos) < this._reach() + .9) {
+            const res = this.target.takeHit(this.damage, this.pos, { attacker: this });
+            if (res !== 'blocked') {
+              this.game.vfx.damageNumber(this.target._headPos?.() ?? this.target.pos, this.damage);
+            }
+          }
+          this.game.vfx.slash(
+            this._chestPos().add(tmpV.set(Math.sin(this.yaw), 0, Math.cos(this.yaw)).multiplyScalar(1.1)),
+            new THREE.Quaternion().setFromEuler(new THREE.Euler(0, this.yaw, this.t)), 1.5, 0x9fd0ff);
+        }
+        if (this.stateT <= 0) { this.state = 'idle'; this.attackCooldown = this.rng.range(.7, 1.5); }
+      } else if (this.state === 'windup') {
+        this.moveHorizontal(dt, 12);
+        if (this.stateT <= 0) { this.state = 'strike'; this.stateT = .2; this._struck = false; }
+      } else if (this.state === 'block' || this.state === 'stagger') {
+        this.moveHorizontal(dt, 8);
+        if (this.stateT <= 0) this.state = 'idle';
+      } else if (d < this._reach() && this.attackCooldown <= 0) {
+        this.state = 'windup'; this.stateT = .38;
+        this.game.audio.sfxAt('swing', this.pos, this.game.listenerPos, 45, { volume: .45, delay: .28 });
+      } else {
+        this._walkTo(this.target.pos, dt, this.speed);
+      }
+    }
+
+    this.applyGravity(dt);
+    this.root.position.copy(this.pos);
+    this.root.rotation.y = this.yaw;
+
+    const speed = Math.hypot(this.vel.x, this.vel.z);
+    poseHumanoid(this.rig, this.t, {
+      speed,
+      attack: this.state === 'windup' ? clamp(this.stateT / .38, 0, 1) * .5 + .5
+            : this.state === 'strike' ? clamp(this.stateT / .2, 0, 1) * .5 : 0,
+      block: this.state === 'block' ? 1 : 0,
+      stagger: this.state === 'stagger' ? .5 : 0,
+      aiming: this.state === 'aim',
+      airborne: !this.grounded
+    });
+    if (this._mark) this._mark.position.y = this.height + .42 + Math.sin(this.t * 2) * .05;
+  }
+
+  _loose(target) {
+    const R = this.def.ranged;
+    const from = this._chestPos().setY(this.pos.y + this.height * .78);
+    const to = tmpV2.copy(target.pos).setY(target.pos.y + target.height * .6);
+    const dir = to.sub(from).normalize();
+    dir.y += this.pos.distanceTo(target.pos) * .006;
+    dir.normalize();
+    this.game.spawnProjectile({
+      pos: from, dir, speed: R.speed, damage: this.damage,
+      owner: this, fromPlayer: true,          // friendly fire hits enemies
+      kind: 'arrow', itemId: 'knives', drop: 9, radius: .18
+    });
+    this.game.audio.sfxAt('bowShot', this.pos, this.game.listenerPos, 60, { volume: .6 });
+  }
+
+  _walkTo(target, dt, speed) {
+    tmpV2.set(target.x - this.pos.x, 0, target.z - this.pos.z);
+    if (tmpV2.length() < .3) return;
+    tmpV2.normalize();
+    this.vel.x += tmpV2.x * speed * dt * 9;
+    this.vel.z += tmpV2.z * speed * dt * 9;
+    const s = Math.hypot(this.vel.x, this.vel.z);
+    if (s > speed) { this.vel.x *= speed / s; this.vel.z *= speed / s; }
+    this.faceTowards(target, dt);
+    this.moveHorizontal(dt, 3);
   }
 }

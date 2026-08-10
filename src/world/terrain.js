@@ -14,7 +14,12 @@ const LOD_SEGMENTS = [32, 16, 8, 4];     // vertices per chunk edge by ring
 
 /* Per-theme shaping. amp = metres of relief, freq = feature size. */
 const SHAPE = {
-  ruins:     { amp: 26,  freq: .0016, ridged: .15, plateau: .55, cliff: .1 },
+  // The village sits in a flat basin; everything beyond it climbs into
+  // real hills and mountains you can walk up.
+  // Rolling ground through the village, climbing into real hills and
+  // mountains beyond it. `keep` is how much relief survives in the middle.
+  ruins:     { amp: 185, freq: .0011, ridged: .70, plateau: .22, cliff: .4,
+               basin: { inner: 190, outer: 820, level: 0, keep: .26 } },
   grassland: { amp: 42,  freq: .0011, ridged: .10, plateau: .35, cliff: .05 },
   forest:    { amp: 58,  freq: .0014, ridged: .25, plateau: .25, cliff: .12 },
   desert:    { amp: 48,  freq: .0009, ridged: .05, plateau: .15, cliff: .04, dunes: 1 },
@@ -87,6 +92,15 @@ export class Terrain {
       const mask = fbm(nx * .5 + 40, nz * .5 - 20, 3);
       const inside = smooth(clamp((mask - .02) * 6, 0, 1));
       y = y * inside + (1 - inside) * -220;
+    }
+
+    // Flatten a basin so a settlement has somewhere coherent to stand,
+    // then let the ground climb away from it in every direction.
+    if (S.basin) {
+      const bd = Math.hypot(x, z);
+      const k = smooth(clamp((bd - S.basin.inner) / (S.basin.outer - S.basin.inner), 0, 1));
+      // `keep` is how much of the natural relief survives in the middle.
+      y = lerp(S.basin.level + y * (S.basin.keep ?? .1), y, k);
     }
 
     // Bowl the outer rim so the player is funnelled back in.
@@ -272,19 +286,20 @@ export class Terrain {
 
   _buildGrass() {
     const density = this.world.density?.grass ?? 0;
-    if (density <= 0 || this.quality === 'low') { this.grass = null; return; }
+    // Low quality gets thinner, shorter grass — never a bald world.
+    if (density <= 0) { this.grass = null; return; }
 
-    const count = Math.floor(({ medium: 14000, high: 34000, ultra: 60000 }[this.quality] ?? 34000) * clamp(density, .4, 1.6));
+    const count = Math.floor(({ low: 9000, medium: 22000, high: 52000, ultra: 90000 }[this.quality] ?? 52000) * clamp(density, .5, 1.6));
     this.grassCount = count;
     // Tighter radius, same instance budget: a dense carpet underfoot that
     // fades into the terrain colour rather than sparse spikes to the horizon.
-    this.grassRadius = { medium: 34, high: 48, ultra: 66 }[this.quality] ?? 48;
+    this.grassRadius = { low: 30, medium: 46, high: 68, ultra: 92 }[this.quality] ?? 68;
 
     // A single blade: two crossed quads tapering to a point.
     const blade = new THREE.BufferGeometry();
     // A single blade is ~55cm tall and 5cm wide at the base; anything larger
     // reads as scenery rather than ground cover.
-    const H = .5, W = .034;
+    const H = .95, W = .055;
     const verts = [], uvs = [], idx = [];
     for (let k = 0; k < 2; k++) {
       const a = k * Math.PI / 2;
@@ -305,7 +320,7 @@ export class Terrain {
       transparent: true, alphaTest: .35,
       // Blades are near-vertical, so a low sun would otherwise render them
       // as black slivers. A touch of self-colour keeps them readable.
-      emissive: grassColor.clone().multiplyScalar(.10)
+      emissive: grassColor.clone().multiplyScalar(.16)
     });
     // Wind sway, applied in the vertex shader so 40k blades stay cheap.
     mat.onBeforeCompile = shader => {
@@ -355,10 +370,10 @@ export class Terrain {
 
       // Hide blades on cliffs, under water, or where the biome is bare.
       const patch = fbm(x * .05, z * .05, 2) * .5 + .5;
-      const ok = slope < .38 && patch < density * .75 &&
+      const ok = slope < .62 && patch < clamp(density, .35, 1) * 1.2 &&
                  (!this.world.water || y > (this.world.waterLevel || 0) + .5) &&
                  y > -100;
-      const h = ok ? (.7 + rng() * .8) * (this.world.theme === 'savanna' ? 2.4 : 1) : 0;
+      const h = ok ? (.85 + rng() * .95) * (this.world.theme === 'savanna' ? 2.2 : 1) : 0;
 
       pos.set(x, y, z);
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rng() * Math.PI);

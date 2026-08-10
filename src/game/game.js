@@ -19,7 +19,7 @@ import { VFX } from './vfx.js';
 import { Player } from './player.js';
 import { Missions, Story, Tutorial, GATE_LEVEL } from './missions.js';
 import { Storm } from './storm.js';
-import { Enemy, Boss, NPC, Companion, Animal, Chest, Pickup, Projectile } from '../entities/actors.js';
+import { Enemy, Boss, NPC, Companion, Animal, Chest, Pickup, Projectile, Ally } from '../entities/actors.js';
 import { buildWeapon, buildPickup } from '../entities/models.js';
 import { HUD, SplitHUD } from '../ui/hud.js';
 import { InventoryUI, addItem, removeItem, countItem, hasSpace } from '../ui/inventory.js';
@@ -52,6 +52,7 @@ export class Game {
     this.pickups = [];
     this.projectiles = [];
     this.hazards = [];        // lingering area effects (poison clouds)
+    this.allies = [];         // knights fighting on your side
     this.companion = null;
     this.boss = null;
 
@@ -227,7 +228,7 @@ export class Game {
   }
 
   _teardownWorld() {
-    for (const list of [this.enemies, this.npcs, this.animals, this.chests, this.pickups]) {
+    for (const list of [this.enemies, this.npcs, this.animals, this.chests, this.pickups, this.allies]) {
       for (const a of list) a.dispose?.();
       list.length = 0;
     }
@@ -301,8 +302,13 @@ export class Game {
     }
 
     /* --- roaming enemies --- */
-    const target = world.tutorial ? 14 : 26;
+    const target = world.tutorial ? 30 : 26;
     for (let i = 0; i < target; i++) this._spawnRoamer(true);
+
+    /* --- friendly knights: world one is a battle, not an ambush --- */
+    if (world.tutorial) {
+      for (let i = 0; i < 9; i++) this._spawnAlly(true);
+    }
 
     /* --- the world 1 kontana --- */
     if (world.id === 1 && !Save.data.flags.kontanaFound) {
@@ -410,6 +416,37 @@ export class Game {
     const e = new Enemy(this, pos, rng.pick(types), this.enemyLevelScale);
     this.enemies.push(e);
     return e;
+  }
+
+  /** Put a friendly knight into the fight near the player. */
+  _spawnAlly(initial = false) {
+    if (this.allies.length >= 12) return null;
+    const rng = this.rng;
+    const base = initial ? this.props.hubCenter : this.player.pos;
+    for (let i = 0; i < 24; i++) {
+      const a = rng() * 6.28;
+      const r = initial ? rng.range(20, 120) : rng.range(30, 70);
+      const x = base.x + Math.cos(a) * r, z = base.z + Math.sin(a) * r;
+      if (Math.max(Math.abs(x), Math.abs(z)) > this.terrain.half - 60) continue;
+      if (!this.terrain.isFlatGround(x, z, .4)) continue;
+      const kind = rng.chance(.18) ? 'captain' : rng.chance(.3) ? 'bowman' : 'knight';
+      const p = new THREE.Vector3(x, this.terrain.heightAt(x, z), z);
+      const ally = new Ally(this, p, kind, this.enemyLevelScale);
+      this.allies.push(ally);
+      return ally;
+    }
+    return null;
+  }
+
+  /** Nearest living ally, so enemies have someone else to swing at. */
+  nearestAlly(pos, maxDist = 40) {
+    let best = null, bd = maxDist;
+    for (const a of this.allies) {
+      if (a.dead) continue;
+      const d = a.pos.distanceTo(pos);
+      if (d < bd) { bd = d; best = a; }
+    }
+    return best;
   }
 
   spawnEnemy(pos, typeId) {
@@ -981,6 +1018,21 @@ export class Game {
       e.update(dt, this._closestPlayer(e.pos));
       if (e.remove) { e.dispose(); this.enemies.splice(i, 1); }
     }
+    for (let i = this.allies.length - 1; i >= 0; i--) {
+      const a = this.allies[i];
+      a.update(dt, this.player);
+      if (a.remove) { a.dispose(); this.allies.splice(i, 1); }
+    }
+    // Reinforcements, so the line does not simply evaporate.
+    if (this.world.tutorial) {
+      this._allyT = (this._allyT ?? 0) - dt;
+      if (this._allyT <= 0) {
+        const alive = this.allies.filter(a => !a.dead).length;
+        if (alive < 7) this._spawnAlly(false);
+        this._allyT = 6;
+      }
+    }
+
     for (const n of this.npcs) n.update(dt, this.player);
     for (const a of this.animals) a.update(dt, this.player);
     for (const c of this.chests) if (c.pos.distanceTo(this.player.pos) < 120) c.update(dt);

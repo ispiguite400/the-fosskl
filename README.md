@@ -147,7 +147,7 @@ every class — and triple damage as an Assassin.
 
 | # | Name | Theme |
 |---|---|---|
-| 1 | Ashen Village · 灰の里 | A destroyed village mid-war, held at sunset. Tutorial, no hub. |
+| 1 | Ashen Village · 灰の里 | A destroyed village mid-war, at night. Tutorial, no hub. |
 | 2 | Verdant Reach · 緑の果て | Grassland |
 | 3 | Everdark Wood · 常闇の森 | Forest and bamboo |
 | 4 | Sunless Waste · 陽無き荒野 | Desert |
@@ -161,7 +161,12 @@ every class — and triple damage as an Assassin.
 World one is a whole burnt town, not a handful of huts: seven streets of
 houses radiating from a fallen shrine, wells, wrecked carts, barricades,
 graves, torn banners, spears left where they landed, and a breached palisade
-with watchtowers around the edge. It is held at golden hour so the smoke reads.
+with watchtowers around the edge. It is fought at night under a full star
+field, lit by moonlight, braziers and stone lanterns, and it sits in rolling
+country that climbs into real hills and mountains you can walk up and fight
+on. Thirty-five soldiers hold it — and you are not alone: a warband of allied
+knights, captains and bowmen fights beside you, picks its own targets, and
+takes reinforcements when it thins out.
 Every other world scatters wells, shrines, statues, fences, watchtowers and
 small hamlets between its landmarks.
 

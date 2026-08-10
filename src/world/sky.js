@@ -142,6 +142,22 @@ export class Sky {
     scene.add(this.sun);
     scene.add(this.sun.target);
 
+    /* Moonlight is its own key light rather than a bump to the ambient —
+     * it casts shadows, so a night world still has shape and direction. */
+    const moon = world.moon || { intensity: .85, color: 0x93a9d8 };
+    this.moon = new THREE.DirectionalLight(moon.color, 0);
+    this.moonBase = moon.intensity;
+    this.moon.castShadow = true;
+    this.moon.shadow.mapSize.set(this.sun.shadow.mapSize.x, this.sun.shadow.mapSize.y);
+    // Copy the frustum bounds only — Object3D.position is read-only, so a
+    // blanket Object.assign of the camera throws.
+    Object.assign(this.moon.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 1, far: 600 });
+    this.moon.shadow.camera.updateProjectionMatrix();
+    this.moon.shadow.bias = -0.0003;
+    this.moon.shadow.normalBias = .03;
+    scene.add(this.moon);
+    scene.add(this.moon.target);
+
     this.hemi = new THREE.HemisphereLight(p.sky, p.ground, .45);
     scene.add(this.hemi);
 
@@ -190,8 +206,9 @@ export class Sky {
   }
 
   _baseFog() {
-    return { ruins: .0045, forest: .0038, snow: .0032, desert: .0016,
-             ocean: .0018, sky: .0020, kingdom: .0024 }[this.world.theme] ?? .0021;
+    // Low enough that hills a kilometre out are still visible.
+    return { ruins: .0013, forest: .0030, snow: .0026, desert: .0014,
+             ocean: .0016, sky: .0018, kingdom: .0016 }[this.world.theme] ?? .0018;
   }
 
   /* ---------------- clouds ---------------- */
@@ -368,16 +385,31 @@ export class Sky {
     }
 
     // Sky fill only — kept low so cast shadows stay dark and legible.
-    this.hemi.intensity = lerp(.20, .48, daylight) * (1 - this.rain * .3) * (1 + this.rain * .8);
+    this.hemi.intensity = lerp(.20, .48, daylight) * (1 - this.rain * .3) * (1 + this.rain * .8)
+                        + night * .78;
+    /* ---- moon ---- */
+    this.moon.intensity = this.moonBase * clamp(night * 1.25, 0, 1) * (1 - this.rain * .6);
+    this.moon.visible = this.moon.intensity > .01;
+    if (playerPos && this.moon.visible) {
+      const md = dir.clone().negate();
+      const texel = (this.shadowSpan * 2) / this.moon.shadow.mapSize.x;
+      const mx = Math.round(playerPos.x / texel) * texel;
+      const mz = Math.round(playerPos.z / texel) * texel;
+      this.moon.target.position.set(mx, playerPos.y, mz);
+      this.moon.position.set(mx, playerPos.y, mz).add(md.multiplyScalar(180));
+      this.moon.target.updateMatrixWorld();
+    }
+
     this.hemi.color.copy(hor);
     this.hemi.groundColor.copy(new THREE.Color(p.ground).multiplyScalar(lerp(.5, 1, daylight)));
     // A little moonlight so night is navigable rather than pitch black.
-    this.ambient.intensity = lerp(.20, .07, daylight) + night * .13;
+    this.ambient.intensity = lerp(.20, .07, daylight) + night * .52;
     this.ambient.color.setHex(night > .5 ? 0x5a72a8 : 0xffffff);
 
     /* ---- fog ---- */
     const base = this._baseFog();
-    this.scene.fog.density = base * (1 + this.rain * 1.7) * lerp(1.35, 1, daylight);
+    // Clear air at night so distant relief still reads under moonlight.
+    this.scene.fog.density = base * (1 + this.rain * 1.7) * lerp(0.72, 1, daylight);
     this.scene.fog.color.copy(hor).lerp(new THREE.Color(0x9aa4ad), this.rain * .7);
 
     /* ---- refresh the environment map as the light turns over ---- */
@@ -434,7 +466,8 @@ export class Sky {
     this._envRT?.dispose();
     this._pmrem?.dispose();
     this.scene.environment = null;
-    this.scene.remove(this.dome, this.sun, this.sun.target, this.hemi, this.ambient, this.clouds, this.rainMesh);
+    this.scene.remove(this.dome, this.sun, this.sun.target, this.moon, this.moon.target,
+      this.hemi, this.ambient, this.clouds, this.rainMesh);
     this.dome.geometry.dispose(); this.dome.material.dispose();
     this.rainMesh.geometry.dispose(); this.rainMesh.material.dispose();
     for (const c of this.clouds.children) c.geometry.dispose();
