@@ -53,7 +53,9 @@ void main(){
 
   // Base gradient: ground haze -> horizon -> zenith.
   float t = clamp(up * 0.5 + 0.5, 0.0, 1.0);
-  vec3 col = mix(uHorizon, uZenith, pow(clamp(up, 0.0, 1.0), 0.55));
+  // A gentle exponent leaves a very wide pale band hugging the horizon,
+  // which reads as a blown-out white sky. Bring the zenith colour down.
+  vec3 col = mix(uHorizon, uZenith, pow(clamp(up, 0.0, 1.0), 0.38));
   col = mix(uGround, col, smoothstep(-0.12, 0.06, up));
 
   // Sun disc + halo, warmed toward the horizon.
@@ -216,15 +218,34 @@ export class Sky {
     const rng = makeRNG(4242);
     const tex = this._cloudTexture();
     const mat = new THREE.MeshBasicMaterial({
-      map: tex, transparent: true, opacity: .5, depthWrite: false, fog: false
+      map: tex, transparent: true, opacity: .34, depthWrite: false, fog: false
     });
+    /* Clouds are flat planes. Seen from below at a grazing angle they are
+     * foreshortened to slivers that pile up along the horizon and stack to a
+     * solid white band — which is exactly what a duel in world two looked
+     * like. Fade each one out as it turns edge-on to the camera. */
+    mat.onBeforeCompile = shader => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', `#include <common>
+          varying float vFacing;`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+          vFacing = abs(normalize(normalMatrix * vec3(0.0, 0.0, 1.0)).z);`);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', `#include <common>
+          varying float vFacing;`)
+        .replace('#include <opaque_fragment>', `
+          gl_FragColor.a *= smoothstep(0.06, 0.42, vFacing);
+          #include <opaque_fragment>`);
+    };
     this.clouds = new THREE.Group();
-    const n = this.world.theme === 'sky' ? 90 : 46;
+    const n = this.world.theme === 'sky' ? 90 : 38;
     for (let i = 0; i < n; i++) {
       const s = rng.range(400, 1400);
       const m = new THREE.Mesh(new THREE.PlaneGeometry(s, s * rng.range(.35, .6)), mat);
-      const a = rng() * Math.PI * 2, r = rng.range(600, 3400);
-      m.position.set(Math.cos(a) * r, rng.range(240, 760), Math.sin(a) * r);
+      // Kept high and reasonably close in, so they read overhead rather than
+      // as a wall of haze at eye level.
+      const a = rng() * Math.PI * 2, r = rng.range(300, 2200);
+      m.position.set(Math.cos(a) * r, rng.range(620, 1350), Math.sin(a) * r);
       m.rotation.x = -Math.PI / 2 + rng.range(-.06, .06);
       m.rotation.z = rng() * Math.PI;
       m.renderOrder = -900;
@@ -422,7 +443,7 @@ export class Sky {
     for (const c of this.clouds.children) {
       c.position.x += c.userData.drift * dt;
       if (c.position.x > 3600) c.position.x = -3600;
-      c.material.opacity = lerp(.42, .78, this.rain) * lerp(.35, 1, daylight + night * .25);
+      c.material.opacity = lerp(.30, .62, this.rain) * lerp(.35, 1, daylight + night * .25);
     }
 
     /* ---- rain particles ---- */

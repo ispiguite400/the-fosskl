@@ -260,7 +260,7 @@ export const WORLDS = [
     id: 2, name: 'Verdant Reach', startPhase: 0.42, jp: '緑の果て', theme: 'grassland', art: 'savanna',
     music: 'world2', hub: true, size: 7200,
     subtitle: 'The plains that forgot the war',
-    palette: { fog: 0xbcd9a8, sky: 0x8fc4e8, ground: 0x4d7a35, grass: 0x74a844, water: 0x2f6f9e },
+    palette: { fog: 0xa9c5ac, sky: 0x74b0dd, ground: 0x4d7a35, grass: 0x74a844, water: 0x2f6f9e },
     sun: { elevation: 46, azimuth: 200, intensity: 1.6, color: 0xfff2d0 },
     density: { trees: .55, rocks: .3, grass: 1.4, buildings: .25 },
     enemyLevel: 6, enemyTypes: ['ashigaru', 'ronin', 'bandit', 'archer'], boss: 'oni_general',

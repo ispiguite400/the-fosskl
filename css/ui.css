@@ -455,8 +455,11 @@ body.playing{cursor:none}
 
 /* ---------------- Cinematics ------------------------------- */
 #cine{position:absolute;inset:0;pointer-events:none}
-.bar{position:absolute;left:0;right:0;height:0;background:#000;transition:height .8s cubic-bezier(.6,0,.2,1)}
-.bar.t{top:0}.bar.b{bottom:0}
+/* Scoped to #cine: a bare `.bar` selector also matched the class-select
+   stat bars and absolutely positioned them over their own labels. */
+#cine .bar{position:absolute;left:0;right:0;height:0;background:#000;
+  transition:height .8s cubic-bezier(.6,0,.2,1)}
+#cine .bar.t{top:0}#cine .bar.b{bottom:0}
 #cine.on .bar{height:11.5vh}
 .fade{position:absolute;inset:0;background:#000;opacity:0;transition:opacity 1s;pointer-events:none}
 .fade.white{background:#fff}
