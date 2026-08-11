@@ -514,7 +514,7 @@ export class Props {
     }
 
     /* --- outlying buildings --- */
-    const bCount = Math.floor((w.density?.buildings ?? .2) * 7 * scale);
+    const bCount = Math.floor((w.density?.buildings ?? .2) * 4 * scale);
     for (let i = 0; i < bCount; i++) {
       if (!rng.chance(.4)) continue;
       const x = ox + rng.range(-CELL / 2, CELL / 2);
@@ -579,9 +579,13 @@ export class Props {
      * kilometre. Each cell gets several attempts, and the hamlets themselves
      * range from three huts round a well to a walled village with a
      * watchtower over it. */
-    const tries = Math.max(1, Math.round((w.density?.buildings ?? .2) * 3.2));
+    /* Capped hard, and paid for by quality. A walled village is forty-odd
+     * groups; several per cell across sixty loaded cells is tens of
+     * thousands of draw calls, which is what happened the first time this
+     * was widened. Two attempts is enough to make country feel settled. */
+    const tries = Math.min(2, Math.max(1, Math.round((w.density?.buildings ?? .2) * 2 * scale)));
     for (let t = 0; t < tries; t++) {
-      if (!rng.chance(.45)) continue;
+      if (!rng.chance(.38)) continue;
       const hx = ox + rng.range(-CELL / 2 + 40, CELL / 2 - 40);
       const hz = oz + rng.range(-CELL / 2 + 40, CELL / 2 - 40);
       if (!T.isFlatGround(hx, hz, .2)) continue;
@@ -810,9 +814,9 @@ export class Props {
   _buildHamlet(g, hx, hz, rng, colliders, cellAnimated, cellFires) {
     const T = this.terrain, w = this.world;
     const size = rng();
-    const n = size > .82 ? rng.int(9, 15) : size > .45 ? rng.int(5, 9) : rng.int(3, 6);
+    const n = size > .93 ? rng.int(9, 14) : size > .45 ? rng.int(5, 8) : rng.int(3, 6);
     const spread = 9 + n * 1.5;
-    const walled = size > .82;
+    const walled = size > .93;          // the expensive kind, kept rare
 
     for (let i = 0; i < n; i++) {
       // Two loose rings so a bigger village is not one thin circle.
