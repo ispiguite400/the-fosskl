@@ -325,6 +325,19 @@ export class Player {
       this.power -= powerCost;
       this.hp -= through * (1 / this.defense);
       this.game.audio.sfx('block');
+
+      /* Reflect. "Something is painted on the face. It blinks when you are
+       * not looking." The Oni Ward has carried a reflect value since it was
+       * written and nothing had ever read it: a share of what it stops goes
+       * back down the line to whoever swung. */
+      if (shield?.reflect && source?.takeHit) {
+        const back = amount * shield.reflect;
+        source.takeHit(back, this.pos, { canBeBlocked: false, attacker: this });
+        this.game.vfx.hitSpark(source._chestPos?.() ?? source.pos, dirToAttacker, true);
+        this.game.vfx.damageNumber?.(source.pos.clone().setY(source.pos.y + (source.height ?? 1.8)),
+                                     Math.round(back), 'reflect');
+        this.game.audio.sfxAt?.('parry', source.pos, this.game.listenerPos, 40, { volume: .5 });
+      }
       this.game.vfx.hitSpark(this._chest(), dirToAttacker, true);
       this.game.vfx.damageNumber(this._head(), 0, 'block');
       this.vel.addScaledVector(dirToAttacker, -6);
@@ -815,6 +828,22 @@ export class Player {
 
       const res = e.takeHit(dmg, this.pos, { attacker: this, backstab });
       hitAny = true;
+
+      /* Weapon knockback. A studded iron club is supposed to move what it
+       * hits; the property was on the tetsubo from the day it was written
+       * and nothing had ever read it. Heavier things shrug more of it off.
+       * Its own vector — tmpV and tmpV2 are both live in this loop. */
+      if (def.knockback && res !== 'blocked' && res !== 'dead') {
+        const kbv = new THREE.Vector3().copy(e.pos).sub(this.pos).setY(0);
+        if (kbv.lengthSq() > .001) {
+          kbv.normalize().multiplyScalar(def.knockback * 5.5 / (1 + (e.def?.scale ?? 1) * .6));
+          e.vel.x += kbv.x; e.vel.z += kbv.z;
+          e.vel.y = Math.max(e.vel.y, def.knockback * .9);
+          if (e.flying) e.groundIt?.(1.6);
+          e.state = 'stagger';
+          e.stateT = Math.max(e.stateT ?? 0, .35);
+        }
+      }
 
       if (res === 'blocked') {
         this._gotBlocked(e);

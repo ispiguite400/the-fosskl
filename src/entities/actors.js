@@ -211,6 +211,67 @@ export class Enemy extends Actor {
     this.hitFlash = 0;
     this.lastHitBy = null;
     this.smokeBlind = 0;
+
+    /* Flight. `flying` had been a data flag with nothing behind it since the
+     * seraph was written, so a "flying" enemy simply walked. A flier now
+     * holds station above your head, circles out of reach, and comes down
+     * only to strike — and can be knocked out of the air, which is the
+     * counterplay that keeps it from being merely irritating. */
+    if (def.flying) {
+      this.flying = true;
+      this.hover = (def.hover ?? 5.5);
+      this.diveT = this.rng.range(1.5, 4);
+      this.downed = 0;                    // seconds left grounded after a hit
+      this.pos.y = this.groundY() + this.hover;
+    }
+  }
+
+  /* Hold station, circle, and dive.
+   *
+   * Height is driven rather than simulated: a flier eases toward its hover
+   * ceiling, drops to head height for the moment of a dive, then climbs
+   * back. While downed it falls and walks like anything else. */
+  _fly(dt, player, dist) {
+    if (this.downed > 0) {
+      this.downed -= dt;
+      this.applyGravity(dt);
+      if (this.downed <= 0 && !this.dead) this.vel.y = 6;   // beat back up
+      return;
+    }
+    const gy = this.groundY();
+    this.diveT -= dt;
+
+    let want = gy + this.hover;
+    if (this.state === 'windup' || this.state === 'strike') {
+      // Committed: come down to where a strike can land.
+      want = Math.max(gy + .2, player.pos.y + .6);
+    } else if (this.diveT <= 0 && dist < 16) {
+      want = Math.max(gy + .4, player.pos.y + 1);
+      if (this.diveT < -1.4) this.diveT = this.rng.range(3.5, 7);
+    } else if (dist < 5.5) {
+      // Too close and not striking: beat back up out of reach.
+      want = gy + this.hover * 1.2;
+    }
+    this.pos.y = damp(this.pos.y, want, 4.5, dt);
+    this.vel.y = 0;
+    this.grounded = false;
+
+    // Circle rather than close, so it is never simply standing in front of you.
+    if (this.state === 'chase' && dist < this.aggro * 1.2) {
+      tmpV2.copy(player.pos).sub(this.pos).setY(0).normalize().cross(UP)
+        .multiplyScalar(this.speed * .5 * (this._circleDir ??= this.rng() < .5 ? 1 : -1));
+      this.vel.x += tmpV2.x * dt * 2.2;
+      this.vel.z += tmpV2.z * dt * 2.2;
+    }
+  }
+
+  /** Knocked out of the air. Grounded, slower, and open for a moment. */
+  groundIt(seconds = 2.4) {
+    if (!this.flying || this.downed > 0) return;
+    this.downed = seconds;
+    this.vel.y = -2;
+    this.game.vfx.hitSpark(this.pos.clone(), UP, false);
+    this.game.audio?.sfxAt?.('land', this.pos, this.game.listenerPos, 60, { volume: .7 });
   }
 
   /* Drop into the grass and wait.
@@ -277,6 +338,8 @@ export class Enemy extends Actor {
     if (this.dead) return 'dead';
     // Shooting the suspicious patch of grass is a legitimate answer to it.
     if (this.lurking) this.rise();
+    // Hit it hard enough and it comes down, which is how you fight a flier.
+    if (this.flying && this.downed <= 0 && amount > this.hpMax * .06) this.groundIt();
 
     // The 40% guard. Not rolled if the hit lands from behind.
     if (canBeBlocked && !backstab && this.state !== 'stagger' && this.rng.chance(this.blockChance)) {
@@ -482,7 +545,8 @@ export class Enemy extends Actor {
       }
     }
 
-    this.applyGravity(dt);
+    if (this.flying) this._fly(dt, player, dist);
+    else this.applyGravity(dt);
     this.root.position.copy(this.pos);
     this.root.rotation.y = this.yaw;
 

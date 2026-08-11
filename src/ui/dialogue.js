@@ -347,7 +347,11 @@ export class DialogueUI {
     const p = input.p;
 
     if (this.typing) {
-      if (p.justPressed('confirm') || p.justPressed('interact')) this.skip = true;
+      // Some scenes are not to be clicked through. Hana's death is the one
+      // the whole middle of the game is built toward; the flag was in the
+      // data from the start and nothing had ever read it.
+      if (!this.tree?.unskippable &&
+          (p.justPressed('confirm') || p.justPressed('interact'))) this.skip = true;
       return;
     }
 

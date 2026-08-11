@@ -37,6 +37,11 @@ export class Terrain {
     this.world = world;
     this.seed = seed;
     this.shape = SHAPE[world.theme] || SHAPE.grassland;
+    /* A world may ask for more relief than its theme carries — world one
+     * wants real mountains behind its burnt village, world nine wants the
+     * teeth its subtitle promises. The flag had been in the data since
+     * those subtitles were written and nothing had ever read it. */
+    this.reliefScale = world.mountains ?? 1;
     this.size = world.size;
     this.half = world.size / 2;
     this.quality = quality;
@@ -72,10 +77,10 @@ export class Terrain {
       const flat = Math.sign(h) * Math.pow(Math.abs(h), 1 + S.plateau * 1.6);
       h = lerp(h, flat, S.plateau);
     }
-    let y = h * S.amp;
+    let y = h * S.amp * this.reliefScale;
 
     // Fine detail so slopes never look like flat shading.
-    y += fbm(nx * 9.3, nz * 9.3, 3) * S.amp * .05;
+    y += fbm(nx * 9.3, nz * 9.3, 3) * S.amp * .05 * this.reliefScale;
 
     if (S.dunes) {
       // Wind-aligned dune ripples running roughly NE.
