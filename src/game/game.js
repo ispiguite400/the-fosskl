@@ -447,6 +447,10 @@ export class Game {
     }
 
     const e = new Enemy(this, pos, rng.pick(types), this.enemyLevelScale);
+    // On a plain where nothing hides, a good share of what roams is already
+    // down in the grass by the time you see the grass.
+    if (w.lurkers && rng.chance(w.lurkers) &&
+        !this.props.inHub(pos, 140) && pos.distanceTo(p.pos) > 26) e.lurk();
     this.enemies.push(e);
     return e;
   }
@@ -608,6 +612,9 @@ export class Game {
         if (this.world.final) { this.story.ending(); return; }
         Audio.play(this.world.music);
         this.hud.toast(`${e.name.toUpperCase()} HAS FALLEN`, true);
+        // A warden down is a door open, and a door open is another line of
+        // the poem — plus whatever His steward has to say about it.
+        this.story.wardenFell(this.world.id);
       } else if (e.isRoaming) {
         this.roamingBoss = null;
         this.missions.onBossKill(e);

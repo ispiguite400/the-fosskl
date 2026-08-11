@@ -114,6 +114,24 @@ export class Props {
         this._buildDrownedCity(this.ruinPos, rng);
       }
     }
+    if (w.waterhole) {
+      /* On a plain this wide, everything alive has to come to the same few
+       * metres of water eventually — which is exactly why the things that
+       * eat them are already there. One great tree, bones, and a ring of
+       * churned ground you can see from a long way off. */
+      let low = null;
+      for (let i = 0; i < 500; i++) {
+        const x = rng.range(-1, 1) * w.size * .28, z = rng.range(-1, 1) * w.size * .28;
+        if (Math.hypot(x, z) < 330) continue;
+        const y = this.terrain.heightAt(x, z);
+        if (this.terrain.slopeAt(x, z) > .22) continue;
+        if (!low || y < low.y) low = { x, y, z };
+      }
+      if (low) {
+        this.waterholePos = new THREE.Vector3(low.x, low.y, low.z);
+        this._buildWaterhole(this.waterholePos, rng);
+      }
+    }
     if (w.cairns) {
       /* Everyone who tried to cross before you. The flattest wide ground in
        * the world, covered in stone markers in rough rows, with a shrine and
@@ -496,7 +514,7 @@ export class Props {
     }
 
     /* --- outlying buildings --- */
-    const bCount = Math.floor((w.density?.buildings ?? .2) * 3 * scale);
+    const bCount = Math.floor((w.density?.buildings ?? .2) * 7 * scale);
     for (let i = 0; i < bCount; i++) {
       if (!rng.chance(.4)) continue;
       const x = ox + rng.range(-CELL / 2, CELL / 2);
@@ -555,37 +573,20 @@ export class Props {
       if (animate) cellAnimated.push(obj);
     }
 
-    /* --- small hamlets: three to six houses that share a well --- */
-    if (rng.chance(.22 * (w.density?.buildings ?? .2) * 5)) {
-      const hx = ox + rng.range(-CELL / 3, CELL / 3);
-      const hz = oz + rng.range(-CELL / 3, CELL / 3);
-      if (T.isFlatGround(hx, hz, .2) && !this.inHub(new THREE.Vector3(hx, 0, hz), 130)) {
-        const n = rng.int(3, 7);
-        for (let i = 0; i < n; i++) {
-          const a = (i / n) * 6.28 + rng.range(-.3, .3);
-          const r = rng.range(9, 19);
-          const x = hx + Math.cos(a) * r, z = hz + Math.sin(a) * r;
-          if (!T.isFlatGround(x, z, .3)) continue;
-          const h = buildHouse(rng, { ruined: rng.chance(.25), scale: rng.range(.85, 1.15) });
-          h.position.set(x, T.heightAt(x, z) - .2, z);
-          h.rotation.y = -a + Math.PI / 2;
-          g.add(h);
-          colliders.push({ x, z, r: 4 });
-        }
-        const well = buildWell(rng);
-        well.position.set(hx, T.heightAt(hx, hz), hz);
-        g.add(well);
-        colliders.push({ x: hx, z: hz, r: 1.4 });
-        for (let i = 0; i < 3; i++) {
-          const a = rng() * 6.28, r = rng.range(4, 22);
-          const lx = hx + Math.cos(a) * r, lz = hz + Math.sin(a) * r;
-          const l = buildLantern(rng);
-          l.position.set(lx, T.heightAt(lx, lz), lz);
-          g.add(l);
-          cellAnimated.push(l);
-          cellFires.push({ x: lx, z: lz });
-        }
-      }
+    /* --- settlements ---
+     * A world with a settled population should have somewhere to live every
+     * few hundred metres, not a one-in-five chance of a hamlet per square
+     * kilometre. Each cell gets several attempts, and the hamlets themselves
+     * range from three huts round a well to a walled village with a
+     * watchtower over it. */
+    const tries = Math.max(1, Math.round((w.density?.buildings ?? .2) * 3.2));
+    for (let t = 0; t < tries; t++) {
+      if (!rng.chance(.45)) continue;
+      const hx = ox + rng.range(-CELL / 2 + 40, CELL / 2 - 40);
+      const hz = oz + rng.range(-CELL / 2 + 40, CELL / 2 - 40);
+      if (!T.isFlatGround(hx, hz, .2)) continue;
+      if (this.inHub(tmpP.set(hx, 0, hz), 130)) continue;
+      this._buildHamlet(g, hx, hz, rng, colliders, cellAnimated, cellFires);
     }
 
     /* --- theme flourishes --- */
@@ -797,6 +798,164 @@ export class Props {
       const rb = buildRubble(rng);
       rb.rotation.y = rng() * 6.28;
       place(rb, x, z, rng.range(0, .6), 0);
+    }
+  }
+
+  /* ==========================================================
+     One settlement: anything from three huts round a well up to
+     a walled village with a tower over it and a fire in the
+     middle. Placed into a streaming cell, so everything it makes
+     goes onto that cell's own lists.
+     ========================================================== */
+  _buildHamlet(g, hx, hz, rng, colliders, cellAnimated, cellFires) {
+    const T = this.terrain, w = this.world;
+    const size = rng();
+    const n = size > .82 ? rng.int(9, 15) : size > .45 ? rng.int(5, 9) : rng.int(3, 6);
+    const spread = 9 + n * 1.5;
+    const walled = size > .82;
+
+    for (let i = 0; i < n; i++) {
+      // Two loose rings so a bigger village is not one thin circle.
+      const ring = i < n * .6 ? 0 : 1;
+      const k = ring === 0 ? i : i - Math.floor(n * .6);
+      const cnt = ring === 0 ? Math.ceil(n * .6) : n - Math.ceil(n * .6);
+      const a = (k / Math.max(1, cnt)) * 6.28 + rng.range(-.28, .28) + ring * .5;
+      const r = ring === 0 ? rng.range(9, spread * .6) : rng.range(spread * .65, spread);
+      const x = hx + Math.cos(a) * r, z = hz + Math.sin(a) * r;
+      if (!T.isFlatGround(x, z, .3)) continue;
+      let b;
+      if (rng.chance(.14)) { b = buildStall(rng); colliders.push({ x, z, r: 1.8 }); }
+      else if (rng.chance(.1)) { b = buildPagoda(rng, 2, rng.range(.55, .8)); colliders.push({ x, z, r: 3.4 }); }
+      else { b = buildHouse(rng, { ruined: rng.chance(.18), scale: rng.range(.85, 1.25) }); colliders.push({ x, z, r: 4 }); }
+      b.position.set(x, T.heightAt(x, z) - .2, z);
+      b.rotation.y = -a + Math.PI / 2;
+      g.add(b);
+    }
+
+    // The well everyone shares.
+    const well = buildWell(rng);
+    well.position.set(hx, T.heightAt(hx, hz), hz);
+    g.add(well);
+    colliders.push({ x: hx, z: hz, r: 1.4 });
+
+    // Light. Also warmth, in a world where that matters.
+    for (let i = 0; i < (walled ? 6 : 3); i++) {
+      const a = rng() * 6.28, r = rng.range(4, spread);
+      const lx = hx + Math.cos(a) * r, lz = hz + Math.sin(a) * r;
+      const l = buildLantern(rng);
+      l.position.set(lx, T.heightAt(lx, lz), lz);
+      g.add(l);
+      cellAnimated.push(l);
+      cellFires.push({ x: lx, z: lz });
+    }
+    if (walled) {
+      const br = buildBrazier();
+      br.position.set(hx + 3, T.heightAt(hx + 3, hz + 2), hz + 2);
+      g.add(br); cellAnimated.push(br);
+      cellFires.push({ x: hx + 3, z: hz + 2 });
+    }
+
+    // Everyday clutter, so a village looks lived in rather than laid out.
+    for (let i = 0; i < rng.int(2, 6); i++) {
+      const a = rng() * 6.28, r = rng.range(6, spread);
+      const x = hx + Math.cos(a) * r, z = hz + Math.sin(a) * r;
+      const obj = rng.chance(.4) ? buildCart(rng, { wrecked: rng.chance(.25) })
+                : rng.chance(.5) ? buildFence(rng, rng.int(3, 7), {})
+                : buildBanner(rng, { torn: rng.chance(.3) });
+      obj.position.set(x, T.heightAt(x, z), z);
+      obj.rotation.y = rng() * 6.28;
+      g.add(obj);
+    }
+
+    // A palisade and a tower over the big ones.
+    if (walled) {
+      const R = spread + 6;
+      const segs = 16;
+      for (let i = 0; i < segs; i++) {
+        if (rng.chance(.22)) continue;               // gateways and gaps
+        const a = (i / segs) * 6.28;
+        const x = hx + Math.cos(a) * R, z = hz + Math.sin(a) * R;
+        if (!T.isFlatGround(x, z, .45)) continue;
+        const f = buildFence(rng, 5, { broken: rng.chance(.15) });
+        f.position.set(x, T.heightAt(x, z), z);
+        f.rotation.y = a + Math.PI / 2;
+        g.add(f);
+        colliders.push({ x, z, r: 1.2 });
+      }
+      const ta = rng() * 6.28;
+      const tx = hx + Math.cos(ta) * (R - 4), tz = hz + Math.sin(ta) * (R - 4);
+      if (T.isFlatGround(tx, tz, .35)) {
+        const tower = buildWatchtower(rng, { ruined: rng.chance(.2) });
+        tower.position.set(tx, T.heightAt(tx, tz), tz);
+        tower.rotation.y = rng() * 6.28;
+        g.add(tower);
+        colliders.push({ x: tx, z: tz, r: 2.2 });
+      }
+      // A torii on the road in — every settlement in this world has one.
+      const gx = hx - Math.cos(ta) * (R + 5), gz = hz - Math.sin(ta) * (R + 5);
+      const tor = buildTorii(rng, rng.range(.9, 1.3));
+      tor.position.set(gx, T.heightAt(gx, gz), gz);
+      tor.rotation.y = ta + Math.PI / 2;
+      g.add(tor);
+    }
+  }
+
+  /* ==========================================================
+     The waterhole. One tree big enough to see from a kilometre
+     out, standing over the only water on the plain, ringed by
+     what did not leave.
+     ========================================================== */
+  _buildWaterhole(center, rng) {
+    const T = this.terrain;
+
+    // The tree: an ordinary savanna canopy, four times over.
+    const big = buildTree('savanna', rng);
+    big.position.set(center.x, T.heightAt(center.x, center.z) - .4, center.z);
+    big.scale.setScalar(4.2);
+    big.rotation.y = rng() * 6.28;
+    this.landmarks.add(big);
+    this.colliders.push({ x: center.x, z: center.z, r: 2.4 });
+
+    // A handful of lesser trees leaning in toward the water.
+    for (let i = 0; i < 7; i++) {
+      const a = rng() * 6.28, r = rng.range(16, 40);
+      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
+      const t = buildTree('savanna', rng);
+      t.position.set(x, T.heightAt(x, z) - .3, z);
+      t.scale.setScalar(rng.range(1.2, 2.1));
+      t.rotation.set(0, rng() * 6.28, rng.range(-.1, .1));
+      this.landmarks.add(t);
+      this.colliders.push({ x, z, r: 1 });
+    }
+
+    // Bones. Whatever comes to drink is drinking somewhere it has been eaten.
+    for (let i = 0; i < 26; i++) {
+      const a = rng() * 6.28, r = 6 + Math.sqrt(rng()) * 34;
+      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
+      const bone = buildStuckSpear(rng);
+      bone.position.set(x, T.heightAt(x, z) - rng.range(0, .3), z);
+      bone.rotation.set(rng.range(-1.4, -.4), rng() * 6.28, rng.range(-.5, .5));
+      bone.scale.setScalar(rng.range(.5, .95));
+      this.landmarks.add(bone);
+    }
+    for (let i = 0; i < 12; i++) {
+      const a = rng() * 6.28, r = 4 + Math.sqrt(rng()) * 26;
+      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
+      const rb = buildRubble(rng);
+      rb.position.set(x, T.heightAt(x, z) - .2, z);
+      rb.rotation.y = rng() * 6.28;
+      this.landmarks.add(rb);
+    }
+    // Boulders on the rim, which is where you would sit to watch it.
+    for (let i = 0; i < 9; i++) {
+      const a = rng() * 6.28, r = rng.range(26, 46);
+      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
+      const rock = buildRock(rng, 'savanna');
+      const s = rng.range(1.2, 2.8);
+      rock.position.set(x, T.heightAt(x, z) - s * .35, z);
+      rock.scale.setScalar(s);
+      this.landmarks.add(rock);
+      this.colliders.push({ x, z, r: s * .8 });
     }
   }
 

@@ -322,8 +322,14 @@ export const WORLDS = [
     subtitle: 'Long grass, longer shadows',
     palette: { fog: 0xd9a860, sky: 0xe8b96a, ground: 0xa8813a, grass: 0xc9a04a, water: 0x3f7f8f },
     sun: { elevation: 36, azimuth: 260, intensity: 1.8, color: 0xffd090 },
-    density: { trees: .3, rocks: .4, grass: 1.8, buildings: .2 },
+    // The plain was reading as empty grass: at buildings .2 a cell rounded to
+    // no outlying structures at all. It is settled country now — scattered
+    // villages, herds, and enough on the horizon to walk toward.
+    density: { trees: .8, rocks: .8, grass: 1.8, buildings: 1.3 },
     enemyLevel: 40, xpRate: 0.88, enemyTypes: ['frost_knight', 'husk', 'beast', 'oni', 'crossbowman'], boss: 'amber_beast',
+    // Nothing hides here; it waits. Two in five of what roams the plain is
+    // already down in the grass before you have any reason to look at it.
+    lurkers: .4, waterhole: true,
     ambient: 'insects',
     intro: 'Nothing here hides. It simply waits until you are closer.'
   },
@@ -743,6 +749,43 @@ export const DIALOGUE = {
       }
     }
   }
+};
+
+/* ============================================================
+   THE THREAD
+   ------------------------------------------------------------
+   One story runs under all ten worlds, and it is the same story
+   the ending pays off: the Hollow God did not make the world, He
+   made ten doors and told the world it was a house. Every world's
+   boss is a warden of one of those doors and does not know it.
+   You were the first thing He shut out.
+
+   Each world yields one verse of a single poem when its warden
+   falls, so the thread cannot be missed by a player who simply
+   plays — and the Wizard, His steward, has something to say each
+   time you open another door he would rather you did not.
+   ============================================================ */
+export const THREAD = {
+  1: { verse: 'He did not make the world. He made the doors, and told the world it was a house.',
+       wizard: '"Good. You still cut." The voice is somewhere behind your ear. "Keep doing that."' },
+  2: { verse: 'Ten skies, and beneath each one a warden who has never been told what he guards.',
+       wizard: '"Kurogane thought he was defending something. They all think that."' },
+  3: { verse: 'The wood remembers a name the registers do not. It is not His.',
+       wizard: '"The trees talk to you. That is new. That is not in what I was given."' },
+  4: { verse: 'The cities under the sand were the last to refuse Him. He did not destroy them — He covered them.',
+       wizard: '"You dug. Nobody digs." A pause. "What did you find down there?"' },
+  5: { verse: 'He takes what you would have carried out. That is the toll, and it is always the same toll.',
+       wizard: '"I did not ask for the girl. That was the door, not me." He sounds almost careful. "Believe that or do not."' },
+  6: { verse: 'Nothing hides on the Amber Plain, because there is nothing here He has not already seen.',
+       wizard: '"He is watching now. Through the grass, through the beast, through me. Say something clever."' },
+  7: { verse: 'The tide keeps returning the same drowned man. Ask him whose name he was given.',
+       wizard: '"Seven. You were meant to break at three." The steadiness is gone. "I am being asked questions I cannot answer."' },
+  8: { verse: 'They carved Him faceless. Not out of reverence — out of accuracy.',
+       wizard: '"They built Him a dominion in marble and He never once came down to look at it."' },
+  9: { verse: 'The Iron King was the ninth to sit that throne, and the ninth to learn it faces a wall.',
+       wizard: '"One door left. I am supposed to stop you here." A long silence. "I am not going to."' },
+  10:{ verse: 'You were the first one He cast down. Everything since has been the long walk back up.',
+       wizard: null }
 };
 
 export const VILLAGER_LINES = [

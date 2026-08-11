@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { Save } from '../core/save.js';
 import { Audio } from '../core/audio.js';
-import { WORLDS, SIDEQUESTS, worldById, rankFor } from '../data/gamedata.js';
+import { WORLDS, SIDEQUESTS, THREAD, worldById, rankFor } from '../data/gamedata.js';
 import { wait } from '../core/util.js';
 
 /** Level needed before the gate to the next world opens. */
@@ -105,6 +105,37 @@ export class Missions {
         },
         {
           id: 'w5_gate', title: 'MISSION', desc: `Reach level ${need}, then find the gate`,
+          kind: 'gate', level: need, target: () => this.game.props.gatePos
+        }
+      ];
+    } else if (worldId === 6) {
+      /* The plain's idea is that being able to see everything is not the
+       * same as being safe. Its chain walks you across open ground toward
+       * the one place everything alive has to come back to. */
+      const need = GATE_LEVEL[6];
+      this.list = [
+        {
+          id: 'w6_hub', title: 'MISSION', desc: 'Reach the village', kind: 'reach',
+          target: () => this.game.props.hubCenter, radius: 60,
+          hint: 'You can see for a kilometre here. So can everything else.'
+        },
+        {
+          id: 'w6_water', title: 'MISSION', desc: 'Find the only water on the plain', kind: 'reach',
+          target: () => this.game.props.waterholePos, radius: 55,
+          hint: 'Look for the one tree big enough to argue with the horizon.'
+        },
+        {
+          id: 'w6_cull', title: 'MISSION', desc: 'Kill 22 of what waits in the grass',
+          count: 22, progress: 0, kind: 'kill',
+          hint: 'Half of it is already lying down. Watch the grass, not the skyline.'
+        },
+        {
+          id: 'w6_boss', title: 'BOSS', desc: 'Destroy the Amber Beast',
+          kind: 'boss', target: () => this.game.boss?.pos ?? this.game.bossSpawn,
+          hint: 'It does not stalk. It has never had to.'
+        },
+        {
+          id: 'w6_gate', title: 'MISSION', desc: `Reach level ${need}, then find the gate`,
           kind: 'gate', level: need, target: () => this.game.props.gatePos
         }
       ];
@@ -460,6 +491,48 @@ export class Story {
     g.hud.toast('THE FROST SOVEREIGN IS STILL HERE', true);
   }
 
+  /* ==========================================================
+     The thread
+     ----------------------------------------------------------
+     Each warden that falls yields one verse of the poem that
+     runs under all ten worlds, and draws a word out of the
+     Wizard — who is the Hollow God's steward, and who is
+     steadily less comfortable with the job.
+     ========================================================== */
+  async wardenFell(worldId) {
+    const beat = THREAD[worldId];
+    if (!beat) return;
+    const g = this.game;
+
+    Save.data.verses ??= [];
+    const isNew = !Save.data.verses.includes(worldId);
+    if (isNew) {
+      Save.data.verses.push(worldId);
+      Save.data.verses.sort((a, b) => a - b);
+      Save.write();
+    }
+
+    // Let the kill land before the room changes.
+    await wait(2600);
+    if (!g.running || g.player?.dead) return;
+
+    if (isNew) {
+      Audio.sfx('questNew');
+      g.hud.toast(`VERSE ${Save.data.verses.length} OF TEN`, true);
+      await wait(900);
+      await this.cine.say(beat.verse, 3400);
+    }
+    if (beat.wizard && !Save.data.flags[`wiz${worldId}`]) {
+      Save.data.flags[`wiz${worldId}`] = true;
+      Save.write();
+      Audio.sfx('magic', { volume: .45 });
+      await this.cine.say(beat.wizard, 3600);
+    }
+  }
+
+  /** How much of the poem the player is carrying. */
+  get versesFound() { return (Save.data.verses || []).length; }
+
   /* ---------------- world transitions ---------------- */
   async worldIntro(worldId) {
     const w = worldById(worldId);
@@ -478,11 +551,25 @@ export class Story {
     Save.data.flags.finalDefeated = true;
     Save.write(true);
 
+    const verses = (Save.data.verses || []).length;
+
     await wait(1800);
     await this.cine.say('The Hollow God comes apart the way a held breath does.', 3000);
     await this.cine.say('Underneath there is nothing at all — only the shape of a name that was taken.', 3400);
     await this.cine.say('Ten skies. Every one of them was a door He built to keep something in.', 3200);
     await wait(600);
+    if (verses >= 10) {
+      // The whole poem, in the player's hands, says what He was keeping out.
+      await this.cine.say('You have all ten verses now, and read together they are not ten things.', 3200);
+      await this.cine.say('They are one sentence, and the subject of it is you.', 3400);
+      await this.cine.say('He built ten skies to keep one forsaken thing outside, and every warden ' +
+                          'he set at a door was a man who had never been told your name.', 4200);
+      await wait(600);
+    } else if (verses > 0) {
+      await this.cine.say(`You carry ${verses} of the ten verses. Enough to know it was a sentence. ` +
+                          'Not enough to finish reading it.', 3600);
+      await wait(400);
+    }
     await this.cine.say('You think of a girl in the snow who called you something you had not earned, and then had.', 3800);
     await wait(800);
     await this.cine.chapter('追放者たち', 'THE FORSAKEN ONE', 4200);

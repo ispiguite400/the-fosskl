@@ -208,6 +208,32 @@ export class Enemy extends Actor {
     this.smokeBlind = 0;
   }
 
+  /* Drop into the grass and wait.
+   *
+   * The Amber Plain's whole line is that nothing there hides — it waits
+   * until you are closer. A lurker is sunk to the shoulders in the long
+   * grass with no aggro and no idle motion, and comes up only when you are
+   * near enough that running is already the wrong answer. Being hit also
+   * does it, so shooting the suspicious patch of grass is a real option. */
+  lurk() {
+    this.lurking = true;
+    this.aggro = 0;
+    this.state = 'idle';
+    this._lurkSink = this.height * .58;
+    this.root.position.y = this.pos.y - this._lurkSink;
+  }
+
+  rise() {
+    if (!this.lurking) return;
+    this.lurking = false;
+    this.aggro = Math.max(this.aggro, 34);
+    this.root.position.y = this.pos.y;
+    this.state = 'chase';
+    this.game.audio.sfxAt('bossRoar', this.pos, this.game.listenerPos, 70, { volume: .45 });
+    this.game.vfx.explosion(this.pos.clone().setY(this.pos.y + .5), 4, [.72, .66, .32]);
+    if (this.pos.distanceTo(this.game.player.pos) < 14) this.game.shake(.5, .35);
+  }
+
   _palette(id) {
     const P = {
       ashigaru:    { cloth: 0x4a4030, armor: 0x5a4a3a, accent: 0x8c2f2f },
@@ -244,6 +270,8 @@ export class Enemy extends Actor {
   /** Returns 'blocked' | 'hit' | 'killed'. */
   takeHit(amount, fromPos, { canBeBlocked = true, attacker = null, backstab = false } = {}) {
     if (this.dead) return 'dead';
+    // Shooting the suspicious patch of grass is a legitimate answer to it.
+    if (this.lurking) this.rise();
 
     // The 40% guard. Not rolled if the hit lands from behind.
     if (canBeBlocked && !backstab && this.state !== 'stagger' && this.rng.chance(this.blockChance)) {
@@ -305,6 +333,16 @@ export class Enemy extends Actor {
     }
     if (this.foe && (this.foe.dead || this.foe.pos.distanceTo(this.pos) > 46)) this.foe = null;
     if (this.foe) player = this.foe;
+
+    if (this.lurking && !this.dead) {
+      // Inert until you are close enough for it to matter.
+      if (this.pos.distanceTo(player.pos) < 11) this.rise();
+      else {
+        this.root.position.set(this.pos.x, this.pos.y - this._lurkSink, this.pos.z);
+        this.root.rotation.y = this.yaw;
+        return;
+      }
+    }
 
     if (this.dead) {
       this.deadT += dt;

@@ -152,6 +152,43 @@ export class VFX {
     this.numbers = [];
     this.slashes = [];
     this._slashGeo = new THREE.PlaneGeometry(1, 1);
+    this._slashTex = VFX._slashTexture();
+  }
+
+  /* The swing trail was an untextured additive square, which at close range
+   * is a white pane across the whole view rather than a cut through the air.
+   * This paints the crescent it always claimed to be: a thin arc, brightest
+   * at the leading edge, fading to nothing at the tips and along the inside.
+   * Built once and shared by every slash in the game. */
+  static _slashTexture() {
+    if (VFX.__slashTex) return VFX.__slashTex;
+    const S = 256, c = document.createElement('canvas');
+    c.width = c.height = S;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(S, S), d = img.data;
+    for (let y = 0; y < S; y++) {
+      for (let x = 0; x < S; x++) {
+        // Polar coordinates about the centre.
+        const dx = (x / S - .5) * 2, dy = (y / S - .5) * 2;
+        const r = Math.hypot(dx, dy);
+        const a = Math.atan2(dy, dx);              // -PI..PI
+        // A band at radius ~0.78, thin, with a soft outer edge.
+        const band = Math.exp(-Math.pow((r - .78) / .17, 2));
+        // Only the upper 150 degrees of the circle: an arc, not a ring.
+        const span = clamp(1 - Math.abs(a) / 1.32, 0, 1);
+        const taper = Math.pow(span, .7);          // thins toward the tips
+        // Brighter at the leading tip so the arc reads as moving.
+        const lead = .55 + .45 * clamp((a + 1.32) / 2.64, 0, 1);
+        const alpha = clamp(band * taper * lead, 0, 1);
+        const i = (y * S + x) * 4;
+        d[i] = d[i + 1] = d[i + 2] = 255;
+        d[i + 3] = alpha * 255;
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return (VFX.__slashTex = t);
   }
 
   /* ---------------- one-shots ---------------- */
@@ -262,8 +299,8 @@ export class VFX {
   /** Sweeping crescent that follows a melee swing. */
   slash(pos, quat, scale = 1, color = 0xffffff) {
     const mat = new THREE.MeshBasicMaterial({
-      color, transparent: true, opacity: .8, side: THREE.DoubleSide,
-      depthWrite: false, blending: THREE.AdditiveBlending
+      color, map: this._slashTex, transparent: true, opacity: .8,
+      side: THREE.DoubleSide, depthWrite: false, blending: THREE.AdditiveBlending
     });
     const m = new THREE.Mesh(this._slashGeo, mat);
     m.position.copy(pos);
