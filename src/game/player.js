@@ -300,8 +300,11 @@ export class Player {
     const facing = tmpV2.set(Math.sin(this.yaw), 0, Math.cos(this.yaw));
     const frontal = facing.dot(dirToAttacker) > .2;
 
-    /* --- blocking --- */
-    if (this.blocking && frontal && this.save.flags.blockUnlocked) {
+    /* --- blocking ---
+     * Some things cannot be guarded against at all. A yurei walks through a
+     * raised guard, which is the entire point of it. */
+    const guardable = !source?.def?.unblockable;
+    if (this.blocking && frontal && guardable && this.save.flags.blockUnlocked) {
       const shield = this.activeShield();
       const ratio = shield ? shield.block : .55;
       const perfect = this.has('parry') && this.blockHeld < .25;

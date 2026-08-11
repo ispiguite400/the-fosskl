@@ -167,11 +167,16 @@ export class Enemy extends Actor {
     this.armor = def.armor || 0;
 
     const palette = this._palette(typeId);
+    // `build` carries the creature features — horns, wings, a carapace, a
+    // second pair of arms — so a thing that is not a person does not have to
+    // be a person with a different colour scheme.
     const built = buildHumanoid({
       scale: def.scale || 1, ...palette,
       helmet: !def.feral, heavy: def.armor > .3,
       cloak: typeId === 'shadow', cloakColor: 0x1a1030,
-      ghostly: !!def.ghostly
+      ghostly: !!def.ghostly,
+      ...(def.tint ? { accent: def.tint } : {}),
+      ...(def.build || {})
     });
     this.root = built.root;
     this.rig = built.rig;

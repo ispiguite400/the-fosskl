@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import { Save } from '../core/save.js';
 import { Audio } from '../core/audio.js';
-import { WORLDS, SIDEQUESTS, THREAD, worldById, rankFor } from '../data/gamedata.js';
+import { WORLDS, SIDEQUESTS, THREAD, VILLAGES, worldById, rankFor } from '../data/gamedata.js';
 import { wait } from '../core/util.js';
 
 /** Level needed before the gate to the next world opens. */
@@ -53,8 +53,9 @@ export class Missions {
       const need = GATE_LEVEL[4];
       this.list = [
         {
-          id: 'w4_hub', title: 'MISSION', desc: 'Reach the village', kind: 'reach',
-          target: () => this.game.props.hubCenter, radius: 60,
+          id: 'w4_hub', title: 'MISSION', desc: `Find ${VILLAGES[4]?.name ?? 'the village'}`, kind: 'reach',
+          target: () => this.game.props.hubCenter,
+          radius: () => (this.game.props.hubRadius ?? 90) * .8,
           hint: 'Get inside before the storm turns. Out here it takes the horizon with it.'
         },
         {
@@ -84,8 +85,9 @@ export class Missions {
       const need = GATE_LEVEL[5];
       this.list = [
         {
-          id: 'w5_hub', title: 'MISSION', desc: 'Reach the village', kind: 'reach',
-          target: () => this.game.props.hubCenter, radius: 60,
+          id: 'w5_hub', title: 'MISSION', desc: `Find ${VILLAGES[5]?.name ?? 'the village'}`, kind: 'reach',
+          target: () => this.game.props.hubCenter,
+          radius: () => (this.game.props.hubRadius ?? 90) * .8,
           hint: 'Out of the wind. The cold takes your power first, then the rest of you.'
         },
         {
@@ -115,8 +117,9 @@ export class Missions {
       const need = GATE_LEVEL[6];
       this.list = [
         {
-          id: 'w6_hub', title: 'MISSION', desc: 'Reach the village', kind: 'reach',
-          target: () => this.game.props.hubCenter, radius: 60,
+          id: 'w6_hub', title: 'MISSION', desc: `Find ${VILLAGES[6]?.name ?? 'the village'}`, kind: 'reach',
+          target: () => this.game.props.hubCenter,
+          radius: () => (this.game.props.hubRadius ?? 90) * .8,
           hint: 'You can see for a kilometre here. So can everything else.'
         },
         {
@@ -144,9 +147,11 @@ export class Missions {
       const need = GATE_LEVEL[worldId] ?? 45;
       this.list = [
         {
-          id: `w${worldId}_hub`, title: 'MISSION', desc: 'Reach the village', kind: 'reach',
-          target: () => this.game.props.hubCenter, radius: 60,
-          hint: 'Someone there will trade, teach and reshape you.'
+          id: `w${worldId}_hub`, title: 'MISSION',
+          desc: `Find ${VILLAGES[worldId]?.name ?? 'the village'}`, kind: 'reach',
+          target: () => this.game.props.hubCenter,
+          radius: () => (this.game.props.hubRadius ?? 90) * .8,
+          hint: 'Somewhere out there. Someone in it will trade, teach and reshape you.'
         },
         {
           id: `w${worldId}_cull`, title: 'MISSION', desc: `Kill ${10 + worldId * 2} of whatever roams here`,
@@ -209,7 +214,10 @@ export class Missions {
   }
 
   onBossKill(boss) {
-    if (this.active?.kind === 'boss') this.complete(this.active);
+    // Only the warden the objective actually names finishes it. Lesser
+    // wardens and the rare roaming ones are their own reward.
+    const named = !boss || (!boss.isLesser && !boss.isRoaming);
+    if (named && this.active?.kind === 'boss') this.complete(this.active);
     for (const [key, q] of Object.entries(Save.data.sideQuests)) {
       if (q.done || q.world !== Save.data.world) continue;
       const def = SIDEQUESTS.find(s => s.id === q.id);
@@ -264,7 +272,8 @@ export class Missions {
     const target = m.target?.();
     if (target) distance = this.game.player.pos.distanceTo(target);
 
-    if (m.kind === 'reach' && distance != null && distance < (m.radius ?? 6)) {
+    const reachR = typeof m.radius === 'function' ? m.radius() : (m.radius ?? 6);
+    if (m.kind === 'reach' && distance != null && distance < reachR) {
       this.complete(m);
       return;
     }

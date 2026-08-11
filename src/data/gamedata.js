@@ -274,7 +274,7 @@ export const WORLDS = [
     palette: { fog: 0xa9c5ac, sky: 0x74b0dd, ground: 0x4d7a35, grass: 0x74a844, water: 0x2f6f9e },
     sun: { elevation: 46, azimuth: 200, intensity: 1.6, color: 0xfff2d0 },
     density: { trees: .55, rocks: .3, grass: 1.4, buildings: .25 },
-    enemyLevel: 6, xpRate: 1.13, enemyTypes: ['ashigaru', 'ronin', 'bandit', 'archer'], boss: 'oni_general',
+    enemyLevel: 6, xpRate: 0.76, enemyTypes: ['ashigaru', 'ronin', 'bandit', 'archer', 'jorogumo'], boss: 'oni_general', bosses: ['oni_general', 'forest_warden', 'tide_warden'],
     ambient: 'birds',
     intro: 'Grass to the horizon, and a child at the edge of it who will not stop looking for her parents.'
   },
@@ -287,7 +287,7 @@ export const WORLDS = [
     // Little of it reaches the floor: a low, green, filtered light.
     sun: { elevation: 58, azimuth: 240, intensity: .55, color: 0xc8dfa0 },
     density: { trees: 2.6, rocks: .45, grass: .5, buildings: .18 }, bamboo: 190,
-    enemyLevel: 13, xpRate: 0.76, enemyTypes: ['ronin', 'bandit', 'shadow', 'archer', 'monk'], boss: 'forest_warden',
+    enemyLevel: 13, xpRate: 0.50, enemyTypes: ['ronin', 'shadow', 'archer', 'monk', 'tengu', 'jorogumo', 'yurei'], boss: 'forest_warden', bosses: ['forest_warden', 'oni_general', 'amber_beast'],
     ambient: 'forest', motes: 0x9fe8b0, kodama: 14,
     intro: 'The canopy holds the light out. Whatever lives here has never needed eyes.'
   },
@@ -298,7 +298,7 @@ export const WORLDS = [
     palette: { fog: 0xe0c48a, sky: 0x9ec9e8, ground: 0xc9a15c, grass: 0xa8894a, water: 0x2f8fa8 },
     sun: { elevation: 74, azimuth: 180, intensity: 2.1, color: 0xfff0c0 },
     density: { trees: .06, rocks: .9, grass: .2, buildings: .3 },
-    enemyLevel: 21, xpRate: 0.94, enemyTypes: ['bandit', 'shadow', 'husk', 'crossbowman'], boss: 'dune_colossus',
+    enemyLevel: 21, xpRate: 0.42, enemyTypes: ['bandit', 'husk', 'crossbowman', 'sand_wraith', 'gashadokuro', 'amanojaku'], boss: 'dune_colossus', bosses: ['dune_colossus', 'tide_warden', 'marble_praetor'],
     ambient: 'wind',
     intro: 'Dunes over drowned cities. The heat lies about distance.'
   },
@@ -309,7 +309,7 @@ export const WORLDS = [
     palette: { fog: 0xd8e4ef, sky: 0x9fc0e0, ground: 0xe8eef5, grass: 0xc0cfdc, water: 0x2a5a7f },
     sun: { elevation: 22, azimuth: 300, intensity: 1.1, color: 0xd8e8ff },
     density: { trees: .8, rocks: .6, grass: .1, buildings: .2 },
-    enemyLevel: 30, xpRate: 0.97, enemyTypes: ['husk', 'shadow', 'frost_knight', 'crossbowman'], boss: 'frost_sovereign',
+    enemyLevel: 30, xpRate: 0.45, enemyTypes: ['husk', 'frost_knight', 'crossbowman', 'yurei', 'gashadokuro', 'raiju'], boss: 'frost_sovereign', bosses: ['frost_sovereign', 'dune_colossus', 'amber_beast'],
     // The blizzard is not scenery here: out of shelter it takes power, then
     // stamina, then health. Fire and the village are the only warm places.
     freezing: true, cairns: true,
@@ -326,7 +326,7 @@ export const WORLDS = [
     // no outlying structures at all. It is settled country now — scattered
     // villages, herds, and enough on the horizon to walk toward.
     density: { trees: .8, rocks: .8, grass: 1.8, buildings: 1.3 },
-    enemyLevel: 40, xpRate: 0.88, enemyTypes: ['frost_knight', 'husk', 'beast', 'oni', 'crossbowman'], boss: 'amber_beast',
+    enemyLevel: 40, xpRate: 0.57, enemyTypes: ['beast', 'oni', 'crossbowman', 'nue', 'raiju', 'amanojaku'], boss: 'amber_beast', bosses: ['amber_beast', 'forest_warden', 'iron_king'],
     // Nothing hides here; it waits. Two in five of what roams the plain is
     // already down in the grass before you have any reason to look at it.
     lurkers: .4, waterhole: true,
@@ -340,7 +340,7 @@ export const WORLDS = [
     palette: { fog: 0xa8cfe0, sky: 0x5fa8d8, ground: 0xd8c9a0, grass: 0x6f9a5a, water: 0x1a6f9e },
     sun: { elevation: 30, azimuth: 100, intensity: 1.7, color: 0xffe0b0 },
     density: { trees: .5, rocks: .7, grass: .5, buildings: .35 }, water: true, waterLevel: 6,
-    enemyLevel: 50, xpRate: 1.21, enemyTypes: ['beast', 'shadow', 'drowned', 'monk'], boss: 'tide_warden',
+    enemyLevel: 50, xpRate: 0.73, enemyTypes: ['drowned', 'monk', 'kappa', 'umibozu', 'yurei', 'jorogumo'], boss: 'tide_warden', bosses: ['tide_warden', 'frost_sovereign', 'marble_praetor'],
     ambient: 'waves',
     intro: 'The towers below still have lights in them. Do not look too long.'
   },
@@ -351,7 +351,7 @@ export const WORLDS = [
     palette: { fog: 0xd9cdb0, sky: 0x8fbfe0, ground: 0xb8a888, grass: 0x7f8f4a, water: 0x3f8fa8 },
     sun: { elevation: 52, azimuth: 220, intensity: 1.9, color: 0xfff2d8 },
     density: { trees: .25, rocks: .5, grass: .6, buildings: 1.6 },
-    enemyLevel: 60, xpRate: 1.19, enemyTypes: ['drowned', 'legionary', 'shadow', 'crossbowman', 'oni'], boss: 'marble_praetor',
+    enemyLevel: 60, xpRate: 0.61, enemyTypes: ['legionary', 'crossbowman', 'oni', 'marble_shade', 'gashadokuro', 'umibozu'], boss: 'marble_praetor', bosses: ['marble_praetor', 'iron_king', 'amber_beast'],
     ambient: 'wind',
     intro: 'Colonnades running to the horizon. Someone built all this to be remembered, and was not.'
   },
@@ -362,7 +362,7 @@ export const WORLDS = [
     palette: { fog: 0x8f8a96, sky: 0x6f7f9f, ground: 0x6a6258, grass: 0x4f5a3a, water: 0x3a5060 },
     sun: { elevation: 26, azimuth: 320, intensity: 1.3, color: 0xffd0a0 },
     density: { trees: .4, rocks: 1.4, grass: .5, buildings: 2.0 }, mountains: 2.2,
-    enemyLevel: 72, xpRate: 1.04, enemyTypes: ['legionary', 'frost_knight', 'kingsguard', 'sniper', 'oni'], boss: 'iron_king',
+    enemyLevel: 72, xpRate: 0.75, enemyTypes: ['kingsguard', 'sniper', 'oni', 'marble_shade', 'raiju', 'nue'], boss: 'iron_king', bosses: ['iron_king', 'marble_praetor', 'frost_sovereign'],
     ambient: 'wind',
     intro: 'The last throne standing. It is still warm, and that should frighten you.'
   },
@@ -373,7 +373,7 @@ export const WORLDS = [
     palette: { fog: 0xd8e8f0, sky: 0x7fc0e8, ground: 0x7a6a58, grass: 0x5f9a4a, water: 0x8fd0e8 },
     sun: { elevation: 40, azimuth: 160, intensity: 2.0, color: 0xfff8e8 },
     density: { trees: .5, rocks: .8, grass: 1.0, buildings: .8 }, floating: true,
-    enemyLevel: 88, enemyTypes: ['kingsguard', 'seraph', 'shadow', 'sniper'], boss: 'the_hollow_god',
+    enemyLevel: 88, enemyTypes: ['kingsguard', 'seraph', 'sniper', 'tengu', 'umibozu', 'gashadokuro'], boss: 'the_hollow_god', bosses: ['the_hollow_god', 'iron_king', 'frost_sovereign'],
     ambient: 'wind', final: true,
     intro: 'The islands do not fall because He has not told them to. He is at the far end of them.'
   }
@@ -406,8 +406,66 @@ export const ENEMIES = {
   sniper:      { name: 'Sky Archer', hp: 200, damage: 46, speed: 5.0, blockChance: .40, xp: 140, scale: 1.05, weapon: 'stormbow', armor: .2, aggro: 60, ranged: { range: 60, keepAway: 26, speed: 92, cooldown: [2.2, 3.4] } },
 
   /* heavies */
-  oni:         { name: 'Oni',      hp: 380, damage: 38, speed: 4.0, blockChance: .40, xp: 165, scale: 1.42, weapon: 'tetsubo', armor: .3, aggro: 36 },
-  monk:        { name: 'Warrior Monk', hp: 210, damage: 26, speed: 5.4, blockChance: .40, xp: 104, scale: 1.0, weapon: 'spear', armor: .18, aggro: 38 }
+  oni:         { name: 'Oni',      hp: 380, damage: 38, speed: 4.0, blockChance: .40, xp: 165, scale: 1.42, weapon: 'tetsubo', armor: .3, aggro: 36,
+                 build: { horns: 2, maw: true }, tint: 0x8a3a2a },
+  monk:        { name: 'Warrior Monk', hp: 210, damage: 26, speed: 5.4, blockChance: .40, xp: 104, scale: 1.0, weapon: 'spear', armor: .18, aggro: 38 },
+
+  /* ============================================================
+     THE THINGS THAT ARE NOT PEOPLE
+     ------------------------------------------------------------
+     World one is men in armour, because world one is a massacre
+     done by soldiers. Everything after it is a sky the Hollow God
+     built, and what wardens a door is not a man. Each of these has
+     a silhouette you can name at forty metres and a habit nothing
+     else has: the tengu never lands, the jorogumo hangs back and
+     spits, the gashadokuro is four metres of bone that does not
+     block, the yurei cannot be blocked itself.
+     ============================================================ */
+  tengu:       { name: 'Tengu', hp: 120, damage: 24, speed: 7.4, blockChance: .25, xp: 96, scale: 1.02,
+                 weapon: 'naginata', armor: .08, aggro: 52, flying: true,
+                 build: { beak: true, wings: true, helmet: false, horns: 0 }, tint: 0x8a2a3a,
+                 desc: 'It fights from the air and only comes down to finish you.' },
+  jorogumo:    { name: 'Jorogumo', hp: 150, damage: 22, speed: 4.6, blockChance: .15, xp: 118, scale: 1.08,
+                 weapon: 'fist', armor: .1, aggro: 46, feral: true,
+                 build: { extraArms: true, eyes: 6, eyeColor: 0xffd23a, helmet: false }, tint: 0x2a1a2e,
+                 ranged: { range: 26, keepAway: 12, speed: 42, cooldown: [1.6, 2.8] },
+                 desc: 'Eight eyes, and it never once looks away.' },
+  kappa:       { name: 'Kappa', hp: 165, damage: 20, speed: 4.0, blockChance: .55, xp: 102, scale: .94,
+                 weapon: 'spear', armor: .32, aggro: 34,
+                 build: { shell: true, beak: true, helmet: false }, tint: 0x3d6a4a,
+                 desc: 'Guards more than it strikes. Patience is the whole fight.' },
+  yurei:       { name: 'Yurei', hp: 110, damage: 26, speed: 5.0, blockChance: 0, xp: 124, scale: 1.0,
+                 weapon: 'fist', armor: 0, aggro: 44, ghostly: true, unblockable: true,
+                 build: { helmet: false, eyes: 2, eyeColor: 0x9fe8ff, skeletal: true }, tint: 0xbfd8e8,
+                 desc: 'Your guard is a habit. It does not apply here.' },
+  gashadokuro: { name: 'Gashadokuro', hp: 620, damage: 44, speed: 3.2, blockChance: 0, xp: 320, scale: 2.3,
+                 weapon: 'fist', armor: .2, aggro: 40, feral: true,
+                 build: { skeletal: true, maw: true, helmet: false }, tint: 0xe8e2d0,
+                 desc: 'Four metres of famine. It does not guard because it does not need to.' },
+  sand_wraith: { name: 'Sand Wraith', hp: 130, damage: 25, speed: 6.0, blockChance: .1, xp: 108, scale: 1.06,
+                 weapon: 'katana', armor: .05, aggro: 48, ghostly: true,
+                 build: { helmet: false, skeletal: true, tail: 3 }, tint: 0xd8b070,
+                 desc: 'The storm gave it a shape. The shape kept the grudge.' },
+  nue:         { name: 'Nue', hp: 280, damage: 32, speed: 6.6, blockChance: .2, xp: 186, scale: 1.24,
+                 weapon: 'fist', armor: .16, aggro: 50, feral: true,
+                 build: { horns: 2, tail: 4, maw: true, helmet: false }, tint: 0x6a4a2a,
+                 desc: 'Assembled out of other animals by something with no reference.' },
+  amanojaku:   { name: 'Amanojaku', hp: 200, damage: 28, speed: 5.8, blockChance: .35, xp: 140, scale: .88,
+                 weapon: 'kusarigama', armor: .12, aggro: 42,
+                 build: { horns: 4, helmet: false, eyes: 3, eyeColor: 0xff7a2a }, tint: 0x7a2a5a,
+                 desc: 'Small, and entirely made of contradiction.' },
+  umibozu:     { name: 'Umibozu', hp: 480, damage: 40, speed: 3.0, blockChance: .1, xp: 265, scale: 1.9,
+                 weapon: 'fist', armor: .28, aggro: 44, feral: true,
+                 build: { helmet: false, eyes: 2, eyeColor: 0xffffff, maw: true }, tint: 0x1a2a3a,
+                 desc: 'It rises out of water that was not deep enough to hold it.' },
+  raiju:       { name: 'Raiju', hp: 260, damage: 36, speed: 8.2, blockChance: .2, xp: 210, scale: 1.0,
+                 weapon: 'fist', armor: .1, aggro: 56, feral: true,
+                 build: { helmet: false, horns: 2, tail: 3, eyes: 2, eyeColor: 0xfff0a0 }, tint: 0xe8d24a,
+                 desc: 'Lightning that decided it wanted legs.' },
+  marble_shade:{ name: 'Marble Shade', hp: 340, damage: 34, speed: 4.6, blockChance: .45, xp: 230, scale: 1.16,
+                 weapon: 'sword', armor: .42, aggro: 38,
+                 build: { helmet: false, skeletal: true, eyes: 0 }, tint: 0xd8d0bc,
+                 desc: 'A statue of a soldier who was never carved from life.' }
 };
 
 /* ============================================================
@@ -787,6 +845,90 @@ export const THREAD = {
   10:{ verse: 'You were the first one He cast down. Everything since has been the long walk back up.',
        wizard: null }
 };
+
+/* ============================================================
+   THE VILLAGES
+   ------------------------------------------------------------
+   Every world but the first has one, and it is a different place
+   with different people in it. The layout style is fixed per
+   world so the Verdant Reach is always a spoked market town and
+   the Iron Crown is always a walled grid; the roster gives each
+   village its own merchant, its own smith and its own sage
+   rather than the same five strangers following you across ten
+   skies.
+   ============================================================ */
+const LOOKS = {
+  shopkeep:   { cloth: 0x6a4a2a, accent: 0xc9a44a },
+  smith:      { cloth: 0x3a3a44, armor: 0x7a7a84, accent: 0xb03225 },
+  sage:       { cloth: 0x2a2a3a, cloak: true, cloakColor: 0x4a3f6a },
+  broker:     { cloth: 0x4a3a2a, accent: 0x8a6a2a },
+  gatekeeper: { cloth: 0x2a3a4a, armor: 0x6a7a8a }
+};
+
+export const VILLAGES = {
+  2:  { name: 'Hasuno', style: 'radial',
+        roles: { shopkeep: 'Merchant Ozu', smith: 'Oathkeeper Ren', sage: 'Old Tsura',
+                 broker: 'Ash Broker Kiba', gatekeeper: 'Warden Sato' },
+        villagers: ['Miko', 'Denbei', 'Aoi', 'Rokuro', 'Tama', 'Shin', 'Hisa'],
+        tint: { cloth: 0x6a7a4a, accent: 0xc9b46a } },
+  3:  { name: 'Kurayami', style: 'strip',
+        roles: { shopkeep: 'Lamplighter Iku', smith: 'Bellows-Hand Goro', sage: 'The Listener',
+                 broker: 'Moss Broker Yuu', gatekeeper: 'Gate-Watch Tobi' },
+        villagers: ['Sasa', 'Kohaku', 'Nen', 'Wara', 'Chizu', 'Mure', 'Ito'],
+        tint: { cloth: 0x35502f, accent: 0x7aa84a } },
+  4:  { name: 'Suna-no-Tsuji', style: 'grid',
+        roles: { shopkeep: 'Water-Seller Nari', smith: 'Anvil Hakim', sage: 'The Cartographer',
+                 broker: 'Salvage Broker Emi', gatekeeper: 'Dust Warden Oki' },
+        villagers: ['Karu', 'Sabi', 'Hoshi', 'Tade', 'Ren', 'Baku', 'Suna'],
+        tint: { cloth: 0xb09060, accent: 0xd8b070 } },
+  5:  { name: 'Shirokabe', style: 'ring',
+        roles: { shopkeep: 'Furrier Machi', smith: 'Coldforge Danjo', sage: 'The Kindler',
+                 broker: 'Ice Broker Setsu', gatekeeper: 'Snow Warden Kuro' },
+        villagers: ['Yuki', 'Tsura', 'Fubuki', 'Kanna', 'Shimo', 'Hyo', 'Toge'],
+        tint: { cloth: 0x6a7a92, accent: 0xcfe0f0 } },
+  6:  { name: 'Kohaku-mura', style: 'strip',
+        roles: { shopkeep: 'Drover Aki', smith: 'Hammer Isa', sage: 'The Grass-Reader',
+                 broker: 'Hide Broker Take', gatekeeper: 'Horizon Warden Nao' },
+        villagers: ['Susuki', 'Hino', 'Ama', 'Kaya', 'Toki', 'Nagi', 'Homura'],
+        tint: { cloth: 0xa8813a, accent: 0xe0b860 } },
+  7:  { name: 'Shiotsu', style: 'radial',
+        roles: { shopkeep: 'Netmender Ura', smith: 'Saltforge Kai', sage: 'The Tidewatcher',
+                 broker: 'Wreck Broker Mio', gatekeeper: 'Harbour Warden Jin' },
+        villagers: ['Nami', 'Isa', 'Kai', 'Shio', 'Uro', 'Mizu', 'Awa'],
+        tint: { cloth: 0x3a6a72, accent: 0x7fc0c8 } },
+  8:  { name: 'Hakuseki', style: 'grid',
+        roles: { shopkeep: 'Factor Livia', smith: 'Marblewright Gnaeus', sage: 'The Archivist',
+                 broker: 'Debt Broker Sura', gatekeeper: 'Prefect Vela' },
+        villagers: ['Cato', 'Nerva', 'Ide', 'Vero', 'Sil', 'Mara', 'Bassa'],
+        tint: { cloth: 0xd8d0bc, accent: 0xb03225 } },
+  9:  { name: 'Kurogane-jo', style: 'ring',
+        roles: { shopkeep: 'Quartermaster Bran', smith: 'Ironhand Alfrun', sage: 'The Chancellor',
+                 broker: 'Crown Broker Hale', gatekeeper: 'Castellan Mord' },
+        villagers: ['Edda', 'Rolf', 'Wyn', 'Garm', 'Iseld', 'Corr', 'Brenna'],
+        tint: { cloth: 0x3a3f52, accent: 0x8a8fa8 } },
+  10: { name: 'Amagakure', style: 'ring',
+        roles: { shopkeep: 'The Last Merchant', smith: 'Skyforge Ame', sage: 'The One Who Stayed',
+                 broker: 'Cloud Broker Rei', gatekeeper: 'Warden of the Final Door' },
+        villagers: ['Sora', 'Kumo', 'Hane', 'Kaze', 'Takane', 'Shizu', 'Owari'],
+        tint: { cloth: 0xc8d4e8, accent: 0xe8f0ff } }
+};
+
+/* Fix each world's village plan and name onto the world itself, so the props
+ * builder can read them without reaching back into this table. */
+for (const w of WORLDS) {
+  const v = VILLAGES[w.id];
+  if (v) { w.villageStyle = v.style; w.villageName = v.name; }
+}
+
+/** Role definitions for a world's village, ready to hand to the NPC builder. */
+export function villageRoles(worldId) {
+  const v = VILLAGES[worldId];
+  if (!v) return [];
+  return Object.entries(v.roles).map(([tree, displayName]) => ({
+    tree, displayName,
+    look: { ...LOOKS[tree], ...(tree === 'sage' ? {} : { accent: v.tint.accent }) }
+  }));
+}
 
 export const VILLAGER_LINES = [
   "There's something out past the treeline that walks like a man and isn't.",

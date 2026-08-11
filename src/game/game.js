@@ -10,7 +10,7 @@ import { Audio } from '../core/audio.js';
 import { Save } from '../core/save.js';
 import {
   WORLDS, worldById, ENEMIES, BOSSES, ANIMALS, ITEMS, CLASSES,
-  VILLAGER_LINES, rankFor, sellValue, xpValue
+  VILLAGER_LINES, VILLAGES, villageRoles, rankFor, sellValue, xpValue
 } from '../data/gamedata.js';
 import { Terrain } from '../world/terrain.js';
 import { Sky } from '../world/sky.js';
@@ -194,6 +194,7 @@ export class Game {
     if (this.player2) this.scene.add(this.cameras[1]);
 
     const spawn = spawnPos || this._clearSpawn(world);
+    this.worldEntry = { x: spawn.x, z: spawn.z };
     this.terrain.ensureAround(new THREE.Vector3(spawn.x, spawn.y, spawn.z));
     this.player.spawnAt(new THREE.Vector3(spawn.x, spawn.y, spawn.z), Math.PI);
     this.player.refreshStats();
@@ -222,15 +223,56 @@ export class Game {
   }
 
   /** Ground that is flat, in the open, and not inside a building. */
+  /* Where you come into a world.
+   *
+   * Not on the village doorstep: a new sky drops you somewhere in it and
+   * finding the village is the first thing you do. Once you have found it
+   * the village is where you come back to; until then you come back to
+   * where you came in, which is the difference finding it makes. */
   _clearSpawn(world) {
-    const near = world.hub
-      ? { x: this.props.hubCenter.x, z: this.props.hubCenter.z + 40 }
-      : { x: this.props.hubCenter.x, z: this.props.hubCenter.z };
-    for (let i = 0; i < 90; i++) {
-      const s = this.terrain.findSpawn(near, 40 + i * 4);
+    if (!world.hub) {
+      return this.terrain.findSpawn({ x: this.props.hubCenter.x, z: this.props.hubCenter.z }, 60);
+    }
+    const c = this.props.hubCenter;
+    const R = this.props.hubRadius ?? 90;
+    // Somewhere between a quarter and half a kilometre out, seeded per world
+    // so re-entering a world puts you back at the same gate you arrived by.
+    const rng = makeRNG((this.seed ^ 0x5EED) >>> 0);
+    for (let i = 0; i < 120; i++) {
+      const a = rng() * 6.28;
+      const r = R + 180 + rng() * 300;
+      const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r;
+      if (Math.max(Math.abs(x), Math.abs(z)) > this.terrain.half - 80) continue;
+      const s = this.terrain.findSpawn({ x, z }, 50);
       if (!this.props.collideAt(s.x, s.z, 3.5)) return s;
     }
-    return this.terrain.findSpawn(near, 220);
+    return this.terrain.findSpawn({ x: c.x, z: c.z + R + 200 }, 220);
+  }
+
+  /** Has the player walked into this world's village yet? */
+  get villageFound() { return !!Save.world().villageFound; }
+
+  /** Where a death returns you: the village if you have found it. */
+  respawnPoint() {
+    if (this.world.hub && this.villageFound) {
+      const c = this.props.hubCenter;
+      return this.terrain.findSpawn({ x: c.x, z: c.z + 22 }, 26);
+    }
+    const e = this.worldEntry;
+    return e ? this.terrain.findSpawn({ x: e.x, z: e.z }, 40)
+             : this.terrain.findSpawn({ x: 0, z: 0 }, 60);
+  }
+
+  /** Called each frame: notice the moment the player reaches the village. */
+  _checkVillage() {
+    if (!this.world?.hub || this.villageFound) return;
+    if (!this.props.inHub(this.player.pos, (this.props.hubRadius ?? 90) * .8)) return;
+    Save.world().villageFound = true;
+    Save.write(true);
+    const name = VILLAGES[this.world.id]?.name;
+    Audio.sfx('questDone');
+    this.hud.toast(name ? `${name.toUpperCase()} — VILLAGE FOUND` : 'VILLAGE FOUND', true);
+    setTimeout(() => this.hud.toast('You will wake here now'), 2400);
   }
 
   _teardownWorld() {
@@ -269,30 +311,38 @@ export class Game {
     const lvlScale = 1 + (world.enemyLevel - 1) * .1;
     this.enemyLevelScale = lvlScale;
 
-    /* --- NPCs in the hub --- */
+    /* --- the village and the people in it ---
+     * Everyone lives in the village and stands where a person would stand:
+     * behind a market stall, at their own door, on the gate. The builder
+     * hands us a list of those places, best first, so the five who matter
+     * get the prominent ones and the villagers take what is left. */
     if (world.hub) {
       const c = this.props.hubCenter;
-      const roles = [
-        { tree: 'shopkeep', displayName: 'Merchant Ozu', look: { cloth: 0x6a4a2a, accent: 0xc9a44a } },
-        { tree: 'smith', displayName: 'Oathkeeper Ren', look: { cloth: 0x3a3a44, armor: 0x7a7a84, accent: 0xb03225 } },
-        { tree: 'sage', displayName: 'The Sage', look: { cloth: 0x2a2a3a, cloak: true, cloakColor: 0x4a3f6a } },
-        { tree: 'broker', displayName: 'Ash Broker', look: { cloth: 0x4a3a2a, accent: 0x8a6a2a } },
-        { tree: 'gatekeeper', displayName: 'Gatekeeper', look: { cloth: 0x2a3a4a, armor: 0x6a7a8a } }
-      ];
-      roles.forEach((r, i) => {
-        const a = (i / roles.length) * 6.28 + .3;
-        const x = c.x + Math.cos(a) * 11, z = c.z + Math.sin(a) * 11;
-        this.npcs.push(new NPC(this, new THREE.Vector3(x, 0, z), r));
-      });
-      // Villagers with side quests.
+      const village = VILLAGES[world.id];
+      const spots = (this.props.npcSpots || []).slice();
+      const takeSpot = () => spots.shift() ||
+        { x: c.x + rng.range(-30, 30), z: c.z + rng.range(-30, 30), yaw: rng() * 6.28 };
+
+      for (const r of villageRoles(world.id)) {
+        const s = takeSpot();
+        const npc = new NPC(this, new THREE.Vector3(s.x, 0, s.z), r);
+        npc.yaw = s.yaw; npc.root.rotation.y = s.yaw;
+        this.npcs.push(npc);
+      }
+      // Villagers with side quests, spread through the streets.
+      const names = village?.villagers || [];
       for (let i = 0; i < 7; i++) {
-        const a = rng() * 6.28, r = rng.range(18, 52);
-        const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r;
-        this.npcs.push(new NPC(this, new THREE.Vector3(x, 0, z), {
-          tree: 'villager', displayName: 'Villager', qid: i,
+        // Villagers get spots from further down the list, so they end up
+        // out along the streets rather than crowding the plaza.
+        const s = spots.length > 3 ? spots.splice(rng.int(0, spots.length - 1), 1)[0] : takeSpot();
+        const npc = new NPC(this, new THREE.Vector3(s.x, 0, s.z), {
+          tree: 'villager', displayName: names[i] || 'Villager', qid: i,
           line: VILLAGER_LINES[(i + world.id) % VILLAGER_LINES.length],
-          look: { cloth: [0x6a5a44, 0x4a5a4a, 0x5a4a5a][i % 3] }
-        }));
+          look: { cloth: [0x6a5a44, 0x4a5a4a, 0x5a4a5a][i % 3],
+                  accent: village?.tint?.accent }
+        });
+        npc.yaw = s.yaw; npc.root.rotation.y = s.yaw;
+        this.npcs.push(npc);
       }
     }
 
@@ -365,6 +415,32 @@ export class Game {
       // formations to be one of. Scatter an outcrop around it that never
       // streams out, so the silhouette is ambiguous from any distance.
       if (BOSSES[world.boss]?.dormant) this.props.buildOutcrop(bp, rng);
+
+    }
+
+
+    /* --- lesser wardens ---
+     * A sky has more than one door held shut, and only the first of them is
+     * the one the mission names. These stand on their own ground, well
+     * apart from each other and from the named warden, a shade weaker, and
+     * each is worth finding on its own. They outlive the named warden: a
+     * world does not empty out because you beat its headline fight. */
+    this.lesserBosses = [];
+    {
+      const extra = (world.bosses || []).filter(id => id !== world.boss);
+      const killed = new Set(wstate.lesserDead || []);
+      extra.forEach((id, i) => {
+        if (killed.has(id)) return;
+        const a2 = (i / Math.max(1, extra.length)) * 6.28 + rng.range(-.4, .4) + 1.6;
+        const r2 = world.size * (.20 + i * .09);
+        const p2 = this.terrain.findSpawn({ x: Math.cos(a2) * r2, z: Math.sin(a2) * r2 }, 220);
+        const pos2 = new THREE.Vector3(p2.x, p2.y, p2.z);
+        const lb = new Boss(this, pos2, id, lvlScale * .8);
+        lb.isLesser = true;
+        this.enemies.push(lb);
+        this.lesserBosses.push(lb);
+        if (BOSSES[id]?.dormant) this.props.buildOutcrop(pos2, rng);
+      });
     }
 
     /* --- animals --- */
@@ -615,6 +691,14 @@ export class Game {
         // A warden down is a door open, and a door open is another line of
         // the poem — plus whatever His steward has to say about it.
         this.story.wardenFell(this.world.id);
+      } else if (e.isLesser) {
+        const st = Save.world();
+        st.lesserDead = st.lesserDead || [];
+        if (!st.lesserDead.includes(e.bossId)) st.lesserDead.push(e.bossId);
+        this.lesserBosses = (this.lesserBosses || []).filter(b => b !== e);
+        this.hud.toast(`${e.name.toUpperCase()} HAS FALLEN`, true);
+        Audio.play(this.world.music);
+        this.missions.onBossKill(e);
       } else if (e.isRoaming) {
         this.roamingBoss = null;
         this.missions.onBossKill(e);
@@ -660,10 +744,8 @@ export class Game {
     setTimeout(async () => {
       await this.hud.cine.fadeTo('black', 1400);
       this.hud.cine.death(false);
-      // Respawn at the hub (or the world start) with the wake-up cutscene.
-      const spawn = this.world.hub
-        ? this.terrain.findSpawn({ x: this.props.hubCenter.x, z: this.props.hubCenter.z + 30 }, 30)
-        : this.terrain.findSpawn({ x: 0, z: 0 }, 60);
+      // The village if it has been found, otherwise back where you came in.
+      const spawn = this.respawnPoint();
       player.spawnAt(new THREE.Vector3(spawn.x, spawn.y, spawn.z), Math.PI);
       // Death costs a slice of your purse, never your progress.
       Save.data.shekels = Math.floor(Save.data.shekels * .85);
@@ -1125,6 +1207,7 @@ export class Game {
     this.motes?.update(dt, this.cameras[0], this.player.pos, this.chests,
                        this.sky.uniforms.uStars.value);
     this._updateChill(dt);
+    this._checkVillage();
 
     /* --- actors --- */
     for (let i = this.enemies.length - 1; i >= 0; i--) {

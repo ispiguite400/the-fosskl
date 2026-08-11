@@ -46,9 +46,9 @@ export class Props {
      * snow worth walking to rather than scenery. */
     this.fires = [];
 
+    // Landmark colliders are filed into the grid as they are built, so the
+    // builders can ask what they have already put down.
     this._buildLandmarks();
-    // Landmarks never unload, so their colliders go in with no owning cell.
-    for (const c of this.colliders) this._gridAdd(c, null);
   }
 
   /* ==========================================================
@@ -93,7 +93,7 @@ export class Props {
         t.position.set(s.x, s.y, s.z);
         t.rotation.y = rng() * 6.28;
         this.landmarks.add(t);
-        this.colliders.push({ x: s.x, z: s.z, r: 14 });
+        this._addCollider(s.x, s.z, 14);
       }
     }
     if (w.theme === 'desert') {
@@ -163,7 +163,7 @@ export class Props {
           const a = (i / 5) * 6.28;
           p.position.set(best.x + Math.cos(a) * 34, this.terrain.heightAt(best.x + Math.cos(a) * 34, best.z + Math.sin(a) * 34), best.z + Math.sin(a) * 34);
           this.landmarks.add(p);
-          this.colliders.push({ x: p.position.x, z: p.position.z, r: 8 });
+          this._addCollider(p.position.x, p.position.z, 8);
         }
         this.keepPos = new THREE.Vector3(best.x, best.y, best.z);
       }
@@ -182,7 +182,7 @@ export class Props {
       obj.position.set(x, T.heightAt(x, z) - drop, z);
       obj.rotation.y = yaw ?? rng() * Math.PI * 2;
       this.landmarks.add(obj);
-      if (collide) this.colliders.push({ x, z, r: collide });
+      if (collide) this._addCollider(x, z, collide);
       if (animate) this.animated.push(obj);
       return obj;
     };
@@ -326,51 +326,196 @@ export class Props {
     return false;
   }
 
+  /* ==========================================================
+     The village.
+
+     Every world but the first has one, and no two are laid out
+     alike: the plan is drawn from the world's own seed, so the
+     Verdant Reach might be a spoked market town and the Iron
+     Crown a walled grid. It is a place with streets you can walk
+     down rather than a ring of huts around a shrine, and the
+     people who live there stand where people would stand — at
+     their own doors, in the market, at the gate — which is what
+     `npcSpots` is for.
+     ========================================================== */
   _buildHub(center, rng) {
     const T = this.terrain;
-    const y = p => T.heightAt(p.x, p.z);
+    const w = this.world;
+    const add = (obj, x, z, { yaw = 0, drop = .15, collide = 0, animate = false, fire = false } = {}) => {
+      obj.position.set(x, T.heightAt(x, z) - drop, z);
+      obj.rotation.y = yaw;
+      this.landmarks.add(obj);
+      if (collide) this._addCollider(x, z, collide);
+      if (animate) this.animated.push(obj);
+      if (fire) this.fires.push({ x, z, cell: null });
+      return obj;
+    };
+    const ok = (x, z, slope = .34) => T.isFlatGround(x, z, slope);
 
-    // Central plaza pagoda.
-    const p = buildPagoda(rng, 3, 1.2);
-    p.position.copy(center);
-    this.landmarks.add(p);
-    this.colliders.push({ x: center.x, z: center.z, r: 5 });
+    /* Spots where a person would plausibly be standing. Roles get the
+     * prominent ones (plaza, gate, market); villagers take what is left. */
+    this.npcSpots = [];
+    const spot = (x, z, yaw, prominence) => {
+      if (Math.max(Math.abs(x), Math.abs(z)) > T.half - 30) return;
+      this.npcSpots.push({ x, z, yaw, prominence });
+    };
 
-    // Ring of houses.
-    for (let i = 0; i < 16; i++) {
-      const a = (i / 16) * 6.28 + rng.range(-.1, .1);
-      const r = rng.range(26, 62);
-      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
-      const h = buildHouse(rng, { ruined: false });
-      h.position.set(x, T.heightAt(x, z) - .15, z);
-      h.rotation.y = -a + Math.PI / 2 + rng.range(-.2, .2);
-      this.landmarks.add(h);
-      this.colliders.push({ x, z, r: 4 });
-    }
+    const style = w.villageStyle ?? ['radial', 'grid', 'ring', 'strip'][rng.int(0, 3)];
+    this.villageStyle = style;
+    // A real settlement, not a hamlet: 90-140 m across.
+    const R = rng.range(88, 140);
+    this.hubRadius = R + 26;
 
-    // Market stalls and braziers around the plaza.
+    /* ---- the plaza at the middle of it ---- */
+    const shrineTiers = rng.int(3, 5);
+    add(buildPagoda(rng, shrineTiers, rng.range(1.1, 1.5)), center.x, center.z,
+        { yaw: rng() * 6.28, drop: 0, collide: 6 });
+    add(buildPlatform(rng, 26, 26), center.x, center.z, { drop: .1 });
     for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * 6.28 + .4, r = 15;
-      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
-      const s = buildStall(rng);
-      s.position.set(x, T.heightAt(x, z), z);
-      s.rotation.y = -a;
-      this.landmarks.add(s);
+      const a = (i / 8) * 6.28 + .3, r = 11;
+      add(buildBrazier(), center.x + Math.cos(a) * r, center.z + Math.sin(a) * r,
+          { drop: 0, animate: true, fire: true });
     }
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * 6.28, r = 9;
+    // The market: stalls facing inward, and somebody behind each of them.
+    const stalls = rng.int(7, 12);
+    for (let i = 0; i < stalls; i++) {
+      const a = (i / stalls) * 6.28 + rng.range(-.12, .12);
+      const r = rng.range(17, 24);
       const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
-      const b = buildBrazier();
-      b.position.set(x, T.heightAt(x, z), z);
-      this.landmarks.add(b);
-      this.animated.push(b);
-      this.fires.push({ x, z, cell: null });
+      add(buildStall(rng), x, z, { yaw: -a, drop: 0, collide: 1.8 });
+      spot(x + Math.cos(a) * 2.2, z + Math.sin(a) * 2.2, -a + Math.PI, 2);
+    }
+    const wellA = rng() * 6.28;
+    add(buildWell(rng), center.x + Math.cos(wellA) * 14, center.z + Math.sin(wellA) * 14,
+        { drop: 0, collide: 1.4 });
+    spot(center.x + Math.cos(wellA) * 17, center.z + Math.sin(wellA) * 17, wellA + Math.PI, 3);
+
+    /* ---- streets ---- */
+    const streets = [];        // { ox, oz, dx, dz, len }
+    if (style === 'radial') {
+      const n = rng.int(5, 8);
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * 6.28 + rng.range(-.16, .16);
+        streets.push({ ox: center.x, oz: center.z, dx: Math.cos(a), dz: Math.sin(a), len: R });
+      }
+    } else if (style === 'grid') {
+      const base = rng() * 6.28;
+      const rows = rng.int(3, 5);
+      for (let i = 0; i < rows; i++) {
+        const off = (i - (rows - 1) / 2) * rng.range(26, 34);
+        for (const turn of [0, Math.PI / 2]) {
+          const a = base + turn;
+          const px = -Math.sin(a), pz = Math.cos(a);
+          streets.push({ ox: center.x + px * off, oz: center.z + pz * off,
+                         dx: Math.cos(a), dz: Math.sin(a), len: R, both: true });
+        }
+      }
+    } else if (style === 'ring') {
+      const n = rng.int(4, 6);
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * 6.28;
+        streets.push({ ox: center.x, oz: center.z, dx: Math.cos(a), dz: Math.sin(a), len: R });
+      }
+    } else {                                  // strip: one long high street
+      const a = rng() * 6.28;
+      streets.push({ ox: center.x, oz: center.z, dx: Math.cos(a), dz: Math.sin(a), len: R, both: true });
+      for (const side of [-1, 1]) {
+        const b = a + side * rng.range(.9, 1.3);
+        streets.push({ ox: center.x, oz: center.z, dx: Math.cos(b), dz: Math.sin(b), len: R * .55 });
+      }
     }
 
-    // Torii marking the road in.
-    const t = buildTorii(rng, 1.4);
-    t.position.set(center.x, T.heightAt(center.x, center.z + 74), center.z + 74);
-    this.landmarks.add(t);
+    /* ---- houses along the streets, facing them ---- */
+    let built = 0;
+    for (const st of streets) {
+      const px = -st.dz, pz = st.dx;
+      const from = st.both ? -st.len : 28;
+      for (let d = from; d < st.len; d += rng.range(13, 19)) {
+        if (Math.abs(d) < 26) continue;                 // keep the plaza clear
+        for (const side of [-1, 1]) {
+          if (rng.chance(.16)) continue;                // gaps, yards, alleys
+          const off = rng.range(9, 15) * side;
+          const x = st.ox + st.dx * d + px * off;
+          const z = st.oz + st.dz * d + pz * off;
+          if (!ok(x, z)) continue;
+          if (this.collideAt(x, z, 5)) continue;
+          const yaw = Math.atan2(-px * side, -pz * side);
+          const roll = rng();
+          if (roll < .1) add(buildPagoda(rng, 2, rng.range(.6, .9)), x, z, { yaw, collide: 3.6 });
+          else if (roll < .18) add(buildStall(rng), x, z, { yaw, drop: 0, collide: 1.8 });
+          else add(buildHouse(rng, { scale: rng.range(.9, 1.35) }), x, z, { yaw, collide: 4.2 });
+          built++;
+          // Someone at the door, facing the street.
+          if (rng.chance(.5)) spot(x - px * side * 5.5, z - pz * side * 5.5, yaw + Math.PI, 1);
+        }
+        // Street furniture.
+        if (rng.chance(.3)) {
+          const lx = st.ox + st.dx * d, lz = st.oz + st.dz * d;
+          if (ok(lx, lz)) add(buildLantern(rng), lx, lz, { drop: 0, animate: true, fire: true });
+        }
+      }
+      // A torii where each street leaves town.
+      const ex = st.ox + st.dx * (st.len + 8), ez = st.oz + st.dz * (st.len + 8);
+      if (ok(ex, ez, .5)) {
+        add(buildTorii(rng, rng.range(1.1, 1.6)), ex, ez,
+            { yaw: Math.atan2(st.dx, st.dz) + Math.PI / 2, drop: 0 });
+        spot(ex - st.dx * 5, ez - st.dz * 5, Math.atan2(st.dx, st.dz), 2);
+      }
+    }
+
+    /* ---- infill so the blocks are not hollow ---- */
+    for (let i = 0; i < 26; i++) {
+      const a = rng() * 6.28, r = 30 + Math.sqrt(rng()) * (R - 30);
+      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
+      if (!ok(x, z)) continue;
+      if (this.collideAt(x, z, 6)) continue;
+      add(buildHouse(rng, { scale: rng.range(.85, 1.2) }), x, z,
+          { yaw: -a + Math.PI / 2 + rng.range(-.4, .4), collide: 4 });
+      built++;
+    }
+
+    /* ---- everyday clutter ---- */
+    for (let i = 0; i < rng.int(10, 18); i++) {
+      const a = rng() * 6.28, r = 14 + Math.sqrt(rng()) * (R - 14);
+      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
+      if (!ok(x, z) || this.collideAt(x, z, 2.5)) continue;
+      const roll = rng();
+      const obj = roll < .3 ? buildCart(rng, { wrecked: false })
+                : roll < .55 ? buildFence(rng, rng.int(3, 8), {})
+                : roll < .75 ? buildBanner(rng, {})
+                : roll < .9 ? buildStatue(rng)
+                : buildWell(rng);
+      add(obj, x, z, { yaw: rng() * 6.28, drop: 0 });
+      if (roll >= .75 && rng.chance(.5)) spot(x + rng.range(-4, 4), z + rng.range(-4, 4), rng() * 6.28, 1);
+    }
+
+    /* ---- a wall around the ones that would have one ---- */
+    if (style === 'ring' || style === 'grid') {
+      const WR = R + 12, segs = Math.round(WR * .55);
+      for (let i = 0; i < segs; i++) {
+        if (rng.chance(.14)) continue;                  // gateways
+        const a = (i / segs) * 6.28;
+        const x = center.x + Math.cos(a) * WR, z = center.z + Math.sin(a) * WR;
+        if (!ok(x, z, .55)) continue;
+        add(buildFence(rng, 6, {}), x, z, { yaw: a + Math.PI / 2, drop: 0, collide: 1.3 });
+      }
+      for (let i = 0; i < 3; i++) {
+        const a = rng() * 6.28;
+        const x = center.x + Math.cos(a) * (WR - 6), z = center.z + Math.sin(a) * (WR - 6);
+        if (!ok(x, z, .4)) continue;
+        add(buildWatchtower(rng, {}), x, z, { yaw: rng() * 6.28, drop: 0, collide: 2.2 });
+        spot(x + rng.range(-5, 5), z + rng.range(-5, 5), a + Math.PI, 2);
+      }
+    }
+
+    // Plaza spots last so they sort to the front for the important people.
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * 6.28 + .5, r = rng.range(7, 13);
+      spot(center.x + Math.cos(a) * r, center.z + Math.sin(a) * r, a + Math.PI, 3);
+    }
+    // Best spots first.
+    this.npcSpots.sort((p, q) => q.prominence - p.prominence);
+    this.villageSize = built;
   }
 
   /** Distance to the nearest fire, or Infinity. */
@@ -385,8 +530,11 @@ export class Props {
   }
 
   /** True if a position is inside the safe hub radius. */
-  inHub(pos, radius = 78) {
-    return this.world.hub && this.hubCenter.distanceTo(pos) < radius;
+  inHub(pos, radius = null) {
+    // Villages are 90-140 m across now, so the default has to follow the
+    // village rather than sit at the old fixed 78 m.
+    const R = radius ?? (this.hubRadius ?? 78);
+    return this.world.hub && this.hubCenter.distanceTo(pos) < R;
   }
 
   /* ==========================================================
@@ -751,8 +899,7 @@ export class Props {
       this.landmarks.add(obj);
       if (radius) {
         const c = { x, z, r: radius };
-        this.colliders.push(c);
-      }
+              }
     };
 
     const main = rng() * 6.28;
@@ -918,7 +1065,7 @@ export class Props {
     big.scale.setScalar(4.2);
     big.rotation.y = rng() * 6.28;
     this.landmarks.add(big);
-    this.colliders.push({ x: center.x, z: center.z, r: 2.4 });
+    this._addCollider(center.x, center.z, 2.4);
 
     // A handful of lesser trees leaning in toward the water.
     for (let i = 0; i < 7; i++) {
@@ -929,7 +1076,7 @@ export class Props {
       t.scale.setScalar(rng.range(1.2, 2.1));
       t.rotation.set(0, rng() * 6.28, rng.range(-.1, .1));
       this.landmarks.add(t);
-      this.colliders.push({ x, z, r: 1 });
+      this._addCollider(x, z, 1);
     }
 
     // Bones. Whatever comes to drink is drinking somewhere it has been eaten.
@@ -959,7 +1106,7 @@ export class Props {
       rock.position.set(x, T.heightAt(x, z) - s * .35, z);
       rock.scale.setScalar(s);
       this.landmarks.add(rock);
-      this.colliders.push({ x, z, r: s * .8 });
+      this._addCollider(x, z, s * .8);
     }
   }
 
@@ -985,7 +1132,7 @@ export class Props {
         cairn.position.set(x, y, z);
         cairn.rotation.y = rng() * 6.28;
         this.landmarks.add(cairn);
-        this.colliders.push({ x, z, r: .55 });
+        this._addCollider(x, z, .55);
         // A few carry the spear of whoever is under them.
         if (rng.chance(.09)) {
           const sp = buildStuckSpear(rng);
@@ -1000,7 +1147,7 @@ export class Props {
     shrine.position.set(center.x, T.heightAt(center.x, center.z), center.z);
     shrine.rotation.y = rng() * 6.28;
     this.landmarks.add(shrine);
-    this.colliders.push({ x: center.x, z: center.z, r: 4.6 });
+    this._addCollider(center.x, center.z, 4.6);
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * 6.28 + .4;
       const x = center.x + Math.cos(a) * 7, z = center.z + Math.sin(a) * 7;
@@ -1031,10 +1178,16 @@ export class Props {
       rock.rotation.set(rng.range(-.2, .2), rng() * 6.28, rng.range(-.2, .2));
       rock.scale.set(s, s * rng.range(1.1, 2.3), s);
       this.landmarks.add(rock);
-      const c = { x, z, r: s * .8 };
-      this.colliders.push(c);
-      this._gridAdd(c, null);
+      this._addCollider(x, z, s * .8);
     }
+  }
+
+  /** A permanent collider: into the list and straight into the grid, so a
+   *  landmark builder can test what it has already put down. */
+  _addCollider(x, z, r) {
+    const c = { x, z, r };
+        this._gridAdd(c, null);
+    return c;
   }
 
   /** File a collider into every grid bucket its circle touches. */

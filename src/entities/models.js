@@ -132,7 +132,24 @@ export function buildHumanoid(opts = {}) {
     heavy = false,
     ghostly = false,
     child = false,
-    glow = 0
+    glow = 0,
+    /* --- creature features ---
+     * Everything after world one is not a man in armour. Rather than a
+     * second rig and a second animation path, the humanoid skeleton takes
+     * additions: horns, a beak, wings, a tail, a second pair of arms, a
+     * carapace, a cluster of eyes, or the whole thing stripped to bone.
+     * Combined with colour and scale, that is enough for a silhouette you
+     * can name at forty metres, and it all still poses and walks. */
+    horns = 0,
+    beak = false,
+    wings = false,
+    tail = 0,
+    extraArms = false,
+    shell = false,
+    eyes = 0,
+    eyeColor = 0xff4a2a,
+    skeletal = false,
+    maw = false
   } = opts;
 
   const root = new THREE.Group();
@@ -303,6 +320,120 @@ export function buildHumanoid(opts = {}) {
     l.position.y = .6;
     root.add(l);
     rig.light = l;
+  }
+
+  /* ---- creature features ---- */
+  const creatureM = mat(accent, { roughness: .7 });
+  const boneM = mat(0xd8d2c0, { roughness: .95 });
+
+  if (horns) {
+    for (let i = 0; i < horns; i++) {
+      const side = i % 2 ? 1 : -1;
+      const tier = Math.floor(i / 2);
+      const h = (.26 - tier * .06) * bodyScale;
+      const horn = mesh(cone(.045 * bodyScale, h, 6), boneM,
+        side * (.09 + tier * .03) * bodyScale, (.22 - tier * .05) * bodyScale, -.02 * bodyScale);
+      horn.rotation.set(-.25 - tier * .2, 0, side * (.4 + tier * .25));
+      neck.add(horn);
+    }
+  }
+  if (beak) {
+    const bk = mesh(cone(.055 * bodyScale, .26 * bodyScale, 5), creatureM,
+      0, .09 * bodyScale, .16 * bodyScale);
+    bk.rotation.x = Math.PI / 2;
+    neck.add(bk);
+  }
+  if (maw) {
+    // A jaw that does not close, hinged low and wide.
+    const jaw = mesh(box(.2 * bodyScale, .1 * bodyScale, .22 * bodyScale), mat(0x2a0f0f, { roughness: 1 }),
+      0, .02 * bodyScale, .09 * bodyScale);
+    jaw.rotation.x = .5;
+    neck.add(jaw);
+    for (let i = 0; i < 6; i++) {
+      const t = mesh(cone(.018 * bodyScale, .07 * bodyScale, 4), boneM,
+        (-.07 + i * .028) * bodyScale, .08 * bodyScale, .16 * bodyScale);
+      t.rotation.x = Math.PI;
+      neck.add(t);
+    }
+  }
+  if (eyes) {
+    const eyeM = mat(eyeColor, { emissive: eyeColor, roughness: .3 });
+    for (let i = 0; i < eyes; i++) {
+      const a = (i / eyes) * Math.PI - Math.PI / 2;
+      const e = mesh(sph(.028 * bodyScale, 6, 5), eyeM,
+        Math.sin(a) * .09 * bodyScale, (.1 + Math.cos(a * 2) * .05) * bodyScale, .1 * bodyScale);
+      neck.add(e);
+    }
+  }
+  if (shell) {
+    const carapace = mesh(sph(.3 * bodyScale, 10, 8), mat(0x3d5a44, { roughness: .6, metalness: .2 }),
+      0, .26 * bodyScale, -.16 * bodyScale);
+    carapace.scale.set(1, .85, .7);
+    torso.add(carapace);
+  }
+  if (wings) {
+    rig.wings = [];
+    for (const side of [-1, 1]) {
+      const wing = new THREE.Group();
+      wing.position.set(side * .2 * bodyScale, .42 * bodyScale, -.1 * bodyScale);
+      const membraneM = mat(accent, { roughness: .9, side: THREE.DoubleSide });
+      for (let i = 0; i < 3; i++) {
+        const len = (.7 - i * .12) * bodyScale;
+        const f = mesh(box(len, .02 * bodyScale, .3 * bodyScale), membraneM,
+          side * len * .5, -i * .12 * bodyScale, -.05 * bodyScale);
+        f.rotation.z = side * (-.2 - i * .18);
+        wing.add(f);
+      }
+      wing.rotation.y = side * .5;
+      torso.add(wing);
+      rig.wings.push(wing);
+    }
+  }
+  if (tail) {
+    rig.tail = [];
+    let parent = hips, len = .22 * bodyScale;
+    for (let i = 0; i < tail; i++) {
+      const seg = new THREE.Group();
+      seg.position.set(0, i === 0 ? -.02 * bodyScale : -.0, i === 0 ? -.14 * bodyScale : -len);
+      const m = mesh(box(.1 * bodyScale * (1 - i * .12), .1 * bodyScale * (1 - i * .12), len),
+        creatureM, 0, 0, -len / 2);
+      seg.add(m);
+      seg.rotation.x = .18;
+      parent.add(seg);
+      rig.tail.push(seg);
+      parent = seg;
+      len *= .88;
+    }
+  }
+  if (extraArms) {
+    // A lower pair, hanging, purely for the silhouette.
+    for (const side of [-1, 1]) {
+      const sh = new THREE.Group();
+      sh.position.set(side * .24 * bodyScale, .18 * bodyScale, -.04 * bodyScale);
+      sh.add(mesh(box(.09 * bodyScale, .26 * bodyScale, .09 * bodyScale), creatureM, 0, -.13 * bodyScale, 0));
+      const el = new THREE.Group();
+      el.position.y = -.27 * bodyScale;
+      el.add(mesh(box(.08 * bodyScale, .24 * bodyScale, .08 * bodyScale), creatureM, 0, -.12 * bodyScale, 0));
+      el.rotation.x = -.5;
+      sh.add(el);
+      sh.rotation.z = side * .5;
+      torso.add(sh);
+    }
+  }
+  if (skeletal) {
+    // Ribs over the chest, and everything pared back to bone colour.
+    for (let i = 0; i < 5; i++) {
+      const rib = mesh(box(.36 * bodyScale, .03 * bodyScale, .2 * bodyScale), boneM,
+        0, (.08 + i * .09) * bodyScale, .02 * bodyScale);
+      rib.scale.x = 1 - Math.abs(i - 2) * .12;
+      torso.add(rib);
+    }
+    root.traverse(o => {
+      if (o.isMesh && o.material !== boneM) {
+        o.material = o.material.clone();
+        o.material.color.lerp(new THREE.Color(0xcfc8b4), .72);
+      }
+    });
   }
 
   if (ghostly) {
