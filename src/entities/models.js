@@ -1235,12 +1235,40 @@ export function buildPagoda(rng, tiers = 3, scale = 1) {
 }
 
 /** Village house — optionally burnt out for world 1. */
-export function buildHouse(rng, { ruined = false, scale = 1 } = {}) {
+/* A house.
+ *
+ * Every one used to be the same box with the same hip roof in the same
+ * slate grey, which read as a housing estate rather than a village. A house
+ * now picks a kind, and the kinds differ where it shows from thirty metres:
+ * the roofline, the height, and the colour.
+ *
+ *   farm       one storey, deep eaves, an engawa deck along the front
+ *   thatch     steep straw roof pitched far past the walls
+ *   townhouse  two storeys, narrow frontage, shopfront and awning below
+ *   workshop   low and wide, a gabled roof and a smoke vent
+ *   longhouse  a long gabled hall, half again as deep as it is wide
+ *
+ * Kinds can be asked for by name so a village can put townhouses on its
+ * main street and farms out at the edge. */
+const HOUSE_KINDS = ['farm', 'thatch', 'townhouse', 'workshop', 'longhouse'];
+const ROOF_COLORS = [0x50505c, 0x3e3a42, 0x5a4038, 0x44514c, 0x6a5240];
+const WALL_COLORS = [0x9a8a6a, 0xb0a382, 0x8a7a5c, 0xc0b596, 0x7f7358];
+
+export function buildHouse(rng, { ruined = false, scale = 1, kind = null } = {}) {
   const g = new THREE.Group();
-  const w = rng.range(4, 7) * scale, d = rng.range(4, 7) * scale, h = rng.range(2.6, 3.6) * scale;
+  const K = kind || HOUSE_KINDS[rng.int(0, HOUSE_KINDS.length - 1)];
+
+  // Footprint. Townhouses are narrow and deep, longhouses long, farms square.
+  let w = rng.range(4, 7) * scale, d = rng.range(4, 7) * scale;
+  let h = rng.range(2.6, 3.6) * scale;
+  let storeys = 1;
+  if (K === 'townhouse') { w *= .78; d *= 1.12; storeys = 2; h = rng.range(2.4, 2.9) * scale; }
+  else if (K === 'longhouse') { d *= 1.7; w *= .9; }
+  else if (K === 'workshop') { h *= .82; w *= 1.15; }
+
   // Charred timber still has to read as timber at golden hour, so the
   // "ruined" palette is scorched rather than black.
-  const wallC = ruined ? 0x6b5a46 : 0x9a8a6a;
+  const wallC = ruined ? 0x6b5a46 : WALL_COLORS[rng.int(0, WALL_COLORS.length - 1)];
   const wall = mat(wallC, { roughness: .96 });
   const beam = mat(ruined ? 0x3d3226 : 0x4a3626, { roughness: .95 });
 
@@ -1255,30 +1283,120 @@ export function buildHouse(rng, { ruined = false, scale = 1 } = {}) {
     return g;
   }
 
-  g.add(mesh(box(w, h, d), wall, 0, h / 2, 0));
-  // Exposed timber frame.
+  const H = h * storeys;
+
+  /* --- body --- */
+  g.add(mesh(box(w, H, d), wall, 0, H / 2, 0));
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-    g.add(mesh(box(.18, h, .18), beam, sx * w / 2, h / 2, sz * d / 2));
+    g.add(mesh(box(.18, H, .18), beam, sx * w / 2, H / 2, sz * d / 2));
   }
-  g.add(mesh(box(w + .04, .16, d + .04), beam, 0, h * .55, 0));
+  // A belt rail at each floor line.
+  for (let i = 1; i <= storeys; i++) {
+    g.add(mesh(box(w + .04, .16, d + .04), beam, 0, h * i - h * .45, 0));
+  }
 
-  // Hip roof.
-  const roofM = mat(ruined ? 0x4a4038 : 0x50505c, { roughness: .9 });
-  const roof = mesh(cone(Math.max(w, d) * .82, h * .7, 4), roofM, 0, h + h * .35, 0);
-  roof.rotation.y = Math.PI / 4;
-  g.add(roof);
-  g.add(mesh(box(w * 1.34, .12, d * 1.34), roofM, 0, h + .06, 0));
+  /* --- roof --- */
+  const thatched = K === 'thatch';
+  const roofC = ruined ? 0x4a4038
+              : thatched ? [0xa8905c, 0x9c8452, 0xb59b66][rng.int(0, 2)]
+              : ROOF_COLORS[rng.int(0, ROOF_COLORS.length - 1)];
+  const roofM = mat(roofC, { roughness: thatched ? 1 : .9 });
+  const eaveY = H;
 
-  if (!ruined) {
-    // Shoji panels.
-    const paper = mat(0xd8cfae, { roughness: .9, emissive: 0x2a2010, emissiveIntensity: .25 });
+  if (K === 'workshop' || K === 'longhouse') {
+    /* Gabled: a prism running the length of the building. Built from two
+     * pitched slabs so the ridge reads as a line rather than a point. */
+    const pitch = h * (K === 'longhouse' ? .62 : .5);
+    const slope = Math.atan2(pitch, w * .62);
+    for (const side of [-1, 1]) {
+      const panel = mesh(box(w * .74, .12, d * 1.16), roofM,
+        side * w * .3, eaveY + pitch * .5, 0);
+      panel.rotation.z = side * -slope;
+      g.add(panel);
+    }
+    // Gable ends, so the prism is closed.
+    for (const sz of [-1, 1]) {
+      const gable = mesh(cone(w * .62, pitch, 3), roofM, 0, eaveY + pitch * .5, sz * d * .58);
+      gable.rotation.y = Math.PI / 2;
+      gable.scale.z = .08;
+      g.add(gable);
+    }
+    if (K === 'workshop') {
+      // Smoke vent on the ridge — something is being fired in there.
+      g.add(mesh(box(.5, .5, .8), beam, 0, eaveY + pitch + .2, 0));
+      g.add(mesh(box(.7, .1, 1.0), roofM, 0, eaveY + pitch + .5, 0));
+    }
+  } else if (thatched) {
+    // Steep straw, pitched well past the walls.
+    const roof = mesh(cone(Math.max(w, d) * 1.02, h * 1.25, 4), roofM, 0, eaveY + h * .6, 0);
+    roof.rotation.y = Math.PI / 4;
+    g.add(roof);
+    g.add(mesh(box(w * 1.5, .18, d * 1.5), roofM, 0, eaveY + .09, 0));
+  } else if (K === 'townhouse') {
+    // Shallow hip with a deep front eave over the shopfront.
+    const roof = mesh(cone(Math.max(w, d) * .78, h * .5, 4), roofM, 0, eaveY + h * .25, 0);
+    roof.rotation.y = Math.PI / 4;
+    g.add(roof);
+    g.add(mesh(box(w * 1.3, .12, d * 1.22), roofM, 0, eaveY + .06, 0));
+    const awning = mesh(box(w * 1.16, .1, 1.5), roofM, 0, h - .2, d / 2 + .6);
+    awning.rotation.x = .22;
+    g.add(awning);
+    // Noren curtain over the door.
+    const noren = mat([0x2a3f6a, 0x6a2a2a, 0x2f4a35][rng.int(0, 2)], { roughness: .95 });
+    g.add(mesh(box(w * .6, .7, .05), noren, 0, h - .75, d / 2 + .05));
+  } else {
+    /* farm — the original hip roof, with deep eaves and a veranda. */
+    const roof = mesh(cone(Math.max(w, d) * .82, h * .7, 4), roofM, 0, eaveY + h * .35, 0);
+    roof.rotation.y = Math.PI / 4;
+    g.add(roof);
+    g.add(mesh(box(w * 1.34, .12, d * 1.34), roofM, 0, eaveY + .06, 0));
+  }
+
+  if (ruined) {
+    if (rng.chance(.5)) {
+      const rubble = mesh(box(w * .5, .8, d * .5), mat(0x453a30, { roughness: 1, flatShading: true }),
+        rng.range(-1, 1), .4, rng.range(-1, 1));
+      rubble.rotation.y = rng() * 3;
+      g.add(rubble);
+    }
+    return g;
+  }
+
+  /* --- frontage --- */
+  const paper = mat(0xd8cfae, { roughness: .9, emissive: 0x2a2010, emissiveIntensity: .25 });
+  if (K === 'townhouse') {
+    // Lit paper across the whole upper floor, and a dark shop below.
+    g.add(mesh(box(w * .74, h * .5, .06), paper, 0, h + h * .45, d / 2 + .02));
+    g.add(mesh(box(w * .66, h * .42, .05), mat(0x2e2418, { roughness: 1 }), 0, h * .4, d / 2 + .03));
+    // A rail across the upper storey.
+    g.add(mesh(box(w * .96, .08, .1), beam, 0, h + .38, d / 2 + .22));
+    for (let i = 0; i < 5; i++)
+      g.add(mesh(box(.05, .42, .05), beam, (-.4 + i * .2) * w, h + .2, d / 2 + .22));
+  } else {
     g.add(mesh(box(w * .62, h * .5, .06), paper, 0, h * .42, d / 2 + .02));
-  } else if (rng.chance(.5)) {
-    // Collapsed section + charring.
-    const rubble = mesh(box(w * .5, .8, d * .5), mat(0x453a30, { roughness: 1, flatShading: true }),
-      rng.range(-1, 1), .4, rng.range(-1, 1));
-    rubble.rotation.y = rng() * 3;
-    g.add(rubble);
+  }
+
+  if (K === 'farm' || K === 'longhouse') {
+    // Engawa: a raised deck running the front of the house.
+    g.add(mesh(box(w * 1.05, .16, 1.3), beam, 0, .34, d / 2 + .6));
+    for (const sx of [-1, 1])
+      g.add(mesh(box(.14, .34, .14), beam, sx * w * .46, .17, d / 2 + 1.1));
+  }
+  if (K === 'longhouse' && rng.chance(.6)) {
+    // A lean-to store against one end.
+    const side = rng.chance(.5) ? 1 : -1;
+    const lw = w * .5, lh = h * .6;
+    g.add(mesh(box(lw, lh, d * .34), wall, side * (w / 2 + lw / 2 - .1), lh / 2, d * .2));
+    const lean = mesh(box(lw + .3, .1, d * .4), roofM, side * (w / 2 + lw / 2 - .1), lh + .1, d * .2);
+    lean.rotation.z = side * -.28;
+    g.add(lean);
+  }
+  if (rng.chance(.35)) {
+    // Barrels by the door.
+    for (let i = 0; i < rng.int(1, 3); i++) {
+      g.add(mesh(cyl(.26, .3, .62, 8), beam,
+        rng.range(-w * .4, w * .4), .31, d / 2 + rng.range(.5, 1.4)));
+    }
   }
   return g;
 }

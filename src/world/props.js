@@ -60,8 +60,7 @@ export class Props {
 
     /* --- hub village (worlds 2..10) --- */
     if (w.hub) {
-      const spot = this.terrain.findSpawn({ x: 0, z: 0 }, 260);
-      this.hubCenter = new THREE.Vector3(spot.x, spot.y, spot.z);
+      this.hubCenter = this._findVillageGround(rng);
       this._buildHub(this.hubCenter, rng);
     } else {
       this.hubCenter = new THREE.Vector3(0, this.terrain.heightAt(0, 0), 0);
@@ -326,6 +325,50 @@ export class Props {
     return false;
   }
 
+  /* Somewhere a village could actually stand.
+   *
+   * `findSpawn` returns a point the player can be put down on, which is not
+   * the same thing: on the sky world it happily returned a spot at y = -99,
+   * out in the void between the floating islands, and the village built
+   * nothing at all because ninety-six per cent of the ground around it was
+   * not ground. A village needs a broad, solid, dry shelf, so candidates
+   * are scored on how much of the land within its own radius is buildable
+   * and the best one wins. */
+  _findVillageGround(rng) {
+    const T = this.terrain, w = this.world;
+    const waterY = w.water ? (w.waterLevel || 0) + 2 : -1e9;
+    const probe = (cx, cz) => {
+      const y = T.heightAt(cx, cz);
+      if (y < waterY || y < -20) return -1;
+      let ok = 0;
+      for (let i = 0; i < 24; i++) {
+        const a = (i / 24) * 6.28, r = 20 + (i % 4) * 22;
+        const x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+        const hy = T.heightAt(x, z);
+        if (hy < waterY || hy < -20) continue;
+        if (T.isFlatGround(x, z, .34)) ok++;
+      }
+      return ok / 24;
+    };
+
+    let best = null;
+    for (let i = 0; i < 90; i++) {
+      // Spiral outward from the middle of the world.
+      const a = rng() * 6.28, r = i < 12 ? 0 : Math.sqrt(rng()) * w.size * .12;
+      const s = T.findSpawn({ x: Math.cos(a) * r, z: Math.sin(a) * r }, 200);
+      const score = probe(s.x, s.z);
+      if (score < 0) continue;
+      if (!best || score > best.score) best = { x: s.x, y: s.y, z: s.z, score };
+      if (best.score > .92) break;                  // good enough, stop looking
+    }
+    if (!best) {
+      const s = T.findSpawn({ x: 0, z: 0 }, 260);
+      best = { x: s.x, y: s.y, z: s.z, score: 0 };
+    }
+    this.villageGroundScore = +best.score.toFixed(2);
+    return new THREE.Vector3(best.x, T.heightAt(best.x, best.z), best.z);
+  }
+
   /* ==========================================================
      The village.
 
@@ -444,9 +487,17 @@ export class Props {
           if (this.collideAt(x, z, 5)) continue;
           const yaw = Math.atan2(-px * side, -pz * side);
           const roll = rng();
+          /* Where a house sits decides what kind it is. Two-storey
+           * townhouses with shopfronts crowd the middle of the street,
+           * workshops sit behind them, and the far ends of the street are
+           * farms and thatch — which is how a town actually thins out. */
+          const t = Math.abs(d) / st.len;
+          const kind = t < .38 ? (rng.chance(.68) ? 'townhouse' : 'workshop')
+                     : t < .68 ? (rng.chance(.45) ? 'workshop' : rng.chance(.5) ? 'longhouse' : 'farm')
+                     : (rng.chance(.55) ? 'thatch' : 'farm');
           if (roll < .1) add(buildPagoda(rng, 2, rng.range(.6, .9)), x, z, { yaw, collide: 3.6 });
           else if (roll < .18) add(buildStall(rng), x, z, { yaw, drop: 0, collide: 1.8 });
-          else add(buildHouse(rng, { scale: rng.range(.9, 1.35) }), x, z, { yaw, collide: 4.2 });
+          else add(buildHouse(rng, { scale: rng.range(.9, 1.3), kind }), x, z, { yaw, collide: 4.2 });
           built++;
           // Someone at the door, facing the street.
           if (rng.chance(.5)) spot(x - px * side * 5.5, z - pz * side * 5.5, yaw + Math.PI, 1);
@@ -472,7 +523,9 @@ export class Props {
       const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
       if (!ok(x, z)) continue;
       if (this.collideAt(x, z, 5)) continue;
-      add(buildHouse(rng, { scale: rng.range(.85, 1.2) }), x, z,
+      // Infill behind the frontages: yards, sheds, the cheaper end of town.
+      const kind = rng.chance(.4) ? 'farm' : rng.chance(.5) ? 'thatch' : 'workshop';
+      add(buildHouse(rng, { scale: rng.range(.85, 1.2), kind }), x, z,
           { yaw: -a + Math.PI / 2 + rng.range(-.4, .4), collide: 4 });
       built++;
     }
