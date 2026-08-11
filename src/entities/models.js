@@ -1001,6 +1001,42 @@ export function buildTree(theme, rng) {
   return g;
 }
 
+/* A stacked-stone marker. Built from its own geometry rather than from
+ * buildRock, because a cairn has to be an exact height to read as a marker
+ * and buildRock picks its own size — stacking those left the stones sunk
+ * into each other and the whole thing ankle-high. Dark slate, because a
+ * white stone on a snowfield is invisible, and that is the one thing a
+ * grave marker must never be. */
+export function buildCairn(rng, height = 1.3) {
+  const g = new THREE.Group();
+  const stone = mat(0x4e5760, { roughness: 1, flatShading: true });
+  const capM = mat(0xe8f0f8, { roughness: .9, flatShading: true });
+  const n = rng.int(4, 7);
+  let y = 0, r = height * .3;
+  for (let i = 0; i < n; i++) {
+    const geo = new THREE.IcosahedronGeometry(r, 0);
+    const pos = geo.attributes.position;
+    for (let v = 0; v < pos.count; v++) {
+      const f = 1 + (rng() - .5) * .5;
+      pos.setXYZ(v, pos.getX(v) * f, pos.getY(v) * f * .52, pos.getZ(v) * f);
+    }
+    geo.computeVertexNormals();
+    const m = new THREE.Mesh(geo, stone);
+    m.position.set(rng.range(-.06, .06), y + r * .3, rng.range(-.06, .06));
+    m.rotation.y = rng() * 6.28;
+    m.castShadow = true; m.receiveShadow = true;
+    m.userData.oneOff = true;
+    g.add(m);
+    y += r * .56;
+    r *= rng.range(.76, .88);
+  }
+  // Snow settles on the top stone.
+  const cap = mesh(sph(r * 1.05, 7, 5), capM, 0, y + r * .1, 0);
+  cap.scale.y = .4;
+  g.add(cap);
+  return g;
+}
+
 export function buildRock(rng, theme) {
   const s = rng.range(.7, 3.4);
   const geo = new THREE.IcosahedronGeometry(s, 1);

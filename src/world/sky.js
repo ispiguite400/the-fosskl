@@ -100,12 +100,21 @@ export class Sky {
     this.forcedRain = null;
     this._rainTimer = 40 + Math.random() * 180;
 
-    /* A waste has weather too; it just is not water. Where a world is sandy
-     * the whole precipitation machine — intensity, fog, overcast, audio —
-     * drives a sandstorm instead, so there is one weather system rather than
-     * two that have to agree with each other. */
-    this.sandy = !!(world.sandstorm ?? world.theme === 'desert');
-    this.sand = 0;                    // 0..1, mirrors rain when sandy
+    /* Every world has weather; it is not all water. One precipitation
+     * machine — intensity, fog, overcast, particles, audio, the shove on the
+     * player — drives all three kinds, so there is a single system rather
+     * than three that have to agree with each other.
+     *
+     *   rain  falls fast and straight, greys the sky
+     *   sand  travels sideways, blots the sky out entirely
+     *   snow  drifts, whitens, and at full strength is a blizzard
+     *
+     * Before this the snow world rained, which rather undercut it. */
+    this.weather = world.weather ??
+      ({ desert: 'sand', snow: 'snow' }[world.theme] ?? 'rain');
+    this.sandy = this.weather === 'sand';      // kept: fog and sky read it
+    this.blown = this.weather !== 'rain';      // sideways kinds shove the player
+    this.storm = 0;                   // 0..1 gust-modulated, drives the shove
     // Which way the storm is blowing. Actors lean into it.
     this.windDir = new THREE.Vector3(1, 0, .35).normalize();
     this._gust = 0;
@@ -122,7 +131,9 @@ export class Sky {
       uStars:       { value: 0 },
       uMoon:        { value: 0 },
       uOvercast:    { value: 0 },
-      uOvercastCol: { value: new THREE.Color(world.theme === 'desert' ? 0xd9b070 : 0x6b7078) },
+      uOvercastCol: { value: new THREE.Color(
+        { sand: 0xd9b070, snow: 0xdae4ef, rain: 0x6b7078 }[
+          world.weather ?? ({ desert: 'sand', snow: 'snow' }[world.theme] ?? 'rain')]) },
       uTime:        { value: 0 }
     };
 
@@ -298,7 +309,7 @@ export class Sky {
   /* ---------------- rain ---------------- */
   _buildRain() {
     const N = 9000;
-    const sandy = this.sandy;
+    const kind = this.weather;
     const geo = new THREE.BufferGeometry();
     const pos = new Float32Array(N * 3);
     const vel = new Float32Array(N);
@@ -306,16 +317,20 @@ export class Sky {
     for (let i = 0; i < N; i++) {
       pos[i * 3] = rng.range(-40, 40);
       // Sand hugs the ground: most of it is in the first few metres, with
-      // only the fine stuff carried high enough to blot out the sun.
-      pos[i * 3 + 1] = sandy ? Math.pow(rng(), 2.1) * 34 : rng.range(0, 46);
+      // only the fine stuff carried high enough to blot out the sun. Rain
+      // and snow fill the column.
+      pos[i * 3 + 1] = kind === 'sand' ? Math.pow(rng(), 2.1) * 34 : rng.range(0, 46);
       pos[i * 3 + 2] = rng.range(-40, 40);
-      vel[i] = sandy ? rng.range(22, 54) : rng.range(38, 62);
+      vel[i] = kind === 'sand' ? rng.range(22, 54)
+             : kind === 'snow' ? rng.range(1.4, 4.2)      // flakes, not stones
+             : rng.range(38, 62);
     }
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     this._rainVel = vel;
 
     const mat = new THREE.PointsMaterial({
-      color: sandy ? 0xd6b276 : 0xbfd4e2, size: sandy ? .14 : .12,
+      color: { sand: 0xd6b276, snow: 0xf2f7ff, rain: 0xbfd4e2 }[kind],
+      size: { sand: .14, snow: .2, rain: .12 }[kind],
       transparent: true, opacity: 0,
       depthWrite: false, sizeAttenuation: true
     });
@@ -366,25 +381,28 @@ export class Sky {
     } else {
       this._rainTimer -= dt;
       if (this._rainTimer <= 0) {
-        const wet = { forest: .45, ocean: .4, snow: .35, grassland: .3, ruins: .25,
+        const wet = { forest: .45, ocean: .4, snow: .6, grassland: .3, ruins: .25,
                       kingdom: .3, roman: .2, savanna: .15, sky: .15, desert: .55 }[this.world.theme] ?? .25;
         this.rainTarget = Math.random() < wet ? 1 : 0;
         this._rainTimer = this.rainTarget ? 60 + Math.random() * 120 : 120 + Math.random() * 300;
       }
     }
-    // Sand settles more slowly than rain clears, and it arrives in gusts.
-    this.rain = lerp(this.rain, this.rainTarget, Math.min(1, dt * (this.sandy ? .17 : .28)));
-    if (this.sandy) {
+    // Sand and snow settle more slowly than rain clears, and arrive in gusts.
+    this.rain = lerp(this.rain, this.rainTarget, Math.min(1, dt * (this.blown ? .17 : .28)));
+    if (this.blown) {
       this._gust += dt;
-      this.sand = clamp(this.rain * (.82 + Math.sin(this._gust * .43) * .12 +
-                                     Math.sin(this._gust * 1.31) * .06), 0, 1);
+      // Snow gusts wider and slower than sand: a blizzard breathes.
+      const amp = this.weather === 'snow' ? .18 : .12;
+      const rate = this.weather === 'snow' ? .29 : .43;
+      this.storm = clamp(this.rain * (.82 + Math.sin(this._gust * rate) * amp +
+                                      Math.sin(this._gust * 1.31) * .06), 0, 1);
       // The wind wanders, so the storm does not blow from one bearing forever.
       const wa = this._gust * .035;
       this.windDir.set(Math.cos(wa), 0, Math.sin(wa * .7)).normalize();
     }
 
     if (audio) {
-      const kind = this.sandy ? 'sand' : 'rain';
+      const kind = this.weather;
       if (this.rain > .25 && !this._rainAudio) { audio.startRain(kind); this._rainAudio = true; }
       else if (this.rain <= .2 && this._rainAudio) { audio.stopRain(); this._rainAudio = false; }
     }
@@ -410,7 +428,8 @@ export class Sky {
     this.uniforms.uMoon.value = clamp(night * 1.2, 0, 1);
     // A sandstorm does not leave a gap of blue overhead: at full strength
     // there is no sky, only the storm.
-    this.uniforms.uOvercast.value = this.rain * (this.sandy ? .97 : .85);
+    this.uniforms.uOvercast.value =
+      this.rain * ({ sand: .97, snow: .93, rain: .85 }[this.weather]);
     this.uniforms.uSunColor.value.copy(new THREE.Color(this.world.sun.color))
       .lerp(new THREE.Color(0xff6a2b), dusk);
 
@@ -465,9 +484,11 @@ export class Sky {
     // A sandstorm closes the world down far harder than rain does — at full
     // strength you can see perhaps sixty metres, which is the whole point of
     // a waste where the heat lies about distance.
-    this.scene.fog.density = base * (1 + this.rain * (this.sandy ? 7.5 : 1.7)) * lerp(0.72, 1, daylight);
-    this.scene.fog.color.copy(hor)
-      .lerp(new THREE.Color(this.sandy ? 0xc9a468 : 0x9aa4ad), this.rain * (this.sandy ? .92 : .7));
+    const closeIn = { sand: 7.5, snow: 4.2, rain: 1.7 }[this.weather];
+    const wash = { sand: 0xc9a468, snow: 0xe6eef7, rain: 0x9aa4ad }[this.weather];
+    const washAmt = { sand: .92, snow: .88, rain: .7 }[this.weather];
+    this.scene.fog.density = base * (1 + this.rain * closeIn) * lerp(0.72, 1, daylight);
+    this.scene.fog.color.copy(hor).lerp(new THREE.Color(wash), this.rain * washAmt);
 
     /* ---- refresh the environment map as the light turns over ---- */
     if (this._pmrem) {
@@ -492,9 +513,9 @@ export class Sky {
         /* Sand travels sideways, not down. Grains stream along the wind and
          * are recycled at the downwind wall, so the player is always walking
          * through a curtain moving across them rather than falling on them. */
-        this.rainMesh.material.opacity = this.sand * .5;
+        this.rainMesh.material.opacity = this.storm * .5;
         const wx = this.windDir.x, wz = this.windDir.z;
-        const speed = 14 + this.sand * 30;
+        const speed = 14 + this.storm * 30;
         for (let i = 0; i < arr.length; i += 3) {
           const v = this._rainVel[i / 3] / 40;
           arr[i]     += wx * speed * v * dt;
@@ -507,6 +528,32 @@ export class Sky {
             arr[i]     = -wx * 44 - wz * across;
             arr[i + 2] = -wz * 44 + wx * across;
             arr[i + 1] = Math.pow(Math.random(), 2.1) * 34;
+          }
+        }
+      } else if (this.weather === 'snow') {
+        /* Snow falls slowly enough that the wind owns it. Each flake sways on
+         * its own phase so the fall is not a sheet of parallel lines, and the
+         * whole field leans harder downwind as the blizzard builds. */
+        this.rainMesh.material.opacity = clamp(.25 + this.storm * .6, 0, .9);
+        const wx = this.windDir.x, wz = this.windDir.z;
+        const drift = 1.6 + this.storm * 13;
+        this._flakeT = (this._flakeT ?? 0) + dt;
+        for (let i = 0; i < arr.length; i += 3) {
+          const v = this._rainVel[i / 3];
+          const sway = Math.sin(this._flakeT * 1.7 + i * .017) * .9;
+          arr[i]     += (wx * drift + sway) * dt;
+          arr[i + 2] += (wz * drift + Math.cos(this._flakeT * 1.3 + i * .011) * .9) * dt;
+          arr[i + 1] -= v * dt;
+          if (arr[i + 1] < -6) {
+            arr[i + 1] = 44;
+            arr[i] = (Math.random() - .5) * 80;
+            arr[i + 2] = (Math.random() - .5) * 80;
+          }
+          // Blown far downwind, wrap back across the field.
+          if (arr[i] * wx + arr[i + 2] * wz > 46) {
+            const across = (Math.random() - .5) * 92;
+            arr[i]     = -wx * 44 - wz * across;
+            arr[i + 2] = -wz * 44 + wx * across;
           }
         }
       } else {
@@ -526,7 +573,7 @@ export class Sky {
 
     /* Occasional thunder while it is really coming down. Sand gets none —
      * the player's wind bed swells with the gusts instead (see player.js). */
-    if (this.rain > .6 && !this.sandy && audio) {
+    if (this.rain > .6 && this.weather === 'rain' && audio) {
       this._thunderT = (this._thunderT ?? 12) - dt;
       if (this._thunderT <= 0) {
         audio.sfx('thunder', { volume: .5 + Math.random() * .4 });

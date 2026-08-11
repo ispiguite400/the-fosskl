@@ -13,7 +13,7 @@ import {
   buildTree, buildRock, buildHouse, buildPagoda, buildTorii, buildTemple,
   buildGate, buildStall, buildBrazier, buildWell, buildCart, buildFence,
   buildWatchtower, buildBarricade, buildStuckSpear, buildRubble, buildLantern,
-  buildStatue, buildGraves, buildBridge, buildBanner, buildPlatform, mat, bambooParts,
+  buildStatue, buildGraves, buildBridge, buildBanner, buildPlatform, buildCairn, mat, bambooParts,
   treeParts, treePlan } from '../entities/models.js';
 
 export const CELL = 256;
@@ -41,6 +41,10 @@ export class Props {
     this.animated = [];        // braziers etc. that need a per-frame tick
     this.colliders = [];       // simple cylinder colliders for buildings/rocks
     this.grid = new Map();     // `gx,gz` -> collider[]
+    /* Anything burning. In a freezing world these are the only places the
+     * cold is not getting in, which is what makes a lit lantern out in the
+     * snow worth walking to rather than scenery. */
+    this.fires = [];
 
     this._buildLandmarks();
     // Landmarks never unload, so their colliders go in with no owning cell.
@@ -108,6 +112,22 @@ export class Props {
       if (low) {
         this.ruinPos = new THREE.Vector3(low.x, low.y, low.z);
         this._buildDrownedCity(this.ruinPos, rng);
+      }
+    }
+    if (w.cairns) {
+      /* Everyone who tried to cross before you. The flattest wide ground in
+       * the world, covered in stone markers in rough rows, with a shrine and
+       * the only fire for a kilometre at the middle of it. */
+      let flat = null;
+      for (let i = 0; i < 500; i++) {
+        const x = rng.range(-1, 1) * w.size * .3, z = rng.range(-1, 1) * w.size * .3;
+        if (Math.hypot(x, z) < 340) continue;
+        const sl = this.terrain.slopeAt(x, z);
+        if (!flat || sl < flat.sl) flat = { x, z, sl, y: this.terrain.heightAt(x, z) };
+      }
+      if (flat) {
+        this.cairnPos = new THREE.Vector3(flat.x, flat.y, flat.z);
+        this._buildCairnField(this.cairnPos, rng);
       }
     }
     if (w.theme === 'kingdom') {
@@ -326,12 +346,24 @@ export class Props {
       b.position.set(x, T.heightAt(x, z), z);
       this.landmarks.add(b);
       this.animated.push(b);
+      this.fires.push({ x, z, cell: null });
     }
 
     // Torii marking the road in.
     const t = buildTorii(rng, 1.4);
     t.position.set(center.x, T.heightAt(center.x, center.z + 74), center.z + 74);
     this.landmarks.add(t);
+  }
+
+  /** Distance to the nearest fire, or Infinity. */
+  fireDistance(pos) {
+    let best = Infinity;
+    for (const f of this.fires) {
+      const dx = f.x - pos.x, dz = f.z - pos.z;
+      const d = dx * dx + dz * dz;
+      if (d < best) best = d;
+    }
+    return Math.sqrt(best);
   }
 
   /** True if a position is inside the safe hub radius. */
@@ -353,6 +385,7 @@ export class Props {
   _buildCell(cx, cz) {
     const g = new THREE.Group();
     const cellAnimated = [];
+    const cellFires = [];
     const rng = makeRNG(this._cellSeed(cx, cz));
     const T = this.terrain, w = this.world;
     const ox = cx * CELL, oz = cz * CELL;
@@ -504,7 +537,7 @@ export class Props {
 
       const roll = rng();
       let obj = null, radius = 0, animate = false;
-      if (roll < .16)      { obj = buildLantern(rng); animate = true; }
+      if (roll < .16)      { obj = buildLantern(rng); animate = true; cellFires.push({ x, z }); }
       else if (roll < .30) { obj = buildStatue(rng); radius = .6; }
       else if (roll < .44) { obj = buildFence(rng, rng.int(4, 10), { broken: rng.chance(.5) }); }
       else if (roll < .56) { obj = buildWell(rng); radius = 1.4; }
@@ -550,6 +583,7 @@ export class Props {
           l.position.set(lx, T.heightAt(lx, lz), lz);
           g.add(l);
           cellAnimated.push(l);
+          cellFires.push({ x: lx, z: lz });
         }
       }
     }
@@ -612,6 +646,7 @@ export class Props {
 
     g.userData.colliders = colliders;
     g.userData.animated = cellAnimated;
+    g.userData.fires = cellFires;
     this.animated.push(...cellAnimated);
     return g;
   }
@@ -637,6 +672,7 @@ export class Props {
         if (gone.size) this.animated = this.animated.filter(a => !gone.has(a));
         g.traverse(o => { if (o.isMesh && o.geometry?.dispose && o.userData.oneOff) o.geometry.dispose(); });
         this._gridRemoveCell(key, g.userData.colliders);
+        if (g.userData.fires?.length) this.fires = this.fires.filter(f => f.cell !== key);
         this.cells.delete(key);
       }
     }
@@ -657,6 +693,7 @@ export class Props {
       const [cx, cz] = key.split(',').map(Number);
       const g = this._buildCell(cx, cz);
       for (const c of g.userData.colliders || []) this._gridAdd(c, key);
+      for (const f of g.userData.fires || []) this.fires.push({ ...f, cell: key });
       this.cells.set(key, g);
       this.group.add(g);
     }
@@ -763,6 +800,62 @@ export class Props {
     }
   }
 
+  /* ==========================================================
+     The cairn field. Rows of stacked stone, one marker per person
+     the crossing took, thinning as they get further from the
+     shrine because whoever was left had less time to build them.
+     ========================================================== */
+  _buildCairnField(center, rng) {
+    const T = this.terrain;
+    const ROWS = 15, COLS = 15, SPACING = 11;
+    for (let r = -ROWS; r <= ROWS; r++) {
+      for (let c = -COLS; c <= COLS; c++) {
+        const d = Math.hypot(r, c);
+        if (d < 1.6) continue;                              // the shrine's ground
+        // Thinner further out: the survivors ran out of hands.
+        if (rng() > clamp(1.15 - d / (ROWS * 1.05), .06, 1)) continue;
+        const x = center.x + c * SPACING + rng.range(-2.4, 2.4);
+        const z = center.z + r * SPACING + rng.range(-2.4, 2.4);
+        if (Math.max(Math.abs(x), Math.abs(z)) > T.half - 40) continue;
+        const y = T.heightAt(x, z);
+        const cairn = buildCairn(rng, rng.range(.95, 1.7));
+        cairn.position.set(x, y, z);
+        cairn.rotation.y = rng() * 6.28;
+        this.landmarks.add(cairn);
+        this.colliders.push({ x, z, r: .55 });
+        // A few carry the spear of whoever is under them.
+        if (rng.chance(.09)) {
+          const sp = buildStuckSpear(rng);
+          sp.position.set(x + rng.range(-1.4, 1.4), y, z + rng.range(-1.4, 1.4));
+          this.landmarks.add(sp);
+        }
+      }
+    }
+
+    // The shrine, and the only fire out here.
+    const shrine = buildPagoda(rng, 2, 1.05);
+    shrine.position.set(center.x, T.heightAt(center.x, center.z), center.z);
+    shrine.rotation.y = rng() * 6.28;
+    this.landmarks.add(shrine);
+    this.colliders.push({ x: center.x, z: center.z, r: 4.6 });
+    for (let i = 0; i < 4; i++) {
+      const a = (i / 4) * 6.28 + .4;
+      const x = center.x + Math.cos(a) * 7, z = center.z + Math.sin(a) * 7;
+      const br = buildBrazier();
+      br.position.set(x, T.heightAt(x, z), z);
+      this.landmarks.add(br);
+      this.animated.push(br);
+      this.fires.push({ x, z, cell: null });
+    }
+    for (const side of [-1, 1]) {
+      const x = center.x + side * (COLS + 2) * SPACING;
+      const t = buildTorii(rng, 1.5);
+      t.position.set(x, T.heightAt(x, center.z), center.z);
+      t.rotation.y = Math.PI / 2;
+      this.landmarks.add(t);
+    }
+  }
+
   /** A permanent ring of standing rock, for a boss to hide in plain sight. */
   buildOutcrop(center, rng) {
     const T = this.terrain;
@@ -855,6 +948,7 @@ export class Props {
     this.cells.clear();
     this.animated.length = 0;
     this.colliders.length = 0;
+    this.fires.length = 0;
     this.grid.clear();
   }
 }

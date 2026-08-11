@@ -480,10 +480,12 @@ export class Player {
      * walk into it — but enough that crossing the waste with the wind on your
      * shoulder is a different journey from crossing it with the wind behind.
      * Airborne, with nothing to brace against, it carries you much further. */
-    const storm = this.game.sky?.sand ?? 0;
+    const storm = this.game.sky?.blown ? (this.game.sky.storm ?? 0) : 0;
     if (storm > .12) {
       const w = this.game.sky.windDir;
-      const push = storm * (this.grounded ? 5.4 : 11) * dt;
+      // Snow shoves less than sand — a blizzard blinds more than it pushes.
+      const bite = this.game.sky.weather === 'snow' ? .62 : 1;
+      const push = storm * bite * (this.grounded ? 5.4 : 11) * dt;
       this.vel.x += w.x * push;
       this.vel.z += w.z * push;
     }
@@ -536,7 +538,7 @@ export class Player {
     // Wind noise scales with how fast you are actually moving — or with the
     // storm, if the waste is blowing harder than you are running.
     this.game.audio.setWind?.(clamp(
-      Math.max((hs - 6) / 22 + (this.dashing > 0 ? .8 : 0), (this.game.sky?.sand ?? 0) * 1.1), 0, 1));
+      Math.max((hs - 6) / 22 + (this.dashing > 0 ? .8 : 0), (this.game.sky?.storm ?? 0) * 1.1), 0, 1));
   }
 
   _updateMounted(dt, inp) {

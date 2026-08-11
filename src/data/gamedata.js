@@ -274,7 +274,7 @@ export const WORLDS = [
     palette: { fog: 0xa9c5ac, sky: 0x74b0dd, ground: 0x4d7a35, grass: 0x74a844, water: 0x2f6f9e },
     sun: { elevation: 46, azimuth: 200, intensity: 1.6, color: 0xfff2d0 },
     density: { trees: .55, rocks: .3, grass: 1.4, buildings: .25 },
-    enemyLevel: 6, enemyTypes: ['ashigaru', 'ronin', 'bandit', 'archer'], boss: 'oni_general',
+    enemyLevel: 6, xpRate: 1.13, enemyTypes: ['ashigaru', 'ronin', 'bandit', 'archer'], boss: 'oni_general',
     ambient: 'birds',
     intro: 'Grass to the horizon, and a child at the edge of it who will not stop looking for her parents.'
   },
@@ -287,7 +287,7 @@ export const WORLDS = [
     // Little of it reaches the floor: a low, green, filtered light.
     sun: { elevation: 58, azimuth: 240, intensity: .55, color: 0xc8dfa0 },
     density: { trees: 2.6, rocks: .45, grass: .5, buildings: .18 }, bamboo: 190,
-    enemyLevel: 13, enemyTypes: ['ronin', 'bandit', 'shadow', 'archer', 'monk'], boss: 'forest_warden',
+    enemyLevel: 13, xpRate: 0.76, enemyTypes: ['ronin', 'bandit', 'shadow', 'archer', 'monk'], boss: 'forest_warden',
     ambient: 'forest', motes: 0x9fe8b0, kodama: 14,
     intro: 'The canopy holds the light out. Whatever lives here has never needed eyes.'
   },
@@ -298,7 +298,7 @@ export const WORLDS = [
     palette: { fog: 0xe0c48a, sky: 0x9ec9e8, ground: 0xc9a15c, grass: 0xa8894a, water: 0x2f8fa8 },
     sun: { elevation: 74, azimuth: 180, intensity: 2.1, color: 0xfff0c0 },
     density: { trees: .06, rocks: .9, grass: .2, buildings: .3 },
-    enemyLevel: 21, enemyTypes: ['bandit', 'shadow', 'husk', 'crossbowman'], boss: 'dune_colossus',
+    enemyLevel: 21, xpRate: 0.94, enemyTypes: ['bandit', 'shadow', 'husk', 'crossbowman'], boss: 'dune_colossus',
     ambient: 'wind',
     intro: 'Dunes over drowned cities. The heat lies about distance.'
   },
@@ -309,7 +309,10 @@ export const WORLDS = [
     palette: { fog: 0xd8e4ef, sky: 0x9fc0e0, ground: 0xe8eef5, grass: 0xc0cfdc, water: 0x2a5a7f },
     sun: { elevation: 22, azimuth: 300, intensity: 1.1, color: 0xd8e8ff },
     density: { trees: .8, rocks: .6, grass: .1, buildings: .2 },
-    enemyLevel: 30, enemyTypes: ['husk', 'shadow', 'frost_knight', 'crossbowman'], boss: 'frost_sovereign',
+    enemyLevel: 30, xpRate: 0.97, enemyTypes: ['husk', 'shadow', 'frost_knight', 'crossbowman'], boss: 'frost_sovereign',
+    // The blizzard is not scenery here: out of shelter it takes power, then
+    // stamina, then health. Fire and the village are the only warm places.
+    freezing: true, cairns: true,
     ambient: 'wind', storyBeat: 'girl_dies',
     intro: 'Snow swallows sound. You will wish it had swallowed this too.'
   },
@@ -320,7 +323,7 @@ export const WORLDS = [
     palette: { fog: 0xd9a860, sky: 0xe8b96a, ground: 0xa8813a, grass: 0xc9a04a, water: 0x3f7f8f },
     sun: { elevation: 36, azimuth: 260, intensity: 1.8, color: 0xffd090 },
     density: { trees: .3, rocks: .4, grass: 1.8, buildings: .2 },
-    enemyLevel: 40, enemyTypes: ['frost_knight', 'husk', 'beast', 'oni', 'crossbowman'], boss: 'amber_beast',
+    enemyLevel: 40, xpRate: 0.88, enemyTypes: ['frost_knight', 'husk', 'beast', 'oni', 'crossbowman'], boss: 'amber_beast',
     ambient: 'insects',
     intro: 'Nothing here hides. It simply waits until you are closer.'
   },
@@ -331,7 +334,7 @@ export const WORLDS = [
     palette: { fog: 0xa8cfe0, sky: 0x5fa8d8, ground: 0xd8c9a0, grass: 0x6f9a5a, water: 0x1a6f9e },
     sun: { elevation: 30, azimuth: 100, intensity: 1.7, color: 0xffe0b0 },
     density: { trees: .5, rocks: .7, grass: .5, buildings: .35 }, water: true, waterLevel: 6,
-    enemyLevel: 50, enemyTypes: ['beast', 'shadow', 'drowned', 'monk'], boss: 'tide_warden',
+    enemyLevel: 50, xpRate: 1.21, enemyTypes: ['beast', 'shadow', 'drowned', 'monk'], boss: 'tide_warden',
     ambient: 'waves',
     intro: 'The towers below still have lights in them. Do not look too long.'
   },
@@ -342,7 +345,7 @@ export const WORLDS = [
     palette: { fog: 0xd9cdb0, sky: 0x8fbfe0, ground: 0xb8a888, grass: 0x7f8f4a, water: 0x3f8fa8 },
     sun: { elevation: 52, azimuth: 220, intensity: 1.9, color: 0xfff2d8 },
     density: { trees: .25, rocks: .5, grass: .6, buildings: 1.6 },
-    enemyLevel: 60, enemyTypes: ['drowned', 'legionary', 'shadow', 'crossbowman', 'oni'], boss: 'marble_praetor',
+    enemyLevel: 60, xpRate: 1.19, enemyTypes: ['drowned', 'legionary', 'shadow', 'crossbowman', 'oni'], boss: 'marble_praetor',
     ambient: 'wind',
     intro: 'Colonnades running to the horizon. Someone built all this to be remembered, and was not.'
   },
@@ -353,7 +356,7 @@ export const WORLDS = [
     palette: { fog: 0x8f8a96, sky: 0x6f7f9f, ground: 0x6a6258, grass: 0x4f5a3a, water: 0x3a5060 },
     sun: { elevation: 26, azimuth: 320, intensity: 1.3, color: 0xffd0a0 },
     density: { trees: .4, rocks: 1.4, grass: .5, buildings: 2.0 }, mountains: 2.2,
-    enemyLevel: 72, enemyTypes: ['legionary', 'frost_knight', 'kingsguard', 'sniper', 'oni'], boss: 'iron_king',
+    enemyLevel: 72, xpRate: 1.04, enemyTypes: ['legionary', 'frost_knight', 'kingsguard', 'sniper', 'oni'], boss: 'iron_king',
     ambient: 'wind',
     intro: 'The last throne standing. It is still warm, and that should frighten you.'
   },

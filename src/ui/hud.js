@@ -17,6 +17,7 @@ export class HUD {
     this.root.id = 'hud';
     this.root.innerHTML = `
       <div class="dmg-vig"></div>
+      <div class="chill-vig"></div>
       <div class="reticle"></div>
       <div class="compass"><div class="strip"></div></div>
 
@@ -67,6 +68,7 @@ export class HUD {
       bossName: $('.bossbar .nm', this.root),
       bossFill: $('.bossbar .fl', this.root),
       dmg: $('.dmg-vig', this.root),
+      chill: $('.chill-vig', this.root),
       reticle: $('.reticle', this.root),
       compass: $('.compass .strip', this.root)
     };
@@ -102,6 +104,12 @@ export class HUD {
     this.q.pwWrap.classList.toggle('drained', p < .12);
     this.root.classList.toggle('lowhp', h < .25);
     this.q.dmg.style.opacity = h < .35 ? String((1 - h / .35) * .55) : '0';
+  }
+
+  /** Frost creeping in from the edges of the view as the cold takes hold. */
+  setChill(v) {
+    if (!this.q.chill) return;
+    this.q.chill.style.opacity = v > .12 ? String(Math.min(1, (v - .12) / .7)) : '0';
   }
 
   flashDamage() {

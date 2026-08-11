@@ -766,7 +766,64 @@ export class Game {
     if (need && level === need) this.hud.toast('THE GATE WILL OPEN FOR YOU NOW', true);
   }
 
-  grantXP(n) { this.player?.gainXP(n); }
+  /* ==========================================================
+     The cold
+     ----------------------------------------------------------
+     White Silence is subtitled "where the story takes something
+     from you", and a world that only looks cold does not earn
+     that. In a freezing world a blizzard actually bites: out in
+     the open, away from fire, the chill climbs, and once it is
+     in you it costs power first and then health. A lit lantern
+     out in the snow stops being scenery and starts being a
+     place you were trying to reach.
+     ========================================================== */
+  _updateChill(dt) {
+    if (!this.world?.freezing || this.freeze) { this.chill = 0; return; }
+    this.chill ??= 0;
+    const p = this.player;
+    if (!p || p.dead) return;
+
+    const storm = this.sky.storm ?? 0;
+    // Shelter: the hub, or anything burning within a dozen metres of you.
+    const warm = this.props.inHub(p.pos, 90) || this.props.fireDistance(p.pos) < 12;
+    // Night is colder than day even when the air is still.
+    const night = this.sky.uniforms.uStars.value;
+    const exposure = clamp(storm * 1.15 + night * .28 - .35, 0, 1);
+
+    const before = this.chill;
+    if (warm) this.chill = Math.max(0, this.chill - dt * .42);
+    else this.chill = clamp(this.chill + dt * exposure * .05, 0, 1);
+
+    // Crossing thresholds is the only time we say anything.
+    if (before < .35 && this.chill >= .35) this.hud.toast('THE COLD IS GETTING IN');
+    if (before < .72 && this.chill >= .72) this.hud.toast('YOU ARE FREEZING — FIND FIRE', true);
+    if (before >= .35 && this.chill < .12) this.hud.toast('WARM AGAIN');
+
+    // Chill eats the power bar first: you feel it in what you can swing
+    // before you feel it in your health.
+    if (this.chill > .2) {
+      p.power = Math.max(0, p.power - dt * this.chill * 5.5);
+      p.stamina = Math.max(0, p.stamina - dt * this.chill * 3.2);
+    }
+    if (this.chill > .72) {
+      p.hp -= dt * (this.chill - .72) * 12;
+      if (p.hp <= 0) p.die();
+    }
+    this.hud.setChill?.(this.chill);
+  }
+
+  /* Every world is meant to be worth a comparable amount of play. The cubic
+   * curve gets most of the way there, but the archetypes a world happens to
+   * roam with still swing the total by a third either way — the Everdark Wood
+   * pays 118 xp a kill against the Drowned Reach's 475, and the gate ladder
+   * cannot bend to match without becoming unreadable.
+   *
+   * So each world carries a rate that levels the difference. The target is
+   * 240 kills to the gate, which is not an arbitrary round number: staying
+   * under an hour at four kills a minute caps it at 240, and staying over
+   * half an hour at eight kills a minute floors it at 240. It is the only
+   * value that satisfies both ends of the window. */
+  grantXP(n) { this.player?.gainXP(n * (this.world?.xpRate ?? 1)); }
   saveNow() { Save.write(); }
   bossName(id) { return BOSSES[id]?.name; }
 
@@ -1060,6 +1117,7 @@ export class Game {
     // Motes come out with the dark, and track whichever player is nearest.
     this.motes?.update(dt, this.cameras[0], this.player.pos, this.chests,
                        this.sky.uniforms.uStars.value);
+    this._updateChill(dt);
 
     /* --- actors --- */
     for (let i = this.enemies.length - 1; i >= 0; i--) {

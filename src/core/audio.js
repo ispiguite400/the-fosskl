@@ -569,15 +569,21 @@ export class AudioEngine {
    * and a slow swell in the gain so gusts arrive rather than switch on. */
   startRain(kind = 'rain') {
     if (!this.ready || this._rain) return;
-    const sand = kind === 'sand';
+    // Snow swallows sound: its bed is quieter than rain and almost all low,
+    // so a blizzard reads as pressure rather than noise.
+    const F  = { sand: 420, snow: 300, rain: 1400 }[kind] ?? 1400;
+    const Q  = { sand: .35, snow: .3,  rain: .55 }[kind] ?? .55;
+    const HP = { sand: 90,  snow: 60,  rain: 400 }[kind] ?? 400;
+    const GN = { sand: .21, snow: .085, rain: .16 }[kind] ?? .16;
+    const RAMP = { sand: 5, snow: 6, rain: 2.5 }[kind] ?? 2.5;
     const src = this.ctx.createBufferSource();
     src.buffer = this._noiseBuffer(4); src.loop = true;
     const f = this.ctx.createBiquadFilter(); f.type = 'bandpass';
-    f.frequency.value = sand ? 420 : 1400; f.Q.value = sand ? .35 : .55;
+    f.frequency.value = F; f.Q.value = Q;
     const hp = this.ctx.createBiquadFilter(); hp.type = 'highpass';
-    hp.frequency.value = sand ? 90 : 400;
+    hp.frequency.value = HP;
     const g = this.ctx.createGain(); g.gain.value = 0;
-    g.gain.setTargetAtTime(sand ? .21 : .16, this.ctx.currentTime, sand ? 5 : 2.5);
+    g.gain.setTargetAtTime(GN, this.ctx.currentTime, RAMP);
     src.connect(f); f.connect(hp); hp.connect(g); g.connect(this.sfxBus);
     src.start();
     this._rain = { src, g };

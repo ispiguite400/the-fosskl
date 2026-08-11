@@ -366,6 +366,12 @@ body.playing{cursor:none}
   white-space:nowrap;color:#fff}
 .dmg-vig{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity .3s;
   background:radial-gradient(120% 90% at 50% 50%,transparent 42%,rgba(160,10,8,.75) 100%)}
+/* The cold, closing in from the edges. Paler and colder than the damage
+   vignette, and it breathes rather than pulses. */
+.chill-vig{position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity .8s;
+  background:radial-gradient(115% 88% at 50% 50%,transparent 34%,rgba(150,196,232,.30) 72%,rgba(206,232,255,.72) 100%);
+  animation:breathe 6s ease-in-out infinite}
+@keyframes breathe{0%,100%{filter:brightness(1)}50%{filter:brightness(1.22)}}
 .lowhp{animation:beat 1.4s ease-in-out infinite}
 @keyframes beat{0%,100%{opacity:.28}50%{opacity:.58}}
 

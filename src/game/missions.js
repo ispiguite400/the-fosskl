@@ -77,6 +77,37 @@ export class Missions {
           kind: 'gate', level: need, target: () => this.game.props.gatePos
         }
       ];
+    } else if (worldId === 5) {
+      /* White Silence is the world that takes something. Its chain is built
+       * to walk you toward that: shelter first, then the field of everyone
+       * who tried this before, then the thing that put them there. */
+      const need = GATE_LEVEL[5];
+      this.list = [
+        {
+          id: 'w5_hub', title: 'MISSION', desc: 'Reach the village', kind: 'reach',
+          target: () => this.game.props.hubCenter, radius: 60,
+          hint: 'Out of the wind. The cold takes your power first, then the rest of you.'
+        },
+        {
+          id: 'w5_cairns', title: 'MISSION', desc: 'Find the field of markers', kind: 'reach',
+          target: () => this.game.props.cairnPos, radius: 55,
+          hint: 'Someone stacked those stones by hand. Count them if you have the stomach.'
+        },
+        {
+          id: 'w5_cull', title: 'MISSION', desc: 'Put down 20 of what walks in the snow',
+          count: 20, progress: 0, kind: 'kill',
+          hint: 'The husks were people who stopped moving. Do not stop moving.'
+        },
+        {
+          id: 'w5_boss', title: 'BOSS', desc: 'Destroy the Frost Sovereign',
+          kind: 'boss', target: () => this.game.boss?.pos ?? this.game.bossSpawn,
+          hint: 'It does not speak. It has never needed to.'
+        },
+        {
+          id: 'w5_gate', title: 'MISSION', desc: `Reach level ${need}, then find the gate`,
+          kind: 'gate', level: need, target: () => this.game.props.gatePos
+        }
+      ];
     } else {
       const w = worldById(worldId);
       const need = GATE_LEVEL[worldId] ?? 45;
@@ -410,11 +441,15 @@ export class Story {
     await this.cine.say('She does not say anything else.', 3000);
     await wait(1200);
 
-    // The sky answers.
+    // The sky answers — in whatever language this world's sky speaks.
     g.sky.setRain(true, 240);
-    Audio.sfx('thunder', { volume: .8 });
+    if (g.sky.weather === 'rain') Audio.sfx('thunder', { volume: .8 });
 
-    await this.cine.say('It begins to rain.', 2600);
+    await this.cine.say({
+      snow: 'The snow closes over her, the way it closes over everything here.',
+      sand: 'The wind picks up, and starts taking her away a grain at a time.',
+      rain: 'It begins to rain.'
+    }[g.sky.weather] ?? 'It begins to rain.', 2600);
     await wait(800);
 
     this.cine.bars(false);
