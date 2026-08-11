@@ -73,7 +73,7 @@ export class Props {
     /* --- the gate to the next world --- */
     if (!w.final) {
       const ga = rng() * Math.PI * 2;
-      const gr = w.size * .34;
+      const gr = w.size * .17;
       const gx = Math.cos(ga) * gr, gz = Math.sin(ga) * gr;
       const spot = this.terrain.findSpawn({ x: gx, z: gz }, 300);
       this.gate = buildGate(1);
@@ -87,7 +87,7 @@ export class Props {
     /* --- theme landmarks --- */
     if (w.theme === 'roman') {
       for (let i = 0; i < 7; i++) {
-        const a = rng() * 6.28, r = rng.range(400, w.size * .4);
+        const a = rng() * 6.28, r = rng.range(400, w.size * .2);
         const s = this.terrain.findSpawn({ x: Math.cos(a) * r, z: Math.sin(a) * r }, 200);
         const t = buildTemple(rng, rng.range(.8, 1.5));
         t.position.set(s.x, s.y, s.z);
@@ -103,7 +103,7 @@ export class Props {
        * the sand has had the least to bury. */
       let low = null;
       for (let i = 0; i < 500; i++) {
-        const x = rng.range(-1, 1) * w.size * .3, z = rng.range(-1, 1) * w.size * .3;
+        const x = rng.range(-1, 1) * w.size * .15, z = rng.range(-1, 1) * w.size * .15;
         if (Math.hypot(x, z) < 300) continue;                 // not on the hub
         const y = this.terrain.heightAt(x, z);
         if (this.terrain.slopeAt(x, z) > .28) continue;
@@ -121,7 +121,7 @@ export class Props {
        * churned ground you can see from a long way off. */
       let low = null;
       for (let i = 0; i < 500; i++) {
-        const x = rng.range(-1, 1) * w.size * .28, z = rng.range(-1, 1) * w.size * .28;
+        const x = rng.range(-1, 1) * w.size * .14, z = rng.range(-1, 1) * w.size * .14;
         if (Math.hypot(x, z) < 330) continue;
         const y = this.terrain.heightAt(x, z);
         if (this.terrain.slopeAt(x, z) > .22) continue;
@@ -138,7 +138,7 @@ export class Props {
        * the only fire for a kilometre at the middle of it. */
       let flat = null;
       for (let i = 0; i < 500; i++) {
-        const x = rng.range(-1, 1) * w.size * .3, z = rng.range(-1, 1) * w.size * .3;
+        const x = rng.range(-1, 1) * w.size * .15, z = rng.range(-1, 1) * w.size * .15;
         if (Math.hypot(x, z) < 340) continue;
         const sl = this.terrain.slopeAt(x, z);
         if (!flat || sl < flat.sl) flat = { x, z, sl, y: this.terrain.heightAt(x, z) };
@@ -152,7 +152,7 @@ export class Props {
       // A great keep on the highest ground we can find.
       let best = null;
       for (let i = 0; i < 400; i++) {
-        const x = rng.range(-1, 1) * w.size * .35, z = rng.range(-1, 1) * w.size * .35;
+        const x = rng.range(-1, 1) * w.size * .18, z = rng.range(-1, 1) * w.size * .18;
         const y = this.terrain.heightAt(x, z);
         if (this.terrain.slopeAt(x, z) > .3) continue;
         if (!best || y > best.y) best = { x, y, z };
@@ -362,9 +362,12 @@ export class Props {
 
     const style = w.villageStyle ?? ['radial', 'grid', 'ring', 'strip'][rng.int(0, 3)];
     this.villageStyle = style;
-    // A real settlement, not a hamlet: 90-140 m across.
-    const R = rng.range(88, 140);
-    this.hubRadius = R + 26;
+    /* A town you can walk across in half a minute — streets and a market,
+     * not a district. Worlds are twenty-odd kilometres now, so a village
+     * that sprawled read as the whole map; this is a place in a country
+     * rather than the country itself. */
+    const R = rng.range(54, 80);
+    this.hubRadius = R + 16;
 
     /* ---- the plaza at the middle of it ---- */
     const shrineTiers = rng.int(3, 5);
@@ -380,7 +383,7 @@ export class Props {
     const stalls = rng.int(7, 12);
     for (let i = 0; i < stalls; i++) {
       const a = (i / stalls) * 6.28 + rng.range(-.12, .12);
-      const r = rng.range(17, 24);
+      const r = rng.range(15, 21);
       const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
       add(buildStall(rng), x, z, { yaw: -a, drop: 0, collide: 1.8 });
       spot(x + Math.cos(a) * 2.2, z + Math.sin(a) * 2.2, -a + Math.PI, 2);
@@ -430,11 +433,11 @@ export class Props {
     for (const st of streets) {
       const px = -st.dz, pz = st.dx;
       const from = st.both ? -st.len : 28;
-      for (let d = from; d < st.len; d += rng.range(13, 19)) {
-        if (Math.abs(d) < 26) continue;                 // keep the plaza clear
+      for (let d = from; d < st.len; d += rng.range(10, 14)) {
+        if (Math.abs(d) < 21) continue;                 // keep the plaza clear
         for (const side of [-1, 1]) {
           if (rng.chance(.16)) continue;                // gaps, yards, alleys
-          const off = rng.range(9, 15) * side;
+          const off = rng.range(7.5, 12) * side;
           const x = st.ox + st.dx * d + px * off;
           const z = st.oz + st.dz * d + pz * off;
           if (!ok(x, z)) continue;
@@ -464,11 +467,11 @@ export class Props {
     }
 
     /* ---- infill so the blocks are not hollow ---- */
-    for (let i = 0; i < 26; i++) {
-      const a = rng() * 6.28, r = 30 + Math.sqrt(rng()) * (R - 30);
+    for (let i = 0; i < 40; i++) {
+      const a = rng() * 6.28, r = 24 + Math.sqrt(rng()) * (R - 24);
       const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
       if (!ok(x, z)) continue;
-      if (this.collideAt(x, z, 6)) continue;
+      if (this.collideAt(x, z, 5)) continue;
       add(buildHouse(rng, { scale: rng.range(.85, 1.2) }), x, z,
           { yaw: -a + Math.PI / 2 + rng.range(-.4, .4), collide: 4 });
       built++;

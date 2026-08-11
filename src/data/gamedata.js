@@ -256,7 +256,7 @@ export const RARITY_CLASS = { rare: 'rare', epic: 'epic', legend: 'legend' };
 export const WORLDS = [
   {
     id: 1, name: 'Ashen Village', startPhase: 0.02, dayScale: .18, night: true, jp: '灰の里', theme: 'ruins', art: 'shrine',
-    music: 'world1', tutorial: true, hub: false, size: 3600,
+    music: 'world1', tutorial: true, hub: false, size: 6000,
     subtitle: 'Where you were left for dead',
     mountains: 1.6,
     palette: { fog: 0x3a4668, sky: 0x2e3c60, ground: 0x574c3d, grass: 0x6b6b45, water: 0x243040 },
@@ -269,7 +269,7 @@ export const WORLDS = [
   },
   {
     id: 2, name: 'Verdant Reach', startPhase: 0.42, jp: '緑の果て', theme: 'grassland', art: 'savanna',
-    music: 'world2', hub: true, size: 7200,
+    music: 'world2', hub: true, size: 20000,
     subtitle: 'The plains that forgot the war',
     palette: { fog: 0xa9c5ac, sky: 0x74b0dd, ground: 0x4d7a35, grass: 0x74a844, water: 0x2f6f9e },
     sun: { elevation: 46, azimuth: 200, intensity: 1.6, color: 0xfff2d0 },
@@ -280,7 +280,7 @@ export const WORLDS = [
   },
   {
     id: 3, name: 'Everdark Wood', startPhase: 0.5, jp: '常闇の森', theme: 'forest', art: 'bamboo',
-    music: 'world3', hub: true, size: 7600,
+    music: 'world3', hub: true, size: 21000,
     subtitle: 'Beneath a roof of leaves',
     palette: { fog: 0x243a26, sky: 0x4c6b48, zenith: 0x1d3320,
                ground: 0x2a3c24, grass: 0x355c2c, water: 0x27503f },
@@ -293,7 +293,7 @@ export const WORLDS = [
   },
   {
     id: 4, name: 'Sunless Waste', startPhase: 0.46, jp: '陽無き荒野', theme: 'desert', art: 'desert',
-    music: 'world4', hub: true, size: 8400,
+    music: 'world4', hub: true, size: 24000,
     subtitle: 'A sea that dried before memory',
     palette: { fog: 0xe0c48a, sky: 0x9ec9e8, ground: 0xc9a15c, grass: 0xa8894a, water: 0x2f8fa8 },
     sun: { elevation: 74, azimuth: 180, intensity: 2.1, color: 0xfff0c0 },
@@ -304,7 +304,7 @@ export const WORLDS = [
   },
   {
     id: 5, name: 'White Silence', startPhase: 0.34, jp: '白い沈黙', theme: 'snow', art: 'snow',
-    music: 'world5', hub: true, size: 7800,
+    music: 'world5', hub: true, size: 22000,
     subtitle: 'Where the story takes something from you',
     palette: { fog: 0xd8e4ef, sky: 0x9fc0e0, ground: 0xe8eef5, grass: 0xc0cfdc, water: 0x2a5a7f },
     sun: { elevation: 22, azimuth: 300, intensity: 1.1, color: 0xd8e8ff },
@@ -318,7 +318,7 @@ export const WORLDS = [
   },
   {
     id: 6, name: 'Amber Plain', startPhase: 0.68, jp: '琥珀の原', theme: 'savanna', art: 'savanna',
-    music: 'world6', hub: true, size: 8800,
+    music: 'world6', hub: true, size: 25000,
     subtitle: 'Long grass, longer shadows',
     palette: { fog: 0xd9a860, sky: 0xe8b96a, ground: 0xa8813a, grass: 0xc9a04a, water: 0x3f7f8f },
     sun: { elevation: 36, azimuth: 260, intensity: 1.8, color: 0xffd090 },
@@ -335,7 +335,7 @@ export const WORLDS = [
   },
   {
     id: 7, name: 'Drowned Reach', startPhase: 0.3, jp: '沈んだ領', theme: 'ocean', art: 'ocean',
-    music: 'world7', hub: true, size: 9200,
+    music: 'world7', hub: true, size: 26000,
     subtitle: 'Islands over a swallowed empire',
     palette: { fog: 0xa8cfe0, sky: 0x5fa8d8, ground: 0xd8c9a0, grass: 0x6f9a5a, water: 0x1a6f9e },
     sun: { elevation: 30, azimuth: 100, intensity: 1.7, color: 0xffe0b0 },
@@ -346,7 +346,7 @@ export const WORLDS = [
   },
   {
     id: 8, name: 'Marble Dominion', startPhase: 0.48, jp: '大理石の領土', theme: 'roman', art: 'temple',
-    music: 'world8', hub: true, size: 9600,
+    music: 'world8', hub: true, size: 27000,
     subtitle: 'Temples without worshippers',
     palette: { fog: 0xd9cdb0, sky: 0x8fbfe0, ground: 0xb8a888, grass: 0x7f8f4a, water: 0x3f8fa8 },
     sun: { elevation: 52, azimuth: 220, intensity: 1.9, color: 0xfff2d8 },
@@ -357,7 +357,7 @@ export const WORLDS = [
   },
   {
     id: 9, name: 'The Iron Crown', startPhase: 0.72, jp: '鉄の冠', theme: 'kingdom', art: 'kingdom',
-    music: 'world9', hub: true, size: 10400,
+    music: 'world9', hub: true, size: 29000,
     subtitle: 'A kingdom in the teeth of the mountains',
     palette: { fog: 0x8f8a96, sky: 0x6f7f9f, ground: 0x6a6258, grass: 0x4f5a3a, water: 0x3a5060 },
     sun: { elevation: 26, azimuth: 320, intensity: 1.3, color: 0xffd0a0 },
@@ -368,7 +368,7 @@ export const WORLDS = [
   },
   {
     id: 10, name: "Heaven's Anvil", startPhase: 0.44, jp: '天の金床', theme: 'sky', art: 'skyland',
-    music: 'world10', hub: true, size: 8800,
+    music: 'world10', hub: true, size: 25000,
     subtitle: 'Above the clouds, where He waits',
     palette: { fog: 0xd8e8f0, sky: 0x7fc0e8, ground: 0x7a6a58, grass: 0x5f9a4a, water: 0x8fd0e8 },
     sun: { elevation: 40, azimuth: 160, intensity: 2.0, color: 0xfff8e8 },

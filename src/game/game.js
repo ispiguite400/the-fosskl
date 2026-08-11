@@ -364,7 +364,7 @@ export class Game {
     this.kodama = [];
     if (world.kodama) {
       for (let i = 0; i < world.kodama; i++) {
-        const a = rng() * 6.28, r = rng.range(90, world.size * .38);
+        const a = rng() * 6.28, r = rng.range(90, world.size * .18);
         const p = this.terrain.findSpawn({ x: Math.cos(a) * r, z: Math.sin(a) * r }, 140);
         this.kodama.push(new Kodama(this, new THREE.Vector3(p.x, p.y, p.z)));
       }
@@ -404,7 +404,7 @@ export class Game {
         const p = this.terrain.findSpawn({ x: this.props.hubCenter.x - 160, z: this.props.hubCenter.z + 120 }, 90);
         bp = new THREE.Vector3(p.x, p.y, p.z);
       } else {
-        const a = rng() * 6.28, r = world.size * .28;
+        const a = rng() * 6.28, r = world.size * .14;
         const p = this.terrain.findSpawn({ x: Math.cos(a) * r, z: Math.sin(a) * r }, 200);
         bp = new THREE.Vector3(p.x, p.y, p.z);
       }
@@ -432,7 +432,7 @@ export class Game {
       extra.forEach((id, i) => {
         if (killed.has(id)) return;
         const a2 = (i / Math.max(1, extra.length)) * 6.28 + rng.range(-.4, .4) + 1.6;
-        const r2 = world.size * (.20 + i * .09);
+        const r2 = world.size * (.09 + i * .045);
         const p2 = this.terrain.findSpawn({ x: Math.cos(a2) * r2, z: Math.sin(a2) * r2 }, 220);
         const pos2 = new THREE.Vector3(p2.x, p2.y, p2.z);
         const lb = new Boss(this, pos2, id, lvlScale * .8);
@@ -450,9 +450,9 @@ export class Game {
       // they go into the bag once against everything else's four entries.
       const bag = [];
       for (const entry of animalTypes) for (let k = 0; k < (entry[1].mythic ? 1 : 4); k++) bag.push(entry);
-      for (let i = 0; i < 16; i++) {
+      for (let i = 0; i < 44; i++) {
         const [id] = rng.pick(bag);
-        const a = rng() * 6.28, r = rng.range(80, world.size * .35);
+        const a = rng() * 6.28, r = rng.range(80, world.size * .18);
         const p = this.terrain.findSpawn({ x: Math.cos(a) * r, z: Math.sin(a) * r }, 120);
         this.animals.push(new Animal(this, new THREE.Vector3(p.x, p.y, p.z), id));
       }
@@ -461,12 +461,14 @@ export class Game {
     /* --- chests and keys (every world but the first) --- */
     if (world.id > 1) {
       const opened = new Set(wstate.chestsOpened);
-      const n = 22 + world.id * 2;
+      // Worlds are twenty-odd kilometres now. The same three dozen chests
+      // spread over eight times the ground is a world with nothing in it.
+      const n = 44 + world.id * 5;
       // Where a world has a buried city, a fifth of its chests are in it.
       // Walking that far into the waste has to pay.
       const hoard = this.props.ruinPos ? Math.floor(n / 5) : 0;
       for (let i = 0; i < n; i++) {
-        let a = rng() * 6.28, r = rng.range(60, world.size * .42);
+        let a = rng() * 6.28, r = rng.range(60, world.size * .2);
         let origin = { x: 0, z: 0 };
         if (i < hoard) { r = rng.range(12, 95); origin = this.props.ruinPos; }
         const p = this.terrain.findSpawn(
