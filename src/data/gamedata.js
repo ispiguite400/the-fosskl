@@ -340,6 +340,9 @@ export const WORLDS = [
     palette: { fog: 0xa8cfe0, sky: 0x5fa8d8, ground: 0xd8c9a0, grass: 0x6f9a5a, water: 0x1a6f9e },
     sun: { elevation: 30, azimuth: 100, intensity: 1.7, color: 0xffe0b0 },
     density: { trees: .5, rocks: .7, grass: .5, buildings: .35 }, water: true, waterLevel: 6,
+    // The reach breathes: the water runs 5 m up and down twice a day, so the
+    // flats come up and the causeway to the drowned shrine opens and closes.
+    tide: 5, fleet: true,
     enemyLevel: 50, xpRate: 0.73, enemyTypes: ['drowned', 'monk', 'kappa', 'umibozu', 'yurei', 'jorogumo'], boss: 'tide_warden', bosses: ['tide_warden', 'frost_sovereign', 'marble_praetor'],
     ambient: 'waves',
     intro: 'The towers below still have lights in them. Do not look too long.'
@@ -351,6 +354,7 @@ export const WORLDS = [
     palette: { fog: 0xd9cdb0, sky: 0x8fbfe0, ground: 0xb8a888, grass: 0x7f8f4a, water: 0x3f8fa8 },
     sun: { elevation: 52, azimuth: 220, intensity: 1.9, color: 0xfff2d8 },
     density: { trees: .25, rocks: .5, grass: .6, buildings: 1.6 },
+    colossus: true,
     enemyLevel: 60, xpRate: 0.61, enemyTypes: ['legionary', 'crossbowman', 'oni', 'marble_shade', 'gashadokuro', 'umibozu'], boss: 'marble_praetor', bosses: ['marble_praetor', 'iron_king', 'amber_beast'],
     ambient: 'wind',
     intro: 'Colonnades running to the horizon. Someone built all this to be remembered, and was not.'
@@ -362,6 +366,7 @@ export const WORLDS = [
     palette: { fog: 0x8f8a96, sky: 0x6f7f9f, ground: 0x6a6258, grass: 0x4f5a3a, water: 0x3a5060 },
     sun: { elevation: 26, azimuth: 320, intensity: 1.3, color: 0xffd0a0 },
     density: { trees: .4, rocks: 1.4, grass: .5, buildings: 2.0 }, mountains: 2.2,
+    thrones: true,
     enemyLevel: 72, xpRate: 0.75, enemyTypes: ['kingsguard', 'sniper', 'oni', 'marble_shade', 'raiju', 'nue'], boss: 'iron_king', bosses: ['iron_king', 'marble_praetor', 'frost_sovereign'],
     ambient: 'wind',
     intro: 'The last throne standing. It is still warm, and that should frighten you.'
@@ -373,6 +378,7 @@ export const WORLDS = [
     palette: { fog: 0xd8e8f0, sky: 0x7fc0e8, ground: 0x7a6a58, grass: 0x5f9a4a, water: 0x8fd0e8 },
     sun: { elevation: 40, azimuth: 160, intensity: 2.0, color: 0xfff8e8 },
     density: { trees: .5, rocks: .8, grass: 1.0, buildings: .8 }, floating: true,
+    lastDoor: true,
     enemyLevel: 88, enemyTypes: ['kingsguard', 'seraph', 'sniper', 'tengu', 'umibozu', 'gashadokuro'], boss: 'the_hollow_god', bosses: ['the_hollow_god', 'iron_king', 'frost_sovereign'],
     ambient: 'wind', final: true,
     intro: 'The islands do not fall because He has not told them to. He is at the far end of them.'

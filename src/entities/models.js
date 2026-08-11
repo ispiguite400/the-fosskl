@@ -41,6 +41,18 @@ const cyl = (rt, rb, h, s = 10) => G(`cyl:${rt},${rb},${h},${s}`, () => new THRE
 const sph = (r, w = 12, h = 8) => G(`sph:${r},${w},${h}`, () => new THREE.SphereGeometry(r, w, h));
 const cone = (r, h, s = 8) => G(`cone:${r},${h},${s}`, () => new THREE.ConeGeometry(r, h, s));
 
+/* The primitive helpers, exported for the world builders. Set pieces like
+ * the Faceless Colossus and the hall of thrones are one-offs made of slabs
+ * and columns; giving each its own build* function in this file would be
+ * worse than letting props.js stack boxes directly. */
+export const prim = {
+  box: (w, h, d) => box(w, h, d),
+  cyl: (rt, rb, h, s = 10) => cyl(rt, rb, h, s),
+  sph: (r, w = 12, h = 8) => sph(r, w, h),
+  cone: (r, h, s = 8) => cone(r, h, s),
+  mesh: (geo, material, x = 0, y = 0, z = 0) => mesh(geo, material, x, y, z)
+};
+
 function mesh(geo, material, x = 0, y = 0, z = 0) {
   const m = new THREE.Mesh(geo, material);
   m.position.set(x, y, z);

@@ -124,7 +124,7 @@ export class Terrain {
 
   /** True where the ground is walkable and above water. */
   isFlatGround(x, z, maxSlope = .35) {
-    if (this.world.water && this.heightAt(x, z) < (this.world.waterLevel || 0) + 1) return false;
+    if (this.world.water && this.heightAt(x, z) < (this.waterY ?? this.world.waterLevel ?? 0) + 1) return false;
     if (this.shape.floating && this.heightAt(x, z) < -100) return false;
     return this.slopeAt(x, z) < maxSlope;
   }
@@ -408,6 +408,7 @@ export class Terrain {
 
   _buildWater() {
     const level = this.world.waterLevel || 0;
+    this.waterY = level;
     const geo = new THREE.PlaneGeometry(this.size * 1.4, this.size * 1.4, 64, 64);
     geo.rotateX(-Math.PI / 2);
     const mat = new THREE.MeshStandardMaterial({
@@ -474,7 +475,19 @@ export class Terrain {
     }
     if (this.grassTime) this.grassTime.value += dt;
     if (this.waterTime) this.waterTime.value += dt;
-    if (this.water) { this.water.position.x = playerPos.x; this.water.position.z = playerPos.z; }
+    if (this.water) {
+      this.water.position.x = playerPos.x; this.water.position.z = playerPos.z;
+      /* The tide. A world may breathe its water up and down over the day
+       * cycle, which is the difference between a sea and a reach: at low
+       * water the flats come up and you can walk to things that are islands
+       * six hours later. `waterY` is the live level everything else asks. */
+      if (this.world.tide) {
+        const phase = this.tidePhase ?? 0;
+        this.waterY = (this.world.waterLevel || 0) +
+                      Math.sin(phase * Math.PI * 2) * this.world.tide;
+        this.water.position.y = this.waterY;
+      }
+    }
   }
 
   /** Blocking build of the chunks immediately around a point (used on spawn). */

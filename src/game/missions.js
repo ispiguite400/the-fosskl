@@ -142,6 +142,122 @@ export class Missions {
           kind: 'gate', level: need, target: () => this.game.props.gatePos
         }
       ];
+    } else if (worldId === 7) {
+      /* The reach breathes. Its chain is timed against the water: the
+       * causeway out to the fleet is only there at low tide. */
+      const need = GATE_LEVEL[7];
+      this.list = [
+        {
+          id: 'w7_hub', title: 'MISSION', desc: `Find ${VILLAGES[7]?.name ?? 'the village'}`, kind: 'reach',
+          target: () => this.game.props.hubCenter,
+          radius: () => (this.game.props.hubRadius ?? 90) * .8,
+          hint: 'Above the tide line. Everything below it belongs to the water twice a day.'
+        },
+        {
+          id: 'w7_fleet', title: 'MISSION', desc: 'Walk out to the drowned fleet', kind: 'reach',
+          target: () => this.game.props.fleetPos, radius: 60,
+          hint: 'Wait for the water to go out. It will not wait for you to come back.'
+        },
+        {
+          id: 'w7_cull', title: 'MISSION', desc: 'Put down 24 of what the tide brings in',
+          count: 24, progress: 0, kind: 'kill',
+          hint: 'The drowned were sailors. Ask one whose name he was given.'
+        },
+        {
+          id: 'w7_boss', title: 'BOSS', desc: 'Destroy the Warden of the Tide',
+          kind: 'boss', target: () => this.game.boss?.pos ?? this.game.bossSpawn
+        },
+        {
+          id: 'w7_gate', title: 'MISSION', desc: `Reach level ${need}, then find the gate`,
+          kind: 'gate', level: need, target: () => this.game.props.gatePos
+        }
+      ];
+    } else if (worldId === 8) {
+      /* 'They carved Him faceless. Not out of reverence — out of accuracy.'
+       * The chain walks you to the thing that proves it. */
+      const need = GATE_LEVEL[8];
+      this.list = [
+        {
+          id: 'w8_hub', title: 'MISSION', desc: `Find ${VILLAGES[8]?.name ?? 'the village'}`, kind: 'reach',
+          target: () => this.game.props.hubCenter,
+          radius: () => (this.game.props.hubRadius ?? 90) * .8,
+          hint: 'Marble, and a great deal of paperwork about who owns it.'
+        },
+        {
+          id: 'w8_colossus', title: 'MISSION', desc: 'Stand under the faceless statue', kind: 'reach',
+          target: () => this.game.props.colossusPos, radius: 55,
+          hint: 'Every statue in that forum has a face. Count the exceptions.'
+        },
+        {
+          id: 'w8_cull', title: 'MISSION', desc: 'Break 26 of the Dominion',
+          count: 26, progress: 0, kind: 'kill',
+          hint: 'The shades were carved from soldiers nobody sat for.'
+        },
+        {
+          id: 'w8_boss', title: 'BOSS', desc: 'Destroy the Marble Praetor',
+          kind: 'boss', target: () => this.game.boss?.pos ?? this.game.bossSpawn
+        },
+        {
+          id: 'w8_gate', title: 'MISSION', desc: `Reach level ${need}, then find the gate`,
+          kind: 'gate', level: need, target: () => this.game.props.gatePos
+        }
+      ];
+    } else if (worldId === 9) {
+      /* 'The ninth to sit that throne, and the ninth to learn it faces a
+       * wall.' You should get to see the wall. */
+      const need = GATE_LEVEL[9];
+      this.list = [
+        {
+          id: 'w9_hub', title: 'MISSION', desc: `Find ${VILLAGES[9]?.name ?? 'the village'}`, kind: 'reach',
+          target: () => this.game.props.hubCenter,
+          radius: () => (this.game.props.hubRadius ?? 90) * .8,
+          hint: 'A garrison town. They are expecting a siege that is already over.'
+        },
+        {
+          id: 'w9_thrones', title: 'MISSION', desc: 'Find the hall of nine thrones', kind: 'reach',
+          target: () => this.game.props.thronePos, radius: 60,
+          hint: 'Count the seats. Then look at what they are all pointed at.'
+        },
+        {
+          id: 'w9_cull', title: 'MISSION', desc: 'Cut down 26 of the Crown',
+          count: 26, progress: 0, kind: 'kill',
+          hint: 'The kingsguard are still holding a line for a king who is behind you.'
+        },
+        {
+          id: 'w9_boss', title: 'BOSS', desc: 'Destroy the Iron King',
+          kind: 'boss', target: () => this.game.boss?.pos ?? this.game.bossSpawn,
+          hint: 'He is the ninth. You already know what he is facing.'
+        },
+        {
+          id: 'w9_gate', title: 'MISSION', desc: `Reach level ${need}, then find the gate`,
+          kind: 'gate', level: need, target: () => this.game.props.gatePos
+        }
+      ];
+    } else if (worldId === 10) {
+      /* The last sky. There is no gate out of it. */
+      this.list = [
+        {
+          id: 'w10_hub', title: 'MISSION', desc: `Find ${VILLAGES[10]?.name ?? 'the village'}`, kind: 'reach',
+          target: () => this.game.props.hubCenter,
+          radius: () => (this.game.props.hubRadius ?? 90) * .8,
+          hint: 'Someone stayed up here. Ask them why.'
+        },
+        {
+          id: 'w10_door', title: 'MISSION', desc: 'Climb to the last door', kind: 'reach',
+          target: () => this.game.props.doorPos, radius: 60,
+          hint: 'Nine landings. One for every sky you have already opened.'
+        },
+        {
+          id: 'w10_cull', title: 'MISSION', desc: 'Clear 28 from the stair',
+          count: 28, progress: 0, kind: 'kill',
+          hint: 'These were the first ones He made, and they have never been relieved.'
+        },
+        {
+          id: 'w10_boss', title: 'BOSS', desc: 'Climb to the Hollow God',
+          kind: 'final', target: () => this.game.boss?.pos ?? this.game.bossSpawn,
+          hint: 'He built ten skies to keep one thing out. You are the thing.'
+        }
+      ];
     } else {
       const w = worldById(worldId);
       const need = GATE_LEVEL[worldId] ?? 45;

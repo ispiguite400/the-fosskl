@@ -249,6 +249,22 @@ export class Game {
     return this.terrain.findSpawn({ x: c.x, z: c.z + R + 200 }, 220);
   }
 
+  /* Tell the player which way the water is going, once per turn of it.
+   * A causeway that is walkable now and gone in four minutes is only fair
+   * if you were told. */
+  _reportTide() {
+    const t = this.terrain;
+    const rising = (t.waterY ?? 0) > (this._lastWaterY ?? t.waterY ?? 0);
+    this._lastWaterY = t.waterY;
+    const state = rising ? 'rising' : 'falling';
+    if (state === this._tideState) return;
+    this._tideState = state;
+    if (this._tideAnnounced) {
+      this.hud.toast(rising ? 'THE TIDE IS COMING IN' : 'THE TIDE IS GOING OUT');
+    }
+    this._tideAnnounced = true;
+  }
+
   /** Has the player walked into this world's village yet? */
   get villageFound() { return !!Save.world().villageFound; }
 
@@ -1210,6 +1226,11 @@ export class Game {
                        this.sky.uniforms.uStars.value);
     this._updateChill(dt);
     this._checkVillage();
+    // The tide runs on the same clock as the sun, twice a day.
+    if (this.world.tide) {
+      this.terrain.tidePhase = (this.sky.dayPhase * 2) % 1;
+      this._reportTide();
+    }
 
     /* --- actors --- */
     for (let i = this.enemies.length - 1; i >= 0; i--) {

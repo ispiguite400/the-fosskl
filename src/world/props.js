@@ -14,7 +14,7 @@ import {
   buildGate, buildStall, buildBrazier, buildWell, buildCart, buildFence,
   buildWatchtower, buildBarricade, buildStuckSpear, buildRubble, buildLantern,
   buildStatue, buildGraves, buildBridge, buildBanner, buildPlatform, buildCairn, mat, bambooParts,
-  treeParts, treePlan } from '../entities/models.js';
+  treeParts, treePlan, prim } from '../entities/models.js';
 
 export const CELL = 256;
 /* Collider bucket size. Woods carry tens of thousands of trunk colliders and
@@ -129,6 +129,52 @@ export class Props {
       if (low) {
         this.waterholePos = new THREE.Vector3(low.x, low.y, low.z);
         this._buildWaterhole(this.waterholePos, rng);
+      }
+    }
+    if (w.fleet) {
+      /* A fleet that went down together, standing on the tidal flats. At low
+       * water you can walk out to the shrine at the end of it; at high water
+       * you cannot, which is the reach making its point. */
+      let flat = null;
+      for (let i = 0; i < 500; i++) {
+        const x = rng.range(-1, 1) * w.size * .13, z = rng.range(-1, 1) * w.size * .13;
+        if (Math.hypot(x, z) < 320) continue;
+        const y = this.terrain.heightAt(x, z);
+        // Ground that is dry at low tide and drowned at high.
+        const lo = (w.waterLevel || 0) - (w.tide || 0), hi = (w.waterLevel || 0) + (w.tide || 0);
+        if (y < lo || y > hi) continue;
+        if (!flat || y < flat.y) flat = { x, y, z };
+      }
+      if (flat) {
+        this.fleetPos = new THREE.Vector3(flat.x, flat.y, flat.z);
+        this._buildFleet(this.fleetPos, rng);
+      }
+    }
+    if (w.colossus) {
+      /* Faceless, and the point is that everything around it has a face. */
+      const a = rng() * 6.28, r = w.size * .12;
+      const spot = this.terrain.findSpawn({ x: Math.cos(a) * r, z: Math.sin(a) * r }, 260);
+      this.colossusPos = new THREE.Vector3(spot.x, spot.y, spot.z);
+      this._buildFacelessColossus(this.colossusPos, rng);
+    }
+    if (w.thrones) {
+      const a = rng() * 6.28, r = w.size * .11;
+      const spot = this.terrain.findSpawn({ x: Math.cos(a) * r, z: Math.sin(a) * r }, 260);
+      this.thronePos = new THREE.Vector3(spot.x, spot.y, spot.z);
+      this._buildThroneHall(this.thronePos, rng);
+    }
+    if (w.lastDoor) {
+      // Highest ground in the world. Everything has been walking toward it.
+      let best = null;
+      for (let i = 0; i < 400; i++) {
+        const x = rng.range(-1, 1) * w.size * .1, z = rng.range(-1, 1) * w.size * .1;
+        const y = this.terrain.heightAt(x, z);
+        if (this.terrain.slopeAt(x, z) > .3) continue;
+        if (!best || y > best.y) best = { x, y, z };
+      }
+      if (best) {
+        this.doorPos = new THREE.Vector3(best.x, best.y, best.z);
+        this._buildLastDoor(this.doorPos, rng);
       }
     }
     if (w.cairns) {
@@ -1104,6 +1150,191 @@ export class Props {
       tor.position.set(gx, T.heightAt(gx, gz), gz);
       tor.rotation.y = ta + Math.PI / 2;
       g.add(tor);
+    }
+  }
+
+  /* ==========================================================
+     A fleet that went down together. Hulls listing on the flats,
+     masts still up, a shrine on the last of them.
+     ========================================================== */
+  _buildFleet(center, rng) {
+    const T = this.terrain;
+    const line = rng() * 6.28;
+    const n = rng.int(7, 12);
+    for (let i = 0; i < n; i++) {
+      const along = (i - n / 2) * rng.range(22, 34);
+      const off = rng.range(-14, 14);
+      const x = center.x + Math.cos(line) * along - Math.sin(line) * off;
+      const z = center.z + Math.sin(line) * along + Math.cos(line) * off;
+      if (Math.max(Math.abs(x), Math.abs(z)) > T.half - 40) continue;
+      const y = T.heightAt(x, z);
+      const hull = buildPlatform(rng, rng.range(7, 13), rng.range(16, 30));
+      hull.position.set(x, y + rng.range(.2, 1.4), z);
+      hull.rotation.y = line + rng.range(-.4, .4);
+      hull.rotation.z = rng.range(-.28, .28);        // listing
+      this.landmarks.add(hull);
+      this._addCollider(x, z, 6);
+      // Mast and yard.
+      if (rng.chance(.72)) {
+        const mh = rng.range(9, 16);
+        // A mast is a spear with ambition: reuse the shaft and scale it.
+        const m = buildStuckSpear(rng);
+        m.position.set(x + rng.range(-2, 2), y + mh * .4, z + rng.range(-2, 2));
+        m.scale.set(1.4, mh * .9, 1.4);
+        m.rotation.set(rng.range(-.12, .12), rng() * 6.28, rng.range(-.12, .12));
+        this.landmarks.add(m);
+        const sail = buildBanner(rng, { torn: rng.chance(.8) });
+        sail.position.set(m.position.x, y + mh * .55, m.position.z);
+        sail.scale.setScalar(rng.range(1.6, 2.6));
+        this.landmarks.add(sail);
+      }
+      if (rng.chance(.5)) {
+        const rb = buildRubble(rng);
+        rb.position.set(x + rng.range(-8, 8), y, z + rng.range(-8, 8));
+        this.landmarks.add(rb);
+      }
+    }
+    // The shrine on the last hull, and a light kept burning on it.
+    const ex = center.x + Math.cos(line) * (n / 2 + 1) * 28;
+    const ez = center.z + Math.sin(line) * (n / 2 + 1) * 28;
+    const ey = T.heightAt(ex, ez);
+    const shrine = buildPagoda(rng, 2, 1.1);
+    shrine.position.set(ex, ey + 1.2, ez);
+    shrine.rotation.y = line;
+    this.landmarks.add(shrine);
+    this._addCollider(ex, ez, 4.5);
+    const br = buildBrazier();
+    br.position.set(ex + 4, ey + 1.2, ez);
+    this.landmarks.add(br); this.animated.push(br);
+    this.fires.push({ x: ex + 4, z: ez, cell: null });
+  }
+
+  /* ==========================================================
+     The Faceless Colossus. Everything in the forum around it has
+     a face; it does not, and that is the whole statement.
+     ========================================================== */
+  _buildFacelessColossus(center, rng) {
+    const T = this.terrain;
+    const y = T.heightAt(center.x, center.z);
+    const stone = mat(0xd8d0bc, { roughness: .85 });
+
+    // Plinth, legs, torso, shoulders — and nothing above them.
+    const plinth = prim.mesh(prim.box(26, 4, 26), stone, center.x, y + 2, center.z);
+    this.landmarks.add(plinth);
+    this._addCollider(center.x, center.z, 14);
+    for (const side of [-1, 1]) {
+      const leg = prim.mesh(prim.box(5, 20, 5), stone, center.x + side * 5, y + 14, center.z);
+      this.landmarks.add(leg);
+    }
+    const torso = prim.mesh(prim.box(16, 16, 8), stone, center.x, y + 32, center.z);
+    this.landmarks.add(torso);
+    for (const side of [-1, 1]) {
+      const arm = prim.mesh(prim.box(4, 18, 4), stone, center.x + side * 10, y + 30, center.z);
+      arm.rotation.z = side * .12;
+      this.landmarks.add(arm);
+    }
+    const shoulders = prim.mesh(prim.box(20, 4, 9), stone, center.x, y + 41, center.z);
+    this.landmarks.add(shoulders);
+    // A neck that stops. There is no head and there never was.
+    const neck = prim.mesh(prim.cyl(2.6, 3.2, 3, 10), stone, center.x, y + 44, center.z);
+    this.landmarks.add(neck);
+
+    // The forum: statues that do have faces, looking up at one that does not.
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * 6.28, r = rng.range(30, 52);
+      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
+      if (!T.isFlatGround(x, z, .4)) continue;
+      const st = buildStatue(rng);
+      st.position.set(x, T.heightAt(x, z), z);
+      st.rotation.y = Math.atan2(center.x - x, center.z - z);
+      st.scale.setScalar(rng.range(1.4, 2.2));
+      this.landmarks.add(st);
+      this._addCollider(x, z, 1.4);
+    }
+    for (let i = 0; i < 10; i++) {
+      const a = rng() * 6.28, r = rng.range(20, 60);
+      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
+      if (!T.isFlatGround(x, z, .4)) continue;
+      const col = prim.mesh(prim.cyl(1.1, 1.3, rng.range(6, 16), 12), stone, x, T.heightAt(x, z) + 5, z);
+      col.rotation.z = rng.range(-.1, .1);
+      this.landmarks.add(col);
+      this._addCollider(x, z, 1.6);
+    }
+  }
+
+  /* ==========================================================
+     The hall of nine thrones. Eight empty, one lately vacated,
+     every one of them facing a blank wall.
+     ========================================================== */
+  _buildThroneHall(center, rng) {
+    const T = this.terrain;
+    const y = T.heightAt(center.x, center.z);
+    const stone = mat(0x5a5f6e, { roughness: .8, metalness: .18 });
+    const iron = mat(0x2e3238, { roughness: .55, metalness: .5 });
+    const line = rng() * 6.28;
+    const dx = Math.cos(line), dz = Math.sin(line);
+    const px = -dz, pz = dx;
+
+    this.landmarks.add(prim.mesh(prim.box(120, .6, 34), stone, center.x, y + .3, center.z));
+    for (let i = 0; i < 9; i++) {
+      const along = (i - 4) * 12;
+      const x = center.x + dx * along, z = center.z + dz * along;
+      // Seat, back, arms — a throne is a chair with ambition.
+      const seat = prim.mesh(prim.box(3.4, .6, 3.4), iron, x, y + 2.2, z);
+      this.landmarks.add(seat);
+      const back = prim.mesh(prim.box(3.4, 6.5, .5), iron, x - px * 1.5, y + 5.2, z - pz * 1.5);
+      back.rotation.y = line;
+      this.landmarks.add(back);
+      for (const side of [-1, 1]) {
+        this.landmarks.add(prim.mesh(prim.box(.4, 1.8, 3.2), iron,
+          x + (px * 0 + dx * 0) + side * 1.7 * px, y + 3, z + side * 1.7 * pz));
+      }
+      for (const side of [-1, 1])
+        this.landmarks.add(prim.mesh(prim.box(.5, 2.2, .5), iron, x + side * 1.6 * dx, y + 1.1, z + side * 1.6 * dz));
+      this._addCollider(x, z, 2.2);
+    }
+    // The wall they all face. Blank, and taller than the thrones.
+    const wx = center.x + px * 17, wz = center.z + pz * 17;
+    const wall = prim.mesh(prim.box(130, 16, 2.4), stone, wx, y + 8, wz);
+    wall.rotation.y = line;
+    this.landmarks.add(wall);
+    this._addCollider(wx, wz, 4);
+    for (let i = 0; i < 6; i++) {
+      const along = (i - 2.5) * 22;
+      const bx = center.x + dx * along + px * 20, bz = center.z + dz * along + pz * 20;
+      const br = buildBrazier();
+      br.position.set(bx, T.heightAt(bx, bz), bz);
+      this.landmarks.add(br); this.animated.push(br);
+      this.fires.push({ x: bx, z: bz, cell: null });
+    }
+  }
+
+  /* ==========================================================
+     The last door. Ten skies were built around it.
+     ========================================================== */
+  _buildLastDoor(center, rng) {
+    const T = this.terrain;
+    const y = T.heightAt(center.x, center.z);
+    const stone = mat(0x2a2630, { roughness: .6, metalness: .35 });
+    const gate = buildGate(3.2);
+    gate.position.set(center.x, y, center.z);
+    gate.rotation.y = rng() * 6.28;
+    this.landmarks.add(gate);
+    this.animated.push(gate);
+    this._addCollider(center.x, center.z, 8);
+    // A stair of nine landings up to it, one for each sky below this one.
+    for (let i = 0; i < 9; i++) {
+      const t = i / 9;
+      const r = 60 - t * 46;
+      const a = t * 3.2 + rng.range(-.08, .08);
+      const x = center.x + Math.cos(a) * r, z = center.z + Math.sin(a) * r;
+      const step = prim.mesh(prim.box(16 - i, 1.4, 16 - i), stone, x, T.heightAt(x, z) + .7 + i * 1.1, z);
+      step.rotation.y = a;
+      this.landmarks.add(step);
+      const t2 = buildTorii(rng, 1.1 + i * .08);
+      t2.position.set(x, T.heightAt(x, z) + 1.4 + i * 1.1, z);
+      t2.rotation.y = a + Math.PI / 2;
+      this.landmarks.add(t2);
     }
   }
 
