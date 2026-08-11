@@ -21,6 +21,7 @@ import { Player } from './player.js';
 import { Missions, Story, Tutorial, GATE_LEVEL } from './missions.js';
 import { Storm } from './storm.js';
 import { BuildSystem } from './build.js';
+import { MODE_DEFS } from './modes.js';
 import { Enemy, Boss, NPC, Companion, Animal, Chest, Pickup, Projectile, Ally, Kodama } from '../entities/actors.js';
 import { buildWeapon, buildPickup } from '../entities/models.js';
 import { HUD, SplitHUD } from '../ui/hud.js';
@@ -790,6 +791,7 @@ export class Game {
   }
 
   onPlayerDeath(player) {
+    if (this.matchDef?.onDown?.(this, player)) return;
     if (this.mode === 'versus') return this._versusDown(player);
     this.hud.cine.death(true);
     Audio.play('sorrow', { fade: 1 });
@@ -805,6 +807,80 @@ export class Game {
       Audio.play(this.world.music);
       await this.story.spawnCutscene({ firstTime: false });
     }, 2600);
+  }
+
+  /* ==========================================================
+     Match modes
+     ----------------------------------------------------------
+     Anything that is not the campaign or the plain duel runs
+     through here: a mode supplies a world, a setup, a per-frame
+     tick and what to do when somebody goes down, and the game
+     only has to know "run the current match".
+     ========================================================== */
+  async startMatch(modeId) {
+    const def = MODE_DEFS[modeId];
+    if (!def) return;
+    this.mode = def.coop ? 'coop' : 'versus';
+    /* The loop keeps running through the await below, so the mode must not
+     * be tickable until its setup has actually built anything it ticks —
+     * otherwise the first frame after loadWorld reaches for a zone that does
+     * not exist yet. */
+    this.matchReady = false;
+    this.matchDef = def;
+    this.match = {};
+    this.matchBanner = '';
+    this.versusScore = [0, 0];
+    document.body.classList.add('split');
+
+    await this.loadWorld(def.world, { intro: false });
+
+    // Both players exist, are matched, and can guard.
+    this._versusPrevBlock = Save.data.flags.blockUnlocked;
+    Save.data.flags.blockUnlocked = true;
+    this.player2 ??= new Player(this, this.cameras[1], 1);
+    this.scene.add(this.cameras[1]);
+    this._updateCameraAspects();
+
+    def.setup(this);
+    this.matchReady = true;
+    this._paintVersusScore();
+    this.start(this.mode);
+  }
+
+  /** Called each frame while a match mode is running. */
+  _tickMatch(dt) {
+    if (!this.matchDef || !this.matchReady || this.freeze) return;
+    this.matchDef.tick(this, dt);
+    this._paintVersusScore();
+  }
+
+  matchOver(text) {
+    if (this._matchDone) return;
+    this._matchDone = true;
+    this.freeze = true;
+    this.hud.toast(text, true);
+    Audio.play('victory');
+    setTimeout(() => {
+      this._matchDone = false;
+      this.freeze = false;
+      this.endMatch();
+      this.returnToMenu?.();
+      this.onReturnToMenu?.();
+    }, 6000);
+  }
+
+  endMatch() {
+    this.matchReady = false;
+    this.matchDef?.teardown?.(this);
+    this.matchDef = null;
+    this.match = {};
+    this.matchBanner = '';
+    if (this._versusPrevBlock !== undefined) {
+      Save.data.flags.blockUnlocked = this._versusPrevBlock;
+      this._versusPrevBlock = undefined;
+    }
+    this.player?.popTempLoadout?.();
+    this.player2?.popTempLoadout?.();
   }
 
   /** A duellist fell: award the point, check for a winner, respawn. */
@@ -877,8 +953,15 @@ export class Game {
       document.getElementById('layer-game').appendChild(n);
       return n;
     })();
-    this._vsEl.textContent = `${this.versusScore[0]}  —  ${this.versusScore[1]}`;
-    this._vsEl.style.display = this.mode === 'versus' ? 'block' : 'none';
+    this._vsEl.textContent = this.matchBanner ||
+      `${this.versusScore[0]}  —  ${this.versusScore[1]}`;
+    // A mode banner reads as a line of text, not a scoreline, so it sits at
+    // the top rather than over the middle of the fight.
+    const isMatch = !!this.matchDef;
+    this._vsEl.style.top = isMatch ? '46px' : '50%';
+    this._vsEl.style.fontSize = isMatch ? '17px' : '26px';
+    this._vsEl.style.transform = isMatch ? 'translate(-50%,0)' : 'translate(-50%,-50%)';
+    this._vsEl.style.display = (this.mode === 'versus' || isMatch) ? 'block' : 'none';
   }
 
   onMissionComplete(m) {
@@ -1266,6 +1349,7 @@ export class Game {
     this._checkVillage();
     this.build?.update(dt, this.player, this.input.players[0]);
     this._embers(dt);
+    this._tickMatch(dt);
     // The tide runs on the same clock as the sun, twice a day.
     if (this.world.tide) {
       this.terrain.tidePhase = (this.sky.dayPhase * 2) % 1;

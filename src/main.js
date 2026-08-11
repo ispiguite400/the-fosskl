@@ -282,7 +282,15 @@ async function boot() {
         await game.startVersus();
         input.requestLock();
       },
-      onCoop: () => startGame(false, 'coop')
+      onCoop: () => startGame(false, 'coop'),
+      onMode: async id => {
+        screens.clear();
+        applySettings(Save.settings);
+        Save.start(false);
+        game.onReturnToMenu = toMenu;
+        await game.startMatch(id);
+        input.requestLock();
+      }
     });
   }
 

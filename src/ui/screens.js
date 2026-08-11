@@ -511,15 +511,15 @@ export class Screens {
   /* ==========================================================
      MULTIPLAYER
      ========================================================== */
-  multiplayer({ onBack, onVersus, onCoop }) {
+  multiplayer({ onBack, onVersus, onCoop, onMode }) {
     const pads = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean).length : 0;
     const root = el('div', 'screen', `
       <div class="bg kenburns" style="background-image:${menuBG()}"></div>
       <div class="vignette"></div>
       <div class="backbtn">BACK</div>
       <div class="panel">
-        <h2 class="panel-h" style="font-size:26px;margin-bottom:4px">Two Players</h2>
-        <div style="opacity:.55;font-size:13.5px;margin-bottom:26px;letter-spacing:.04em">
+        <h2 class="panel-h" style="font-size:23px;margin-bottom:2px">Two Players</h2>
+        <div style="opacity:.55;font-size:12.5px;margin-bottom:12px;letter-spacing:.04em">
           Horizontal split screen. Player one uses keyboard and mouse or pad 1;
           player two uses pad 2. ${pads} controller${pads === 1 ? '' : 's'} detected.
         </div>
@@ -529,8 +529,8 @@ export class Screens {
             <div>
               <div class="lbl" style="font-size:16px">VERSUS</div>
               <div class="hint" style="margin-top:6px;max-width:420px">
-                A duel in a closed arena using the full combat system — blocking,
-                launches and Wind Dash. First to five falls wins.
+                A duel in a closing storm — blocking, launches, Wind Dash.
+                First to five falls wins.
               </div>
             </div>
           </div>
@@ -541,8 +541,43 @@ export class Screens {
             <div>
               <div class="lbl" style="font-size:16px">CO-OP CAMPAIGN</div>
               <div class="hint" style="margin-top:6px;max-width:420px">
-                The whole journey, worlds one through ten, with a second player.
-                Progress saves to your file.
+                Worlds one through ten with a second player. Saves to your file.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mpick" data-m="lastStand" style="margin-top:8px">
+          <div class="row" style="border:0;padding:0">
+            <div>
+              <div class="lbl" style="font-size:16px">LAST STAND <span style="opacity:.5;font-size:12px">· CO-OP</span></div>
+              <div class="hint" style="margin-top:6px;max-width:420px">
+                Hold a shrine against waves of everything the wood has.
+                Build between waves. Six lives, shared.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mpick" data-m="king" style="margin-top:8px">
+          <div class="row" style="border:0;padding:0">
+            <div>
+              <div class="lbl" style="font-size:16px">KING OF THE HILL <span style="opacity:.5;font-size:12px">· VERSUS</span></div>
+              <div class="hint" style="margin-top:6px;max-width:420px">
+                A circle that moves every thirty seconds. You score only while
+                holding it alone. Sixty seconds wins.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mpick" data-m="race" style="margin-top:8px">
+          <div class="row" style="border:0;padding:0">
+            <div>
+              <div class="lbl" style="font-size:16px">RACE <span style="opacity:.5;font-size:12px">· VERSUS</span></div>
+              <div class="hint" style="margin-top:6px;max-width:420px">
+                Three banners across the Amber Plain. Dying costs you a
+                banner, and the grass is full of things already lying down.
               </div>
             </div>
           </div>
@@ -554,16 +589,24 @@ export class Screens {
     `);
     root.id = 'multi';
 
-    // Style the two selectable cards.
+    /* Five cards plus the buttons have to fit a laptop screen without the
+     * panel scrolling, so the cards are compact: one line of title and two
+     * of description. Before this the last mode sat below the fold. */
     root.querySelectorAll('.mpick').forEach(n => {
-      n.style.cssText += 'padding:18px 20px;border:1px solid rgba(255,255,255,.12);cursor:pointer;transition:.18s';
+      n.style.cssText += 'padding:10px 16px;border:1px solid rgba(255,255,255,.12);' +
+                         'cursor:pointer;transition:.18s;margin-top:6px';
     });
+    root.querySelectorAll('.mpick .hint').forEach(n => {
+      n.style.cssText += 'margin-top:3px;font-size:12.5px;line-height:1.35';
+    });
+    root.querySelectorAll('.mpick .lbl').forEach(n => { n.style.fontSize = '15px'; });
 
     let mode = 'versus';
     const paint = () => root.querySelectorAll('.mpick').forEach(n => {
       const on = n.dataset.m === mode;
       n.style.borderColor = on ? 'rgba(240,162,74,.75)' : 'rgba(255,255,255,.12)';
       n.style.background = on ? 'rgba(240,162,74,.12)' : 'transparent';
+      if (on) n.scrollIntoView?.({ block: 'nearest' });
     });
     root.querySelectorAll('.mpick').forEach(n => n.addEventListener('click', () => {
       mode = n.dataset.m; paint(); Audio.sfx('uiMove');
@@ -572,7 +615,9 @@ export class Screens {
 
     const go = () => {
       Audio.sfx('uiConfirm');
-      if (mode === 'versus') onVersus?.(); else onCoop?.();
+      if (mode === 'versus') onVersus?.();
+      else if (mode === 'coop') onCoop?.();
+      else onMode?.(mode);
     };
     $('#mpGo', root).addEventListener('click', go);
     $('#mpBack', root).addEventListener('click', () => { Audio.sfx('uiBack'); onBack?.(); });
@@ -581,7 +626,12 @@ export class Screens {
     const ctrl = {
       update: (dt, nav) => {
         if (nav.dir === 'up' || nav.dir === 'down') {
-          mode = mode === 'versus' ? 'coop' : 'versus'; paint(); Audio.sfx('uiMove');
+          // Five cards now, so step through the list rather than toggling.
+          const order = [...root.querySelectorAll('.mpick')].map(n => n.dataset.m);
+          const i = order.indexOf(mode);
+          const step = nav.dir === 'down' ? 1 : -1;
+          mode = order[(i + step + order.length) % order.length];
+          paint(); Audio.sfx('uiMove');
         }
         if (nav.confirm) go();
         if (nav.cancel) { Audio.sfx('uiBack'); onBack?.(); }
