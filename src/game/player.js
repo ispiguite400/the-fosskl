@@ -719,6 +719,9 @@ export class Player {
 
     /* ---- attack ---- */
     if (this.blocking) { this.charging = 0; return; }
+    // In build mode the trigger places a piece instead of swinging, which is
+    // the whole reason building is a mode rather than a menu.
+    if (this.index === 0 && this.game.build?.active) { this.charging = 0; return; }
 
     if (def.kind === 'range' && def.charge) {
       // Bows: hold to draw, release to loose.

@@ -1477,6 +1477,28 @@ export class Props {
     return c;
   }
 
+  /** A collider that can be taken out again — builds come and go. */
+  addDynamicCollider(x, z, r) {
+    const c = { x, z, r, _dyn: true };
+    this._gridAdd(c, null);
+    return c;
+  }
+
+  removeDynamicCollider(c) {
+    if (!c) return;
+    const x0 = Math.floor((c.x - c.r) / CGRID), x1 = Math.floor((c.x + c.r) / CGRID);
+    const z0 = Math.floor((c.z - c.r) / CGRID), z1 = Math.floor((c.z + c.r) / CGRID);
+    for (let gx = x0; gx <= x1; gx++)
+      for (let gz = z0; gz <= z1; gz++) {
+        const k = gx + ',' + gz;
+        const b = this.grid.get(k);
+        if (!b) continue;
+        const i = b.indexOf(c);
+        if (i >= 0) b.splice(i, 1);
+        if (!b.length) this.grid.delete(k);
+      }
+  }
+
   /** File a collider into every grid bucket its circle touches. */
   _gridAdd(c, cellKey) {
     c._cell = cellKey;

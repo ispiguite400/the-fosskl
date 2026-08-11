@@ -47,7 +47,17 @@ const BINDINGS = {
   menuRight: { keys: ['KeyD', 'ArrowRight'], pad: [PAD.RIGHT] },
   confirm:   { keys: ['Enter', 'Space'],     pad: [PAD.CROSS] },
   cancel:    { keys: ['Escape', 'Backspace'], pad: [PAD.CIRCLE] },
-  mute:      { keys: ['KeyM'] }
+  mute:      { keys: ['KeyM'] },
+
+  /* --- building --- */
+  buildMode: { keys: ['KeyB'],         pad: [PAD.L1] },     // hold or toggle
+  place:     { keys: [],               pad: [PAD.R2], mouse: [0] },
+  nextPiece: { keys: ['KeyR'],         pad: [PAD.TRIANGLE] },
+  rotPiece:  { keys: ['KeyT'],         pad: [PAD.CIRCLE] },
+  buildWall: { keys: ['KeyZ'] },
+  buildFloor:{ keys: ['KeyX'] },
+  buildRamp: { keys: ['KeyV'] },
+  buildRoof: { keys: ['KeyN'] }
 };
 
 class PlayerInput {

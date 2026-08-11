@@ -18,6 +18,7 @@ export class HUD {
     this.root.innerHTML = `
       <div class="dmg-vig"></div>
       <div class="chill-vig"></div>
+      <div class="buildbar"><span class="piece"></span><span class="mat"></span></div>
       <div class="reticle"></div>
       <div class="compass"><div class="strip"></div></div>
 
@@ -69,6 +70,9 @@ export class HUD {
       bossFill: $('.bossbar .fl', this.root),
       dmg: $('.dmg-vig', this.root),
       chill: $('.chill-vig', this.root),
+      build: $('.buildbar', this.root),
+      buildPiece: $('.buildbar .piece', this.root),
+      buildMat: $('.buildbar .mat', this.root),
       reticle: $('.reticle', this.root),
       compass: $('.compass .strip', this.root)
     };
@@ -104,6 +108,16 @@ export class HUD {
     this.q.pwWrap.classList.toggle('drained', p < .12);
     this.root.classList.toggle('lowhp', h < .25);
     this.q.dmg.style.opacity = h < .35 ? String((1 - h / .35) * .55) : '0';
+  }
+
+  /** Build mode: what you are about to place and what you have left. */
+  setBuild(active, piece, timber) {
+    if (!this.q.build) return;
+    this.q.build.classList.toggle('on', !!active);
+    if (!active) return;
+    this.q.buildPiece.textContent = piece;
+    this.q.buildMat.textContent = `${timber} TIMBER`;
+    this.q.buildMat.classList.toggle('out', timber <= 0);
   }
 
   /** Frost creeping in from the edges of the view as the cold takes hold. */

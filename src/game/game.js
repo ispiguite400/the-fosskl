@@ -20,6 +20,7 @@ import { VFX } from './vfx.js';
 import { Player } from './player.js';
 import { Missions, Story, Tutorial, GATE_LEVEL } from './missions.js';
 import { Storm } from './storm.js';
+import { BuildSystem } from './build.js';
 import { Enemy, Boss, NPC, Companion, Animal, Chest, Pickup, Projectile, Ally, Kodama } from '../entities/actors.js';
 import { buildWeapon, buildPickup } from '../entities/models.js';
 import { HUD, SplitHUD } from '../ui/hud.js';
@@ -173,6 +174,7 @@ export class Game {
     this.sky = new Sky(this.scene, world, this.renderer);
     this.props = new Props(this.scene, this.terrain, world, seed, q);
     this.vfx = new VFX(this.scene);
+    this.build = new BuildSystem(this);
     // Spirit motes: the dark canopy worlds get a drifting swarm that also
     // gathers around unopened chests.
     this.motes = world.motes
@@ -292,6 +294,7 @@ export class Game {
   }
 
   _teardownWorld() {
+    this.build?.dispose(); this.build = null;
     this.motes?.dispose(); this.motes = null;
     for (const k of this.kodama || []) k.dispose();
     this.kodama = [];
@@ -695,6 +698,8 @@ export class Game {
     this.grantXP(e.xp);
     const coins = Math.round(e.xp * .5 * (this.player.cls.id === 'emperor' ? 1.4 : 1));
     Save.data.shekels += coins;
+    // Everything you cut down leaves something worth building with.
+    this.build?.grant(e.isBoss ? 40 : 2);
 
     if (e.isBoss) {
       Save.data.bossKills++;
@@ -1012,6 +1017,10 @@ export class Game {
       return;
     }
 
+    // Every chest carries timber, whatever else is in it.
+    const t = this.build?.grant(20) ?? 0;
+    if (t) this.hud.toast(`+${t} TIMBER`);
+
     if (loot.type === 'xp') {
       this.grantXP(loot.amount);
       this.hud.toast(`+${loot.amount} EXPERIENCE`, true);
@@ -1226,6 +1235,7 @@ export class Game {
                        this.sky.uniforms.uStars.value);
     this._updateChill(dt);
     this._checkVillage();
+    this.build?.update(dt, this.player, this.input.players[0]);
     // The tide runs on the same clock as the sun, twice a day.
     if (this.world.tide) {
       this.terrain.tidePhase = (this.sky.dayPhase * 2) % 1;

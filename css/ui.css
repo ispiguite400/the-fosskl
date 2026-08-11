@@ -372,6 +372,15 @@ body.playing{cursor:none}
   background:radial-gradient(115% 88% at 50% 50%,transparent 34%,rgba(150,196,232,.30) 72%,rgba(206,232,255,.72) 100%);
   animation:breathe 6s ease-in-out infinite}
 @keyframes breathe{0%,100%{filter:brightness(1)}50%{filter:brightness(1.22)}}
+/* Build mode readout: what is about to go down, and what is left to do it
+   with. Sits above the hotbar so it does not fight the mission tracker. */
+.buildbar{position:absolute;right:22px;bottom:118px;display:none;gap:14px;
+  align-items:center;padding:7px 14px;border:1px solid rgba(240,162,74,.45);
+  background:linear-gradient(180deg,rgba(20,14,8,.82),rgba(10,7,4,.9));
+  font-family:Cinzel,serif;letter-spacing:.16em;font-size:12px;color:#f0e2c8}
+.buildbar.on{display:flex}
+.buildbar .piece{color:#f0a24a}
+.buildbar .mat.out{color:#d85c5c}
 .lowhp{animation:beat 1.4s ease-in-out infinite}
 @keyframes beat{0%,100%{opacity:.28}50%{opacity:.58}}
 

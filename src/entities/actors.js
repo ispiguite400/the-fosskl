@@ -457,6 +457,22 @@ export class Enemy extends Actor {
         if (!canSee && dist > this.aggro * 1.8) { this.state = 'idle'; break; }
         this.faceTowards(player.pos, dt);
 
+        /* Something in the way. A build stops it walking, so it swings at
+         * the build instead — two hits and it is through. Without this an
+         * enemy would simply grind against a wall forever, and a wall would
+         * be a win button rather than one bought exchange. */
+        const B = this.game.build;
+        if (B && B.pieces.length && this.attackCooldown <= 0) {
+          const eye = tmpV2.copy(this.pos); eye.y += this.height * .5;
+          const piece = B.pieceBetween(eye, player.pos, this.radius + 3.2);
+          if (piece) {
+            B.damage(piece, this.pos);
+            this.attackCooldown = .85;
+            this.state = 'strike'; this.stateT = .2;
+            break;
+          }
+        }
+
         /* --- ranged skirmisher --- */
         const R = this.def.ranged;
         if (R) {

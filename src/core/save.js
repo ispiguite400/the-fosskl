@@ -54,6 +54,8 @@ export function freshSave() {
     missions: { active: null, completed: [] },
     /* Verses of the poem that runs under all ten worlds. One per warden. */
     verses: [],
+    /* Building material. Carried between worlds like everything else. */
+    timber: 60,
     tutorial: {},
     sideQuests: {},
 
