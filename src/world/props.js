@@ -615,6 +615,21 @@ export class Props {
       const a = (i / 6) * 6.28 + .5, r = rng.range(7, 13);
       spot(center.x + Math.cos(a) * r, center.z + Math.sin(a) * r, a + Math.PI, 3);
     }
+    /* Drop any spot a building ended up standing in. Spots are recorded as
+     * the village is laid out, so one noted at a door early on can be inside
+     * a house that went up later — three of twelve villagers were standing
+     * in walls. Nudge first, discard only if there is nowhere near to go. */
+    this.npcSpots = this.npcSpots.filter(sp => {
+      if (!this.collideAt(sp.x, sp.z, .6)) return true;
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * 6.28, r = 3.2;
+        const nx = sp.x + Math.cos(a) * r, nz = sp.z + Math.sin(a) * r;
+        if (!this.collideAt(nx, nz, .6) && T.isFlatGround(nx, nz, .4)) {
+          sp.x = nx; sp.z = nz; return true;
+        }
+      }
+      return false;
+    });
     // Best spots first.
     this.npcSpots.sort((p, q) => q.prominence - p.prominence);
     this.villageSize = built;

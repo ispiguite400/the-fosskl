@@ -345,19 +345,32 @@ export class Terrain {
     // Wind sway, applied in the vertex shader so 40k blades stay cheap.
     mat.onBeforeCompile = shader => {
       shader.uniforms.uTime = this.grassTime = { value: 0 };
+      shader.uniforms.uWind = this.grassWind = { value: new THREE.Vector3(1, 0, .3) };
+      shader.uniforms.uGust = this.grassGust = { value: 0 };
       shader.vertexShader = shader.vertexShader
         .replace('#include <common>', `#include <common>
-          uniform float uTime;`)
+          uniform float uTime;
+          uniform vec3  uWind;
+          uniform float uGust;`)
         .replace('#include <begin_vertex>', `#include <begin_vertex>
           #ifdef USE_INSTANCING
             vec3 wp = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
           #else
             vec3 wp = vec3(0.0);
           #endif
-          float sway = sin(uTime * 1.6 + wp.x * 0.22 + wp.z * 0.17) * 0.16
-                     + sin(uTime * 3.1 + wp.x * 0.6) * 0.05;
-          transformed.x += sway * position.y * position.y;
-          transformed.z += sway * 0.6 * position.y * position.y;
+          /* Idle sway, plus the weather. A gust runs across the field as a
+           * travelling wave rather than bending everything at once, which is
+           * what makes a blizzard or a sandstorm read as moving air instead
+           * of a static lean. */
+          float phase = uTime * 1.6 + wp.x * 0.22 + wp.z * 0.17;
+          float sway = sin(phase) * 0.16 + sin(uTime * 3.1 + wp.x * 0.6) * 0.05;
+          float front = dot(wp.xz, normalize(uWind.xz + vec2(0.001))) * 0.06;
+          float gust  = uGust * (0.55 + 0.45 * sin(uTime * 2.3 - front));
+          float bend  = position.y * position.y;
+          transformed.x += (sway + uWind.x * gust * 1.9) * bend;
+          transformed.z += (sway * 0.6 + uWind.z * gust * 1.9) * bend;
+          // Flattened toward the ground in a real blow.
+          transformed.y -= gust * bend * 0.5;
         `);
       this.grassShader = shader;
     };
@@ -479,6 +492,12 @@ export class Terrain {
       this._scatterGrass(playerPos);
     }
     if (this.grassTime) this.grassTime.value += dt;
+    // The field leans with whatever the sky is doing.
+    const sky = this.sky;                 // handed over by the game on load
+    if (this.grassWind && sky) {
+      if (sky.windDir) this.grassWind.value.copy(sky.windDir);
+      this.grassGust.value = (sky.blown ? (sky.storm ?? 0) : (sky.rain ?? 0) * .35) * .5;
+    }
     if (this.waterTime) this.waterTime.value += dt;
     if (this.water) {
       this.water.position.x = playerPos.x; this.water.position.z = playerPos.z;

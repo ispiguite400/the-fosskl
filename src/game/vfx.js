@@ -148,6 +148,10 @@ export class VFX {
     this.smoke  = new Pool(scene, { color: 0x888888, size: 120, gravity: 1.4, drag: .93, fade: false, blending: THREE.NormalBlending });
     this.wind   = new Pool(scene, { color: 0xcfe8ff, size: 60, gravity: 0, drag: .9, fade: true });
     this.magic  = new Pool(scene, { color: 0xb45cff, size: 44, gravity: -2, drag: .95, fade: true });
+    /* Embers lift. Gravity is signed the way the pool applies it, so a
+     * positive value is buoyancy — the sparks pool pulls down at -18 and
+     * would have made these fall into the brazier they came out of. */
+    this.embers = new Pool(scene, { color: 0xffa03c, size: 20, gravity: 1.1, drag: .965, fade: true });
 
     this.numbers = [];
     this.slashes = [];
@@ -358,13 +362,14 @@ export class VFX {
     if (viewportPx > 0 && viewportPx !== this._viewportPx) {
       this._viewportPx = viewportPx;
       const cap = Math.max(16, viewportPx * .26);
-      for (const p of [this.sparks, this.blood, this.smoke, this.wind, this.magic]) p.setMaxSize(cap);
+      for (const p of [this.sparks, this.blood, this.smoke, this.wind, this.magic, this.embers]) p.setMaxSize(cap);
     }
     this.sparks.update(dt);
     this.blood.update(dt);
     this.smoke.update(dt);
     this.wind.update(dt);
     this.magic.update(dt);
+    this.embers.update(dt);
 
     for (let i = this.numbers.length - 1; i >= 0; i--) {
       const n = this.numbers[i];
@@ -396,7 +401,7 @@ export class VFX {
   }
 
   dispose() {
-    for (const p of [this.sparks, this.blood, this.smoke, this.wind, this.magic]) p.dispose();
+    for (const p of [this.sparks, this.blood, this.smoke, this.wind, this.magic, this.embers]) p.dispose();
     for (const n of this.numbers) { this.scene.remove(n.spr); n.spr.material.map.dispose(); n.spr.material.dispose(); }
     for (const s of this.slashes) { this.scene.remove(s.mesh); s.mesh.material.dispose(); }
     this.numbers.length = 0; this.slashes.length = 0;

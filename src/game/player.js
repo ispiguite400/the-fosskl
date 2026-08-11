@@ -524,6 +524,20 @@ export class Player {
           this.game.audio.sfx('land');
           this.landShake = clamp(impact / 40, 0, 1);
           this.game.shake(this.landShake * .6, .25);
+          /* Dust off the ground you just hit. A hard landing was audio and a
+           * camera shake with nothing under the feet to justify either. The
+           * puff takes its colour from the world's own ground so it is snow
+           * on the ice and sand in the waste without asking. */
+          const gc = new THREE.Color(this.game.world?.palette?.ground ?? 0xa08a6a);
+          const n = Math.round(6 + this.landShake * 14);
+          for (let i = 0; i < n; i++) {
+            const a2 = Math.random() * 6.28, sp = .8 + Math.random() * 2.6 * this.landShake;
+            this.game.vfx.smoke.spawn(
+              this.pos.x + Math.cos(a2) * .3, this.pos.y + .12, this.pos.z + Math.sin(a2) * .3,
+              Math.cos(a2) * sp, .5 + Math.random() * .8, Math.sin(a2) * sp,
+              gc.r, gc.g, gc.b,
+              .5 + Math.random() * .5, .5 + Math.random() * .6);
+          }
           // Fall damage past a generous threshold.
           if (impact > 26) {
             this.hp -= (impact - 26) * 2.4;

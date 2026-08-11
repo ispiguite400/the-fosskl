@@ -172,6 +172,8 @@ export class Game {
     const q = this.settings.quality;
     this.terrain = new Terrain(this.scene, world, seed, q);
     this.sky = new Sky(this.scene, world, this.renderer);
+    // The grass leans with the weather, so it needs to see it.
+    this.terrain.sky = this.sky;
     this.props = new Props(this.scene, this.terrain, world, seed, q);
     this.vfx = new VFX(this.scene);
     this.build = new BuildSystem(this);
@@ -249,6 +251,33 @@ export class Game {
       if (!this.props.collideAt(s.x, s.z, 3.5)) return s;
     }
     return this.terrain.findSpawn({ x: c.x, z: c.z + R + 200 }, 220);
+  }
+
+  /* Anything burning throws embers. Braziers and lanterns were lit and
+   * static; a few sparks lifting off them is most of what makes a fire read
+   * as a fire at night. Only the nearest handful, and only a couple a
+   * second, so a village of thirty lanterns is not a firework display. */
+  _embers(dt) {
+    const fires = this.props?.fires;
+    if (!fires?.length || !this.vfx) return;
+    this._emberT = (this._emberT ?? 0) - dt;
+    if (this._emberT > 0) return;
+    this._emberT = .09;
+    const p = this.player.pos;
+    let emitted = 0;
+    for (const f of fires) {
+      if (emitted >= 3) break;
+      const dx = f.x - p.x, dz = f.z - p.z;
+      if (dx * dx + dz * dz > 42 * 42) continue;
+      if (Math.random() > .5) continue;
+      emitted++;
+      const y = this.terrain.heightAt(f.x, f.z) + 1.15;
+      this.vfx.embers.spawn(
+        f.x + (Math.random() - .5) * .3, y, f.z + (Math.random() - .5) * .3,
+        (Math.random() - .5) * .5, 1.1 + Math.random() * 1.4, (Math.random() - .5) * .5,
+        1, .62 + Math.random() * .25, .22,          // ember orange
+        1.1 + Math.random() * .9, .5 + Math.random() * .5);
+    }
   }
 
   /* Tell the player which way the water is going, once per turn of it.
@@ -1236,6 +1265,7 @@ export class Game {
     this._updateChill(dt);
     this._checkVillage();
     this.build?.update(dt, this.player, this.input.players[0]);
+    this._embers(dt);
     // The tide runs on the same clock as the sun, twice a day.
     if (this.world.tide) {
       this.terrain.tidePhase = (this.sky.dayPhase * 2) % 1;
