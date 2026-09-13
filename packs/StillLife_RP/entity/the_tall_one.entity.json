@@ -8,7 +8,7 @@
         "default": "entity_alphatest"
       },
       "textures": {
-        "default": "textures/entity/still_life/the_tall_one"
+        "default": "textures/entity/steve"
       },
       "geometry": {
         "default": "geometry.sl.the_tall_one"
@@ -17,7 +17,6 @@
         "move": "animation.sl.tall.move",
         "look_at": "animation.sl.look_at_target",
         "breathe": "animation.sl.idle_breath",
-        "distort": "animation.sl.distort.tall",
         "panic": "animation.sl.flee_panic",
         "attack": "animation.sl.humanoid.attack",
         "jumpscare": "animation.sl.jumpscare.tall",
@@ -36,7 +35,6 @@
         "animate": [
           "look_at",
           "move",
-          "distort",
           {
             "breathe": "query.modified_move_speed < 0.05"
           },
@@ -47,7 +45,7 @@
         ]
       },
       "render_controllers": [
-        "controller.render.sl.entity_single"
+        "controller.render.sl.plain"
       ],
       "spawn_egg": {
         "base_color": "#0F0E0C",

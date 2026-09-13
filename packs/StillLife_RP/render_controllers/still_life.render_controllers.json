@@ -56,6 +56,23 @@
         "a": "0.55"
       }
     },
+    "controller.render.sl.plain": {
+      "geometry": "Geometry.default",
+      "materials": [
+        {
+          "*": "Material.default"
+        }
+      ],
+      "textures": [
+        "Texture.default"
+      ],
+      "is_hurt_color": {
+        "r": "1.0",
+        "g": "0.36",
+        "b": "0.30",
+        "a": "0.55"
+      }
+    },
     "controller.render.sl.armor": {
       "geometry": "Geometry.default",
       "materials": [

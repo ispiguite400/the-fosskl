@@ -5,6 +5,7 @@ cd "$(dirname "$0")"
 
 echo "== generating art, models and audio =="
 python3 tools/gen_entities.py
+python3 tools/gen_player_models.py
 python3 -c "import sys;sys.path.insert(0,'tools');import gen_entities as g;g.build_armour()"
 python3 tools/gen_art.py
 python3 -c "import sys;sys.path.insert(0,'tools');import gen_art as a;a.gen_animated()"

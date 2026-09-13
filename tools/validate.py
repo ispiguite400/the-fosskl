@@ -33,7 +33,13 @@ def walk(root, ext=".json"):
                 yield os.path.join(d, f)
 
 
+VANILLA_TEX = {"textures/entity/steve", "textures/entity/alex",
+               "textures/misc/enchanted_item_glint"}
+
+
 def exists_tex(rel):
+    if rel in VANILLA_TEX:
+        return True                      # shipped by the base game
     for e in (".png", ".tga", ".jpg"):
         if os.path.exists(os.path.join(RP, rel + e)):
             return True

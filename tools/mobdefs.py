@@ -248,51 +248,9 @@ def build_all():
                 cube("muzzle", [-1.5, 11.5, -15], [3, 3, 2], P["wolf_dk"])],
         body_col="wolf", leg_col="wolf_dk", face="wolf", tail=(2, 8, 2))
 
-    # --- THE COPY (player-shaped still life) -----------------------------
-    # Built bespoke rather than from humanoid(), because the whole point of it
-    # is that nothing matches: the sleeves are two different colours, the right
-    # arm hangs lower than the left, the hands are a different tone from the
-    # face, and one leg is a shade too wide. Bedrock cannot read a player's
-    # real skin onto a custom entity, so instead of a clean Steve this is a
-    # person the world got most of the way right.
-    M["still_player"] = dict(texture=(64, 64), bones=[
-        bone("root", [0, 0, 0], []),
-        bone("waist", [0, 12, 0], [], parent="root"),
-        bone("body", [0, 24, 0], [
-            cube("body",  [-4, 12, -2], [8, 12, 4], P["cp_shirt"]),
-            cube("patch", [-4, 16, -2.3], [3, 5, 1], P["cp_shirt2"]),
-        ], parent="waist"),
-        bone("head", [0, 24, 0], [
-            cube("head", [-4, 24, -4], [8, 8, 8], P["cp_skin"], face="copy"),
-        ], parent="body"),
-        bone("hat", [0, 24, 0], [
-            cube("hairTop",  [-4, 30, -4], [8, 2, 8], P["cp_hair"], inflate=0.4),
-            cube("hairBack", [-4, 25, 3.4], [8, 5, 1], P["cp_hair"], inflate=0.3),
-        ], parent="head"),
-        # right arm: wrong sleeve colour, and 1.5px too long
-        bone("rightArm", [-5, 22, 0], [
-            cube("rSleeve", [-8, 13.5, -2], [4, 10.5, 4], P["cp_shirt2"]),
-            cube("rHand",   [-8, 10.5, -2], [4, 3, 4], P["cp_skin2"]),
-        ], parent="body"),
-        bone("leftArm", [5, 22, 0], [
-            cube("lSleeve", [4, 15, -2], [4, 9, 4], P["cp_shirt"], mirror=True),
-            cube("lHand",   [4, 12, -2], [4, 3, 4], P["cp_skin"], mirror=True),
-        ], parent="body"),
-        bone("rightLeg", [-1.9, 12, 0], [
-            cube("rightLeg", [-4, 0, -2], [4, 12, 4], P["cp_pants"]),
-        ], parent="root"),
-        # left leg: half a pixel too wide, and the wrong colour entirely
-        bone("leftLeg", [1.9, 12, 0], [
-            cube("leftLeg", [0, 0, -2], [4.5, 12, 4], P["cp_pants2"], mirror=True),
-        ], parent="root"),
-    ])
-
-    # --- THE TALL ONE (boss) ---------------------------------------------
-    # tall and lanky, but the limbs are a different tone from the torso or the
-    # whole thing renders as one featureless column
-    M["the_tall_one"] = humanoid(tall=2.2, skin="tall", top="tall_dk",
-                                 bottom="tall_leg", hair="void", arms="tall",
-                                 thin_arms=False, face="tall", girth=1, gap=1)
+    # The Copy and The Tall One are NOT built here. They use the vanilla
+    # player model and the vanilla player skin -- see tools/gen_player_models.py.
+    # This add-on supplies no artwork for either of them.
 
     # --- CAPTAIN CLARK (backrooms boss) ----------------------------------
     # A large Still Life copying Clark as "Cap'n Clark", the pirate mascot

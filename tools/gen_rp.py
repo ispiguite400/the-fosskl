@@ -33,8 +33,12 @@ ENTS = {
     "still_sheep":    dict(fam="quad", decay=1, egg=("#CFC8B4", "#8A8375")),
     "still_chicken":  dict(fam="bird", decay=1, egg=("#CFCABA", "#C08A20")),
     "still_wolf":     dict(fam="quad", decay=1, tail=True, egg=("#BDB6AE", "#6E665E")),
-    "still_player":   dict(fam="humanoid", decay=3, egg=("#9A8A62", "#3C44AA")),
-    "the_tall_one":   dict(fam="tall", decay=1, egg=("#0F0E0C", "#C8B45A"), boss=True),
+    # vanilla=True: renders as the player, with the player's own skin, and
+    # skips the distortion layer entirely. No custom artwork.
+    "still_player":   dict(fam="humanoid", decay=1, vanilla=True,
+                           egg=("#9A8A62", "#3C44AA")),
+    "the_tall_one":   dict(fam="tall", decay=1, vanilla=True, boss=True,
+                           egg=("#0F0E0C", "#C8B45A")),
     "captain_clark":  dict(fam="humanoid", decay=1, egg=("#3A402C", "#B8923C"), boss=True),
 }
 
@@ -199,6 +203,13 @@ def gen_render_controllers():
         },
         "is_hurt_color": {"r": "1.0", "g": "0.36", "b": "0.30", "a": "0.55"},
     }
+    # exactly how a player renders: no tint, no wash
+    rc["controller.render.sl.plain"] = {
+        "geometry": "Geometry.default",
+        "materials": [{"*": "Material.default"}],
+        "textures": ["Texture.default"],
+        "is_hurt_color": {"r": "1.0", "g": "0.36", "b": "0.30", "a": "0.55"},
+    }
     rc["controller.render.sl.armor"] = {
         "geometry": "Geometry.default",
         "materials": [{"*": "Material.default"}],
@@ -212,8 +223,10 @@ def gen_render_controllers():
 # ------------------------------------------------------- client entities
 def client_entity(name, cfg):
     fam = cfg["fam"]
-    multi = cfg["decay"] > 1
-    tex = {"default": f"textures/entity/still_life/{name}"}
+    vanilla = cfg.get("vanilla", False)
+    multi = cfg["decay"] > 1 and not vanilla
+    tex = {"default": "textures/entity/steve" if vanilla
+           else f"textures/entity/still_life/{name}"}
     if multi:
         tex["v2"] = f"textures/entity/still_life/{name}_v2"
         tex["v3"] = f"textures/entity/still_life/{name}_v3"
@@ -228,10 +241,15 @@ def client_entity(name, cfg):
         "jumpscare": f"animation.sl.jumpscare.{fam}",
         "action": f"controller.animation.sl.action.{fam}",
     }
-    animate = ["look_at", "move", "distort",
+    animate = ["look_at", "move",
                {"breathe": "query.modified_move_speed < 0.05"},
                {"panic": "query.property('sl:state') == 'fleeing'"},
                "action"]
+    if vanilla:
+        # it is the player model. Do not warp it.
+        anims.pop("distort", None)
+    else:
+        animate.insert(2, "distort")
     if fam == "tall":
         anims["grab"] = "animation.sl.tall.grab"
     if cfg.get("tail"):
@@ -257,7 +275,8 @@ def client_entity(name, cfg):
         "geometry": {"default": f"geometry.sl.{name}"},
         "animations": anims,
         "scripts": {"pre_animation": pre, "animate": animate},
-        "render_controllers": ["controller.render.sl.entity" if multi
+        "render_controllers": ["controller.render.sl.plain" if vanilla
+                               else "controller.render.sl.entity" if multi
                                else "controller.render.sl.entity_single"],
         "spawn_egg": {"base_color": cfg["egg"][0], "overlay_color": cfg["egg"][1]},
     }

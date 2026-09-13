@@ -238,9 +238,9 @@ def build(name, model, decay=0.0, seed=None):
 
 # How hard the still-life wash hits each mob. Clark keeps most of his colour
 # -- the costume is the whole point of him, and the render controller adds its
-# own sepia in-game. The Copy takes a heavy dose: it is meant to look like a
-# person remembered badly, not like a clean player skin.
-BASE_DECAY = {"the_tall_one": 0.5, "captain_clark": 0.12, "still_player": 0.38}
+# own sepia in-game. The Copy and The Tall One are not in here at all: they use
+# the vanilla player skin untouched.
+BASE_DECAY = {"captain_clark": 0.12}
 
 
 if __name__ == "__main__":
@@ -249,7 +249,7 @@ if __name__ == "__main__":
         tw, th, hgt = build(n, m, decay=decay)
         print(f"{n:18s} atlas {tw}x{th}  height {hgt:.2f} blocks")
     # extra decayed variants: the world's later, worse attempts at a copy
-    for n in ("still_villager", "still_cow", "still_player"):
+    for n in ("still_villager", "still_cow", "still_pig"):
         for lvl, d in (("v2", 0.45), ("v3", 0.85)):
             tw, th, _ = build(n, MOBS[n], decay=d, seed=hash(n + lvl) & 0xFFFF)
             os.rename(os.path.join(TEX_DIR, f"{n}.png"),

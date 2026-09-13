@@ -4,13 +4,13 @@
     {
       "description": {
         "identifier": "geometry.sl.the_tall_one",
-        "texture_width": 128,
+        "texture_width": 64,
         "texture_height": 64,
-        "visible_bounds_width": 2.38,
-        "visible_bounds_height": 4.4,
+        "visible_bounds_width": 3,
+        "visible_bounds_height": 6.5,
         "visible_bounds_offset": [
           0,
-          1.9,
+          2.95,
           0
         ]
       },
@@ -27,7 +27,7 @@
           "name": "waist",
           "pivot": [
             0,
-            26.4,
+            43.2,
             0
           ],
           "parent": "root"
@@ -36,26 +36,43 @@
           "name": "body",
           "pivot": [
             0,
-            52.8,
+            86.4,
             0
           ],
           "parent": "waist",
           "cubes": [
             {
               "origin": [
-                -5,
-                26.4,
-                -2.5
+                -4,
+                43.2,
+                -2
               ],
               "size": [
-                10,
-                26.4,
-                5
+                8,
+                43.2,
+                4
               ],
               "uv": [
-                0,
-                0
+                16,
+                16
               ]
+            },
+            {
+              "origin": [
+                -4,
+                43.2,
+                -2
+              ],
+              "size": [
+                8,
+                43.2,
+                4
+              ],
+              "uv": [
+                16,
+                32
+              ],
+              "inflate": 0.25
             }
           ]
         },
@@ -63,7 +80,7 @@
           "name": "head",
           "pivot": [
             0,
-            52.8,
+            86.4,
             0
           ],
           "parent": "body",
@@ -71,17 +88,17 @@
             {
               "origin": [
                 -4,
-                52.8,
+                86.4,
                 -4
               ],
               "size": [
                 8,
-                8,
+                8.0,
                 8
               ],
               "uv": [
                 0,
-                32
+                0
               ]
             }
           ]
@@ -90,7 +107,7 @@
           "name": "hat",
           "pivot": [
             0,
-            52.8,
+            86.4,
             0
           ],
           "parent": "head",
@@ -98,90 +115,108 @@
             {
               "origin": [
                 -4,
-                58.8,
+                86.4,
                 -4
               ],
               "size": [
                 8,
-                2,
+                8.0,
                 8
               ],
               "uv": [
                 32,
-                32
+                0
               ],
-              "inflate": 0.4
-            },
-            {
-              "origin": [
-                -4,
-                53.8,
-                3.4
-              ],
-              "size": [
-                8,
-                5,
-                1
-              ],
-              "uv": [
-                64,
-                32
-              ],
-              "inflate": 0.3
+              "inflate": 0.5
             }
           ]
         },
         {
           "name": "rightArm",
           "pivot": [
-            -6,
-            50.8,
+            -5,
+            79.2,
             0
           ],
           "parent": "body",
           "cubes": [
             {
               "origin": [
-                -11,
-                26.4,
+                -8,
+                43.2,
                 -2
               ],
               "size": [
-                5,
-                26.4,
+                4,
+                43.2,
                 4
               ],
               "uv": [
-                30,
-                0
+                40,
+                16
               ]
+            },
+            {
+              "origin": [
+                -8,
+                43.2,
+                -2
+              ],
+              "size": [
+                4,
+                43.2,
+                4
+              ],
+              "uv": [
+                40,
+                32
+              ],
+              "inflate": 0.25
             }
           ]
         },
         {
           "name": "leftArm",
           "pivot": [
-            6,
-            50.8,
+            5,
+            79.2,
             0
           ],
           "parent": "body",
           "cubes": [
             {
               "origin": [
-                6,
-                26.4,
+                4,
+                43.2,
                 -2
               ],
               "size": [
-                5,
-                26.4,
+                4,
+                43.2,
+                4
+              ],
+              "uv": [
+                32,
+                48
+              ],
+              "mirror": true
+            },
+            {
+              "origin": [
+                4,
+                43.2,
+                -2
+              ],
+              "size": [
+                4,
+                43.2,
                 4
               ],
               "uv": [
                 48,
-                0
+                48
               ],
+              "inflate": 0.25,
               "mirror": true
             }
           ]
@@ -190,7 +225,7 @@
           "name": "rightLeg",
           "pivot": [
             -1.9,
-            26.4,
+            43.2,
             0
           ],
           "parent": "root",
@@ -198,18 +233,35 @@
             {
               "origin": [
                 -4,
-                0,
+                0.0,
                 -2
               ],
               "size": [
                 4,
-                26.4,
+                43.2,
                 4
               ],
               "uv": [
-                66,
-                0
+                0,
+                16
               ]
+            },
+            {
+              "origin": [
+                -4,
+                0.0,
+                -2
+              ],
+              "size": [
+                4,
+                43.2,
+                4
+              ],
+              "uv": [
+                0,
+                32
+              ],
+              "inflate": 0.25
             }
           ]
         },
@@ -217,7 +269,7 @@
           "name": "leftLeg",
           "pivot": [
             1.9,
-            26.4,
+            43.2,
             0
           ],
           "parent": "root",
@@ -225,18 +277,36 @@
             {
               "origin": [
                 0,
-                0,
+                0.0,
                 -2
               ],
               "size": [
                 4,
-                26.4,
+                43.2,
                 4
               ],
               "uv": [
-                82,
-                0
+                16,
+                48
               ],
+              "mirror": true
+            },
+            {
+              "origin": [
+                0,
+                0.0,
+                -2
+              ],
+              "size": [
+                4,
+                43.2,
+                4
+              ],
+              "uv": [
+                0,
+                48
+              ],
+              "inflate": 0.25,
               "mirror": true
             }
           ]

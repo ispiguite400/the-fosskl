@@ -53,9 +53,16 @@ def face_corners(p0, p1, name):
     return C[name], N[name]
 
 
+# The Copy and The Tall One ship no texture -- they use the game's own player
+# skin. For preview renders only, substitute a local stand-in.
+VANILLA_SKINNED = {"still_player", "the_tall_one"}
+STEVE = os.path.join(os.path.dirname(__file__), "preview", "steve_reference.png")
+
+
 def load_model(name):
     g = json.load(open(os.path.join(GEO, f"{name}.geo.json")))["minecraft:geometry"][0]
-    tex = Image.open(os.path.join(TEX, f"{name}.png")).convert("RGBA")
+    path = STEVE if name in VANILLA_SKINNED else os.path.join(TEX, f"{name}.png")
+    tex = Image.open(path).convert("RGBA")
     return g, np.array(tex, dtype=np.float64) / 255.0
 
 
@@ -251,7 +258,7 @@ def hero():
     img = degrade(img.convert("RGB"), seed=55, amount=0.55).convert("RGBA")
     d = ImageDraw.Draw(img)
     f = ImageFont.truetype(FONT, 40)
-    d.text((28, H - 58), "THE TALL ONE  ·  arrives every five or six days  ·  3.8 blocks tall",
+    d.text((28, H - 58), "THE TALL ONE  ·  arrives every five or six days  ·  5.9 blocks tall",
            font=f, fill=(238, 230, 190))
     img.convert("RGB").save(os.path.join(ROOT, "docs", "hero.png"))
     print("docs/hero.png")

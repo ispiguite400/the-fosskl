@@ -84,12 +84,10 @@ A newly spawned still life rolls 58% still / 24% roaming / 12% neutral /
 with a stinger. A second later it decides what it is — and *that* decision
 reads your ledger.
 
-**The Copy** is the one that matters. A Bedrock add-on cannot read your real
-skin and put it on a custom entity — there is no API for it — so instead of a
-clean player lookalike, The Copy is a person the world got *most* of the way
-right: two different sleeve colours, a right arm that hangs lower than the
-left, hands a different tone from the face, one leg half a pixel too wide, and
-a colour wash heavy enough that it never reads as anyone you know.
+**The Copy** is not custom art at all. It is the vanilla player model, with
+the game's own player skin, at a player's exact proportions and hitbox — this
+add-on ships no texture for it. That is the point: the thing standing in the
+treeline is shaped exactly like a person, and nothing about it is stylised.
 
 **Every still life drops the same thing whatever shape it was wearing:**
 Cotton or white wool, and occasionally Still Essence.
@@ -121,10 +119,16 @@ checks while it is holding you.
 
 <p align="center"><img src="docs/hero.png" alt="The Tall One" width="100%"></p>
 
+It is the same player model as The Copy — same skin, same skeleton — with the
+torso and limbs stretched 3.6x while the head stays head-sized. The skin smears
+vertically up the body. **A very tall version of the player**, and nothing
+more inventive than that.
+
 Every **five or six in-game days** it spawns directly behind you, wherever you
-are. 3.8 blocks tall, 260 HP, a real boss bar, and a movement speed of `0.265`
-— deliberately mid-paced. You cannot walk away from it. It will not be on top
-of you in two seconds either.
+are. **5.9 blocks tall** — over three times your height, tall enough that it
+cannot follow you indoors — 260 HP, a real boss bar, and a movement speed of
+`0.265`, deliberately mid-paced. You cannot walk away from it. It will not be
+on top of you in two seconds either.
 
 Offer it **Still Essence** or **The Tall One's Tooth** and it may stop hunting
 and start walking with you. Your chance is `22% + your ledger`.
