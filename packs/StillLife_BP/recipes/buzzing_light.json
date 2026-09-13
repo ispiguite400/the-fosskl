@@ -1,0 +1,28 @@
+{
+  "format_version": "1.20.10",
+  "minecraft:recipe_shaped": {
+    "description": {
+      "identifier": "sl:buzzing_light"
+    },
+    "tags": [
+      "crafting_table"
+    ],
+    "pattern": [
+      "TTT",
+      "TGT",
+      "TTT"
+    ],
+    "key": {
+      "T": {
+        "item": "sl:ceiling_tile"
+      },
+      "G": {
+        "item": "minecraft:glowstone"
+      }
+    },
+    "result": {
+      "item": "sl:buzzing_light",
+      "count": 2
+    }
+  }
+}

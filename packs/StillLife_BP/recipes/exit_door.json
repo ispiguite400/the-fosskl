@@ -1,0 +1,28 @@
+{
+  "format_version": "1.20.10",
+  "minecraft:recipe_shaped": {
+    "description": {
+      "identifier": "sl:exit_door"
+    },
+    "tags": [
+      "crafting_table"
+    ],
+    "pattern": [
+      "EEE",
+      "EKE",
+      "EEE"
+    ],
+    "key": {
+      "E": {
+        "item": "sl:exit_sign"
+      },
+      "K": {
+        "item": "sl:frontrooms_key"
+      }
+    },
+    "result": {
+      "item": "sl:exit_door",
+      "count": 1
+    }
+  }
+}

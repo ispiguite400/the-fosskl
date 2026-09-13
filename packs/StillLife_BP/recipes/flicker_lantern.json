@@ -1,0 +1,28 @@
+{
+  "format_version": "1.20.10",
+  "minecraft:recipe_shaped": {
+    "description": {
+      "identifier": "sl:flicker_lantern"
+    },
+    "tags": [
+      "crafting_table"
+    ],
+    "pattern": [
+      " I ",
+      "IEI",
+      " I "
+    ],
+    "key": {
+      "I": {
+        "item": "minecraft:iron_nugget"
+      },
+      "E": {
+        "item": "sl:still_essence"
+      }
+    },
+    "result": {
+      "item": "sl:flicker_lantern",
+      "count": 1
+    }
+  }
+}

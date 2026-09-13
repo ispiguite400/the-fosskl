@@ -1,0 +1,78 @@
+## STILL LIFE - A Backrooms Add-On
+
+pack.name=STILL LIFE
+pack.description=The world remembers you.
+
+item.sl:cotton=Cotton
+item.sl:stillcloth=Stillcloth
+item.sl:almond_water=Almond Water
+item.sl:bitter_almond_water=Bitter Almond Water
+item.sl:cotton_bandage=Cotton Bandage
+item.sl:flicker_lantern=Flicker Lantern
+item.sl:camcorder=Camcorder
+item.sl:polaroid=Polaroid
+item.sl:noclip_charm=Noclip Charm
+item.sl:exit_sign_shard=Exit Sign Shard
+item.sl:frontrooms_key=Frontrooms Key
+item.sl:stillcloth_hood=Stillcloth Hood
+item.sl:stillcloth_tunic=Stillcloth Tunic
+item.sl:stillcloth_trousers=Stillcloth Trousers
+item.sl:stillcloth_treads=Stillcloth Treads
+item.sl:hum_tuner=Hum Tuner
+item.sl:tall_ones_tooth=The Tall One's Tooth
+item.sl:clarks_whistle=Clark's Whistle
+item.sl:static_blade=Static Blade
+item.sl:wall_pry_bar=Wall Pry Bar
+item.sl:sanity_anchor=Sanity Anchor
+item.sl:distorted_compass=Distorted Compass
+item.sl:reel_of_tape=Reel of Tape
+item.sl:still_essence=Still Essence
+
+tile.sl:wallpaper.name=Yellow Wallpaper
+item.sl:wallpaper=Yellow Wallpaper
+tile.sl:wallpaper_torn.name=Torn Wallpaper
+item.sl:wallpaper_torn=Torn Wallpaper
+tile.sl:damp_carpet.name=Damp Carpet
+item.sl:damp_carpet=Damp Carpet
+tile.sl:ceiling_tile.name=Ceiling Tile
+item.sl:ceiling_tile=Ceiling Tile
+tile.sl:buzzing_light.name=Buzzing Light
+item.sl:buzzing_light=Buzzing Light
+tile.sl:moist_wall.name=Moist Wall
+item.sl:moist_wall=Moist Wall
+tile.sl:exit_door.name=Exit Door
+item.sl:exit_door=Exit Door
+tile.sl:noclip_rift.name=Noclip Rift
+item.sl:noclip_rift=Noclip Rift
+tile.sl:sanity_anchor_block.name=Sanity Anchor
+item.sl:sanity_anchor_block=Sanity Anchor
+tile.sl:cotton_bale.name=Cotton Bale
+item.sl:cotton_bale=Cotton Bale
+tile.sl:exit_sign.name=Exit Sign
+item.sl:exit_sign=Exit Sign
+tile.sl:hum_speaker.name=Hum Speaker
+item.sl:hum_speaker=Hum Speaker
+
+entity.sl:still_villager.name=Still Life
+entity.sl:still_cow.name=Still Life
+entity.sl:still_pig.name=Still Life
+entity.sl:still_sheep.name=Still Life
+entity.sl:still_chicken.name=Still Life
+entity.sl:still_wolf.name=Still Life
+entity.sl:still_player.name=The Copy
+entity.sl:the_tall_one.name=The Tall One
+entity.sl:captain_clark.name=Captain Clark
+
+item.spawn_egg.entity.sl:still_villager.name=Spawn Still Life (Villager)
+item.spawn_egg.entity.sl:still_cow.name=Spawn Still Life (Cow)
+item.spawn_egg.entity.sl:still_pig.name=Spawn Still Life (Pig)
+item.spawn_egg.entity.sl:still_sheep.name=Spawn Still Life (Sheep)
+item.spawn_egg.entity.sl:still_chicken.name=Spawn Still Life (Chicken)
+item.spawn_egg.entity.sl:still_wolf.name=Spawn Still Life (Wolf)
+item.spawn_egg.entity.sl:still_player.name=Spawn The Copy
+item.spawn_egg.entity.sl:the_tall_one.name=Spawn The Tall One
+item.spawn_egg.entity.sl:captain_clark.name=Spawn Captain Clark
+
+itemGroup.name.sl_backrooms=Still Life
+action.hint.exit.sl:exit_door=Open
+action.hint.exit.sl:noclip_rift=Noclip

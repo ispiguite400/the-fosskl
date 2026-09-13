@@ -1,0 +1,23 @@
+{
+  "format_version": "1.20.10",
+  "minecraft:recipe_shapeless": {
+    "description": {
+      "identifier": "sl:bitter_almond_water"
+    },
+    "tags": [
+      "crafting_table"
+    ],
+    "ingredients": [
+      {
+        "item": "sl:almond_water"
+      },
+      {
+        "item": "sl:still_essence"
+      }
+    ],
+    "result": {
+      "item": "sl:bitter_almond_water",
+      "count": 1
+    }
+  }
+}

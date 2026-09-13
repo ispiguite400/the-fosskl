@@ -1,0 +1,230 @@
+{
+  "format_version": "1.16.0",
+  "minecraft:geometry": [
+    {
+      "description": {
+        "identifier": "geometry.sl.the_tall_one",
+        "texture_width": 128,
+        "texture_height": 64,
+        "visible_bounds_width": 2.38,
+        "visible_bounds_height": 4.4,
+        "visible_bounds_offset": [
+          0,
+          1.9,
+          0
+        ]
+      },
+      "bones": [
+        {
+          "name": "root",
+          "pivot": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "name": "waist",
+          "pivot": [
+            0,
+            26.4,
+            0
+          ],
+          "parent": "root"
+        },
+        {
+          "name": "body",
+          "pivot": [
+            0,
+            52.8,
+            0
+          ],
+          "parent": "waist",
+          "cubes": [
+            {
+              "origin": [
+                -5,
+                26.4,
+                -2.5
+              ],
+              "size": [
+                10,
+                26.4,
+                5
+              ],
+              "uv": [
+                0,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "head",
+          "pivot": [
+            0,
+            52.8,
+            0
+          ],
+          "parent": "body",
+          "cubes": [
+            {
+              "origin": [
+                -4,
+                52.8,
+                -4
+              ],
+              "size": [
+                8,
+                8,
+                8
+              ],
+              "uv": [
+                0,
+                32
+              ]
+            }
+          ]
+        },
+        {
+          "name": "hat",
+          "pivot": [
+            0,
+            52.8,
+            0
+          ],
+          "parent": "head",
+          "cubes": [
+            {
+              "origin": [
+                -4,
+                52.8,
+                -4
+              ],
+              "size": [
+                8,
+                8,
+                8
+              ],
+              "uv": [
+                32,
+                32
+              ],
+              "inflate": 0.5
+            }
+          ]
+        },
+        {
+          "name": "rightArm",
+          "pivot": [
+            -6,
+            50.8,
+            0
+          ],
+          "parent": "body",
+          "cubes": [
+            {
+              "origin": [
+                -11,
+                26.4,
+                -2
+              ],
+              "size": [
+                5,
+                26.4,
+                4
+              ],
+              "uv": [
+                30,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "leftArm",
+          "pivot": [
+            6,
+            50.8,
+            0
+          ],
+          "parent": "body",
+          "cubes": [
+            {
+              "origin": [
+                6,
+                26.4,
+                -2
+              ],
+              "size": [
+                5,
+                26.4,
+                4
+              ],
+              "uv": [
+                48,
+                0
+              ],
+              "mirror": true
+            }
+          ]
+        },
+        {
+          "name": "rightLeg",
+          "pivot": [
+            -1.9,
+            26.4,
+            0
+          ],
+          "parent": "root",
+          "cubes": [
+            {
+              "origin": [
+                -4,
+                0,
+                -2
+              ],
+              "size": [
+                4,
+                26.4,
+                4
+              ],
+              "uv": [
+                66,
+                0
+              ]
+            }
+          ]
+        },
+        {
+          "name": "leftLeg",
+          "pivot": [
+            1.9,
+            26.4,
+            0
+          ],
+          "parent": "root",
+          "cubes": [
+            {
+              "origin": [
+                0,
+                0,
+                -2
+              ],
+              "size": [
+                4,
+                26.4,
+                4
+              ],
+              "uv": [
+                82,
+                0
+              ],
+              "mirror": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

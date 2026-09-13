@@ -1,0 +1,59 @@
+{
+  "format_version": "1.10.0",
+  "minecraft:client_entity": {
+    "description": {
+      "identifier": "sl:still_wolf",
+      "min_engine_version": "1.8.0",
+      "materials": {
+        "default": "entity_alphatest"
+      },
+      "textures": {
+        "default": "textures/entity/still_life/still_wolf"
+      },
+      "geometry": {
+        "default": "geometry.sl.still_wolf"
+      },
+      "animations": {
+        "move": "animation.sl.quadruped.move",
+        "look_at": "animation.sl.look_at_target",
+        "breathe": "animation.sl.idle_breath",
+        "distort": "animation.sl.distort.quad",
+        "panic": "animation.sl.flee_panic",
+        "attack": "animation.sl.quadruped.attack",
+        "jumpscare": "animation.sl.jumpscare.quad",
+        "action": "controller.animation.sl.action.quad",
+        "tail": "animation.sl.tail.sway"
+      },
+      "scripts": {
+        "pre_animation": [
+          "variable.sl_seed = variable.sl_seed ?? math.random(0.0, 6.2832);",
+          "variable.sl_skew = variable.sl_skew ?? math.random(-1.0, 1.0);",
+          "variable.sl_awake = math.clamp(query.modified_move_speed * 6.0, 0.0, 1.0);",
+          "variable.sl_hostile = (query.property('sl:state') == 'hostile' || query.property('sl:state') == 'betraying') ? 1.0 : 0.0;",
+          "variable.sl_t = query.life_time * (0.35 + variable.sl_awake * 5.5 + variable.sl_hostile * 3.0);",
+          "variable.sl_amp = 0.30 + variable.sl_awake * 0.85 + query.property('sl:decay') * 0.35 + variable.sl_hostile * 0.6;"
+        ],
+        "animate": [
+          "look_at",
+          "move",
+          "distort",
+          "tail",
+          {
+            "breathe": "query.modified_move_speed < 0.05"
+          },
+          {
+            "panic": "query.property('sl:state') == 'fleeing'"
+          },
+          "action"
+        ]
+      },
+      "render_controllers": [
+        "controller.render.sl.entity_single"
+      ],
+      "spawn_egg": {
+        "base_color": "#BDB6AE",
+        "overlay_color": "#6E665E"
+      }
+    }
+  }
+}

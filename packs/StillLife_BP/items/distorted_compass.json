@@ -1,0 +1,24 @@
+{
+  "format_version": "1.21.0",
+  "minecraft:item": {
+    "description": {
+      "identifier": "sl:distorted_compass",
+      "menu_category": {
+        "category": "equipment"
+      }
+    },
+    "components": {
+      "minecraft:icon": "sl_distorted_compass",
+      "minecraft:max_stack_size": 1,
+      "minecraft:cooldown": {
+        "category": "sl_compass",
+        "duration": 4.0
+      },
+      "minecraft:tags": {
+        "tags": [
+          "sl:backrooms_gear"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "format_version": "1.21.0",
+  "minecraft:block": {
+    "description": {
+      "identifier": "sl:sanity_anchor_block",
+      "menu_category": {
+        "category": "construction"
+      }
+    },
+    "components": {
+      "minecraft:destructible_by_mining": {
+        "seconds_to_destroy": 1.6
+      },
+      "minecraft:destructible_by_explosion": {
+        "explosion_resistance": 6.0
+      },
+      "minecraft:map_color": "#F6F0C4",
+      "minecraft:geometry": "minecraft:geometry.full_block",
+      "minecraft:material_instances": {
+        "*": {
+          "texture": "sl_sanity_anchor_block",
+          "render_method": "opaque"
+        }
+      },
+      "minecraft:friction": 0.6,
+      "minecraft:light_dampening": 15,
+      "minecraft:light_emission": 13
+    }
+  }
+}

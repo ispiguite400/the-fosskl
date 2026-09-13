@@ -1,0 +1,31 @@
+{
+  "format_version": "1.20.10",
+  "minecraft:recipe_shaped": {
+    "description": {
+      "identifier": "sl:noclip_charm"
+    },
+    "tags": [
+      "crafting_table"
+    ],
+    "pattern": [
+      " G ",
+      "GSG",
+      " E "
+    ],
+    "key": {
+      "G": {
+        "item": "minecraft:gold_ingot"
+      },
+      "S": {
+        "item": "sl:exit_sign_shard"
+      },
+      "E": {
+        "item": "sl:still_essence"
+      }
+    },
+    "result": {
+      "item": "sl:noclip_charm",
+      "count": 1
+    }
+  }
+}

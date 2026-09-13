@@ -1,0 +1,29 @@
+{
+  "format_version": "1.21.0",
+  "minecraft:block": {
+    "description": {
+      "identifier": "sl:wallpaper",
+      "menu_category": {
+        "category": "construction"
+      }
+    },
+    "components": {
+      "minecraft:destructible_by_mining": {
+        "seconds_to_destroy": 0.9
+      },
+      "minecraft:destructible_by_explosion": {
+        "explosion_resistance": 1.2
+      },
+      "minecraft:map_color": "#C8B45A",
+      "minecraft:geometry": "minecraft:geometry.full_block",
+      "minecraft:material_instances": {
+        "*": {
+          "texture": "sl_wallpaper",
+          "render_method": "opaque"
+        }
+      },
+      "minecraft:friction": 0.6,
+      "minecraft:light_dampening": 15
+    }
+  }
+}

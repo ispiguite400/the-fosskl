@@ -1,0 +1,43 @@
+{
+  "format_version": 2,
+  "header": {
+    "name": "§eSTILL LIFE§r — Backrooms §7[Behavior]",
+    "description": "§7The world remembers you.§r\n\nStill lifes, distorted recreations, a sanity you can lose,\nand something very tall that knows your name.\n\n§8v1.0.0 — Behavior Pack",
+    "uuid": "adc2f4f3-20d4-4d75-b46a-56b9bf77ca12",
+    "version": [1, 0, 0],
+    "min_engine_version": [1, 21, 0]
+  },
+  "modules": [
+    {
+      "type": "data",
+      "uuid": "bb9c0f6f-7237-46cd-8155-fda9ef1fa3cb",
+      "version": [1, 0, 0]
+    },
+    {
+      "type": "script",
+      "language": "javascript",
+      "uuid": "1ccda6d6-f9ad-4562-b2d1-5b2342187448",
+      "version": [1, 0, 0],
+      "entry": "scripts/main.js"
+    }
+  ],
+  "dependencies": [
+    {
+      "uuid": "a56ada11-2f30-4057-95fe-6a354b40869e",
+      "version": [1, 0, 0]
+    },
+    {
+      "module_name": "@minecraft/server",
+      "version": "1.13.0"
+    },
+    {
+      "module_name": "@minecraft/server-ui",
+      "version": "1.2.0"
+    }
+  ],
+  "metadata": {
+    "authors": ["Still Life Add-On"],
+    "license": "MIT",
+    "product_type": "addon"
+  }
+}

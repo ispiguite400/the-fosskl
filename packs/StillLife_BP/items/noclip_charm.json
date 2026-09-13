@@ -1,0 +1,26 @@
+{
+  "format_version": "1.21.0",
+  "minecraft:item": {
+    "description": {
+      "identifier": "sl:noclip_charm",
+      "menu_category": {
+        "category": "equipment"
+      }
+    },
+    "components": {
+      "minecraft:icon": "sl_noclip_charm",
+      "minecraft:max_stack_size": 1,
+      "minecraft:glint": true,
+      "minecraft:cooldown": {
+        "category": "sl_noclip",
+        "duration": 12.0
+      },
+      "minecraft:hover_text_color": "light_purple",
+      "minecraft:tags": {
+        "tags": [
+          "sl:backrooms_gear"
+        ]
+      }
+    }
+  }
+}

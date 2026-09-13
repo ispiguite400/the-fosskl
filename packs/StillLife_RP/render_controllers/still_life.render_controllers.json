@@ -1,0 +1,71 @@
+{
+  "format_version": "1.10.0",
+  "render_controllers": {
+    "controller.render.sl.entity": {
+      "arrays": {
+        "textures": {
+          "Array.skins": [
+            "Texture.default",
+            "Texture.v2",
+            "Texture.v3"
+          ]
+        }
+      },
+      "geometry": "Geometry.default",
+      "materials": [
+        {
+          "*": "Material.default"
+        }
+      ],
+      "textures": [
+        "Array.skins[query.property('sl:decay')]"
+      ],
+      "overlay_color": {
+        "r": "0.86",
+        "g": "0.79",
+        "b": "0.44",
+        "a": "0.09 + query.property('sl:decay') * 0.085 + math.sin(query.life_time * 31.0) * 0.025"
+      },
+      "is_hurt_color": {
+        "r": "1.0",
+        "g": "0.36",
+        "b": "0.30",
+        "a": "0.55"
+      }
+    },
+    "controller.render.sl.entity_single": {
+      "geometry": "Geometry.default",
+      "materials": [
+        {
+          "*": "Material.default"
+        }
+      ],
+      "textures": [
+        "Texture.default"
+      ],
+      "overlay_color": {
+        "r": "0.86",
+        "g": "0.79",
+        "b": "0.44",
+        "a": "0.12 + math.sin(query.life_time * 31.0) * 0.03"
+      },
+      "is_hurt_color": {
+        "r": "1.0",
+        "g": "0.36",
+        "b": "0.30",
+        "a": "0.55"
+      }
+    },
+    "controller.render.sl.armor": {
+      "geometry": "Geometry.default",
+      "materials": [
+        {
+          "*": "Material.default"
+        }
+      ],
+      "textures": [
+        "Texture.default"
+      ]
+    }
+  }
+}

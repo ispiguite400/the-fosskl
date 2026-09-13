@@ -1,0 +1,23 @@
+{
+  "format_version": "1.20.10",
+  "minecraft:recipe_shaped": {
+    "description": {
+      "identifier": "sl:cotton_bandage"
+    },
+    "tags": [
+      "crafting_table"
+    ],
+    "pattern": [
+      "CCC"
+    ],
+    "key": {
+      "C": {
+        "item": "sl:cotton"
+      }
+    },
+    "result": {
+      "item": "sl:cotton_bandage",
+      "count": 2
+    }
+  }
+}

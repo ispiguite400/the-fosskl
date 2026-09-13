@@ -1,0 +1,23 @@
+{
+  "format_version": "1.20.10",
+  "minecraft:recipe_shaped": {
+    "description": {
+      "identifier": "sl:exit_sign"
+    },
+    "tags": [
+      "crafting_table"
+    ],
+    "pattern": [
+      "EEE"
+    ],
+    "key": {
+      "E": {
+        "item": "sl:exit_sign_shard"
+      }
+    },
+    "result": {
+      "item": "sl:exit_sign",
+      "count": 1
+    }
+  }
+}

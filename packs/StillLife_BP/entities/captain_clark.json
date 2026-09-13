@@ -1,0 +1,262 @@
+{
+  "format_version": "1.21.0",
+  "minecraft:entity": {
+    "description": {
+      "identifier": "sl:captain_clark",
+      "is_spawnable": true,
+      "is_summonable": true,
+      "is_experimental": false,
+      "properties": {
+        "sl:state": {
+          "type": "enum",
+          "values": [
+            "still",
+            "roaming",
+            "fleeing",
+            "friendly",
+            "hostile",
+            "betraying",
+            "jumpscare"
+          ],
+          "default": "hostile",
+          "client_sync": true
+        },
+        "sl:decay": {
+          "type": "int",
+          "range": [
+            0,
+            2
+          ],
+          "default": 0,
+          "client_sync": true
+        }
+      }
+    },
+    "component_groups": {
+      "sl:clark_phase2": {
+        "minecraft:movement": {
+          "value": 0.365
+        },
+        "minecraft:attack": {
+          "damage": 15
+        },
+        "minecraft:behavior.charge_attack": {
+          "priority": 2,
+          "max_distance": 14,
+          "speed_multiplier": 1.8
+        }
+      },
+      "sl:clark_phase3": {
+        "minecraft:movement": {
+          "value": 0.4
+        },
+        "minecraft:attack": {
+          "damage": 18
+        },
+        "minecraft:knockback_resistance": {
+          "value": 1.0
+        },
+        "minecraft:behavior.charge_attack": {
+          "priority": 2,
+          "max_distance": 18,
+          "speed_multiplier": 2.1
+        }
+      },
+      "sl:clark_stunned": {
+        "minecraft:movement": {
+          "value": 0.0
+        },
+        "minecraft:damage_sensor": {
+          "triggers": [
+            {
+              "cause": "all",
+              "deals_damage": true,
+              "damage_multiplier": 2.0
+            }
+          ]
+        }
+      }
+    },
+    "components": {
+      "minecraft:type_family": {
+        "family": [
+          "sl_apex",
+          "captain_clark",
+          "monster",
+          "mob"
+        ]
+      },
+      "minecraft:collision_box": {
+        "width": 0.9,
+        "height": 2.5
+      },
+      "minecraft:health": {
+        "value": 340,
+        "max": 340
+      },
+      "minecraft:physics": {},
+      "minecraft:pushable": {
+        "is_pushable": false,
+        "is_pushable_by_piston": false
+      },
+      "minecraft:knockback_resistance": {
+        "value": 0.85
+      },
+      "minecraft:movement": {
+        "value": 0.3
+      },
+      "minecraft:navigation.walk": {
+        "can_pass_doors": true,
+        "can_open_doors": true,
+        "can_break_doors": true,
+        "avoid_water": true
+      },
+      "minecraft:movement.basic": {},
+      "minecraft:jump.static": {},
+      "minecraft:breathable": {
+        "breathes_air": true,
+        "breathes_water": true
+      },
+      "minecraft:fire_immune": {},
+      "minecraft:attack": {
+        "damage": 11
+      },
+      "minecraft:boss": {
+        "should_darken_sky": true,
+        "hud_range": 72,
+        "name": "Captain Clark"
+      },
+      "minecraft:persistent": {},
+      "minecraft:experience_reward": {
+        "on_death": "220"
+      },
+      "minecraft:loot": {
+        "table": "loot_tables/entities/captain_clark.json"
+      },
+      "minecraft:ambient_sound_interval": {
+        "value": 11.0,
+        "range": 20.0,
+        "event_name": "ambient"
+      },
+      "minecraft:damage_sensor": {
+        "triggers": [
+          {
+            "cause": "fall",
+            "deals_damage": false
+          },
+          {
+            "cause": "drowning",
+            "deals_damage": false
+          },
+          {
+            "cause": "entity_attack",
+            "deals_damage": true,
+            "on_damage": {
+              "filters": {
+                "test": "is_family",
+                "subject": "other",
+                "value": "player"
+              },
+              "event": "sl:clark_struck",
+              "target": "self"
+            }
+          }
+        ]
+      },
+      "minecraft:behavior.float": {
+        "priority": 0
+      },
+      "minecraft:behavior.hurt_by_target": {
+        "priority": 1
+      },
+      "minecraft:behavior.nearest_attackable_target": {
+        "priority": 3,
+        "must_see": false,
+        "must_reach": false,
+        "reselect_targets": true,
+        "within_radius": 52,
+        "entity_types": [
+          {
+            "filters": {
+              "test": "is_family",
+              "subject": "other",
+              "value": "player"
+            },
+            "max_dist": 52,
+            "must_see": false
+          }
+        ]
+      },
+      "minecraft:behavior.melee_attack": {
+        "priority": 4,
+        "speed_multiplier": 1.15,
+        "track_target": true,
+        "reach_multiplier": 1.4
+      },
+      "minecraft:behavior.random_stroll": {
+        "priority": 9,
+        "speed_multiplier": 0.8
+      },
+      "minecraft:behavior.look_at_player": {
+        "priority": 10,
+        "look_distance": 40
+      }
+    },
+    "events": {
+      "minecraft:entity_spawned": {
+        "set_property": {
+          "sl:state": "'hostile'"
+        }
+      },
+      "sl:clark_struck": {},
+      "sl:phase2": {
+        "add": {
+          "component_groups": [
+            "sl:clark_phase2"
+          ]
+        }
+      },
+      "sl:phase3": {
+        "remove": {
+          "component_groups": [
+            "sl:clark_phase2"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "sl:clark_phase3"
+          ]
+        }
+      },
+      "sl:stun": {
+        "add": {
+          "component_groups": [
+            "sl:clark_stunned"
+          ]
+        }
+      },
+      "sl:unstun": {
+        "remove": {
+          "component_groups": [
+            "sl:clark_stunned"
+          ]
+        }
+      },
+      "sl:decay_0": {
+        "set_property": {
+          "sl:decay": 0
+        }
+      },
+      "sl:decay_1": {
+        "set_property": {
+          "sl:decay": 1
+        }
+      },
+      "sl:decay_2": {
+        "set_property": {
+          "sl:decay": 2
+        }
+      }
+    }
+  }
+}

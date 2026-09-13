@@ -1,0 +1,260 @@
+{
+  "format_version": "1.10.0",
+  "animation_controllers": {
+    "controller.animation.sl.action.humanoid": {
+      "initial_state": "default",
+      "states": {
+        "default": {
+          "transitions": [
+            {
+              "jumpscare": "query.property('sl:state') == 'jumpscare'"
+            },
+            {
+              "grab": "query.property('sl:state') == 'grabbing'"
+            },
+            {
+              "attack": "variable.attack_time > 0.0"
+            }
+          ]
+        },
+        "attack": {
+          "animations": [
+            "attack"
+          ],
+          "blend_transition": 0.18,
+          "transitions": [
+            {
+              "default": "variable.attack_time <= 0.0"
+            }
+          ]
+        },
+        "jumpscare": {
+          "animations": [
+            "jumpscare"
+          ],
+          "blend_transition": 0.05,
+          "transitions": [
+            {
+              "default": "query.property('sl:state') != 'jumpscare'"
+            }
+          ]
+        },
+        "grab": {
+          "animations": [
+            "attack"
+          ],
+          "blend_transition": 0.25,
+          "transitions": [
+            {
+              "default": "query.property('sl:state') != 'grabbing'"
+            }
+          ]
+        }
+      }
+    },
+    "controller.animation.sl.action.tall": {
+      "initial_state": "default",
+      "states": {
+        "default": {
+          "transitions": [
+            {
+              "jumpscare": "query.property('sl:state') == 'jumpscare'"
+            },
+            {
+              "grab": "query.property('sl:state') == 'grabbing'"
+            },
+            {
+              "attack": "variable.attack_time > 0.0"
+            }
+          ]
+        },
+        "attack": {
+          "animations": [
+            "attack"
+          ],
+          "blend_transition": 0.18,
+          "transitions": [
+            {
+              "default": "variable.attack_time <= 0.0"
+            }
+          ]
+        },
+        "jumpscare": {
+          "animations": [
+            "jumpscare"
+          ],
+          "blend_transition": 0.05,
+          "transitions": [
+            {
+              "default": "query.property('sl:state') != 'jumpscare'"
+            }
+          ]
+        },
+        "grab": {
+          "animations": [
+            "grab"
+          ],
+          "blend_transition": 0.25,
+          "transitions": [
+            {
+              "default": "query.property('sl:state') != 'grabbing'"
+            }
+          ]
+        }
+      }
+    },
+    "controller.animation.sl.action.villager": {
+      "initial_state": "default",
+      "states": {
+        "default": {
+          "transitions": [
+            {
+              "jumpscare": "query.property('sl:state') == 'jumpscare'"
+            },
+            {
+              "grab": "query.property('sl:state') == 'grabbing'"
+            },
+            {
+              "attack": "variable.attack_time > 0.0"
+            }
+          ]
+        },
+        "attack": {
+          "animations": [
+            "attack"
+          ],
+          "blend_transition": 0.18,
+          "transitions": [
+            {
+              "default": "variable.attack_time <= 0.0"
+            }
+          ]
+        },
+        "jumpscare": {
+          "animations": [
+            "jumpscare"
+          ],
+          "blend_transition": 0.05,
+          "transitions": [
+            {
+              "default": "query.property('sl:state') != 'jumpscare'"
+            }
+          ]
+        },
+        "grab": {
+          "animations": [
+            "attack"
+          ],
+          "blend_transition": 0.25,
+          "transitions": [
+            {
+              "default": "query.property('sl:state') != 'grabbing'"
+            }
+          ]
+        }
+      }
+    },
+    "controller.animation.sl.action.quad": {
+      "initial_state": "default",
+      "states": {
+        "default": {
+          "transitions": [
+            {
+              "jumpscare": "query.property('sl:state') == 'jumpscare'"
+            },
+            {
+              "grab": "query.property('sl:state') == 'grabbing'"
+            },
+            {
+              "attack": "variable.attack_time > 0.0"
+            }
+          ]
+        },
+        "attack": {
+          "animations": [
+            "attack"
+          ],
+          "blend_transition": 0.18,
+          "transitions": [
+            {
+              "default": "variable.attack_time <= 0.0"
+            }
+          ]
+        },
+        "jumpscare": {
+          "animations": [
+            "jumpscare"
+          ],
+          "blend_transition": 0.05,
+          "transitions": [
+            {
+              "default": "query.property('sl:state') != 'jumpscare'"
+            }
+          ]
+        },
+        "grab": {
+          "animations": [
+            "attack"
+          ],
+          "blend_transition": 0.25,
+          "transitions": [
+            {
+              "default": "query.property('sl:state') != 'grabbing'"
+            }
+          ]
+        }
+      }
+    },
+    "controller.animation.sl.action.bird": {
+      "initial_state": "default",
+      "states": {
+        "default": {
+          "transitions": [
+            {
+              "jumpscare": "query.property('sl:state') == 'jumpscare'"
+            },
+            {
+              "grab": "query.property('sl:state') == 'grabbing'"
+            },
+            {
+              "attack": "variable.attack_time > 0.0"
+            }
+          ]
+        },
+        "attack": {
+          "animations": [
+            "attack"
+          ],
+          "blend_transition": 0.18,
+          "transitions": [
+            {
+              "default": "variable.attack_time <= 0.0"
+            }
+          ]
+        },
+        "jumpscare": {
+          "animations": [
+            "jumpscare"
+          ],
+          "blend_transition": 0.05,
+          "transitions": [
+            {
+              "default": "query.property('sl:state') != 'jumpscare'"
+            }
+          ]
+        },
+        "grab": {
+          "animations": [
+            "attack"
+          ],
+          "blend_transition": 0.25,
+          "transitions": [
+            {
+              "default": "query.property('sl:state') != 'grabbing'"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "resource_pack_name": "still_life",
+  "texture_name": "atlas.terrain",
+  "padding": 8,
+  "num_mip_levels": 4,
+  "texture_data": {
+    "sl_wallpaper": {
+      "textures": "textures/blocks/sl_wallpaper"
+    },
+    "sl_wallpaper_torn": {
+      "textures": "textures/blocks/sl_wallpaper_torn"
+    },
+    "sl_damp_carpet": {
+      "textures": "textures/blocks/sl_damp_carpet"
+    },
+    "sl_ceiling_tile": {
+      "textures": "textures/blocks/sl_ceiling_tile"
+    },
+    "sl_buzzing_light": {
+      "textures": "textures/blocks/sl_buzzing_light"
+    },
+    "sl_moist_wall": {
+      "textures": "textures/blocks/sl_moist_wall"
+    },
+    "sl_exit_door": {
+      "textures": "textures/blocks/sl_exit_door"
+    },
+    "sl_noclip_rift": {
+      "textures": "textures/blocks/sl_noclip_rift"
+    },
+    "sl_sanity_anchor_block": {
+      "textures": "textures/blocks/sl_sanity_anchor_block"
+    },
+    "sl_cotton_bale": {
+      "textures": "textures/blocks/sl_cotton_bale"
+    },
+    "sl_exit_sign": {
+      "textures": "textures/blocks/sl_exit_sign"
+    },
+    "sl_hum_speaker": {
+      "textures": "textures/blocks/sl_hum_speaker"
+    }
+  }
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "flipbook_texture": "textures/blocks/sl_noclip_rift",
+    "atlas_tile": "sl_noclip_rift",
+    "ticks_per_frame": 3,
+    "blend_frames": true
+  },
+  {
+    "flipbook_texture": "textures/blocks/sl_buzzing_light",
+    "atlas_tile": "sl_buzzing_light",
+    "ticks_per_frame": 7,
+    "blend_frames": false
+  }
+]

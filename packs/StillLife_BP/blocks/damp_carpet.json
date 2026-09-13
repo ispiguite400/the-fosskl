@@ -1,0 +1,29 @@
+{
+  "format_version": "1.21.0",
+  "minecraft:block": {
+    "description": {
+      "identifier": "sl:damp_carpet",
+      "menu_category": {
+        "category": "construction"
+      }
+    },
+    "components": {
+      "minecraft:destructible_by_mining": {
+        "seconds_to_destroy": 0.5
+      },
+      "minecraft:destructible_by_explosion": {
+        "explosion_resistance": 0.6
+      },
+      "minecraft:map_color": "#6A5C28",
+      "minecraft:geometry": "minecraft:geometry.full_block",
+      "minecraft:material_instances": {
+        "*": {
+          "texture": "sl_damp_carpet",
+          "render_method": "opaque"
+        }
+      },
+      "minecraft:friction": 0.72,
+      "minecraft:light_dampening": 15
+    }
+  }
+}

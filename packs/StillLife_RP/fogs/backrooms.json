@@ -1,0 +1,16 @@
+{
+  "format_version": "1.16.100",
+  "minecraft:fog_settings": {
+    "description": { "identifier": "sl:backrooms" },
+    "distance": {
+      "air": {
+        "fog_start": 5.0, "fog_end": 30.0,
+        "fog_color": "#B8A44E", "render_distance_type": "fixed"
+      },
+      "weather": {
+        "fog_start": 4.0, "fog_end": 22.0,
+        "fog_color": "#A89440", "render_distance_type": "fixed"
+      }
+    }
+  }
+}

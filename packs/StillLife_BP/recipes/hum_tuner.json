@@ -1,0 +1,28 @@
+{
+  "format_version": "1.20.10",
+  "minecraft:recipe_shaped": {
+    "description": {
+      "identifier": "sl:hum_tuner"
+    },
+    "tags": [
+      "crafting_table"
+    ],
+    "pattern": [
+      "I I",
+      "IEI",
+      " I "
+    ],
+    "key": {
+      "I": {
+        "item": "minecraft:iron_ingot"
+      },
+      "E": {
+        "item": "sl:still_essence"
+      }
+    },
+    "result": {
+      "item": "sl:hum_tuner",
+      "count": 1
+    }
+  }
+}

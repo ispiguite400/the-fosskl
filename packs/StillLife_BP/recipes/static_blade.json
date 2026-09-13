@@ -1,0 +1,28 @@
+{
+  "format_version": "1.20.10",
+  "minecraft:recipe_shaped": {
+    "description": {
+      "identifier": "sl:static_blade"
+    },
+    "tags": [
+      "crafting_table"
+    ],
+    "pattern": [
+      " E ",
+      " E ",
+      " I "
+    ],
+    "key": {
+      "E": {
+        "item": "sl:still_essence"
+      },
+      "I": {
+        "item": "minecraft:stick"
+      }
+    },
+    "result": {
+      "item": "sl:static_blade",
+      "count": 1
+    }
+  }
+}

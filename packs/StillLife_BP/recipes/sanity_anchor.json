@@ -1,0 +1,31 @@
+{
+  "format_version": "1.20.10",
+  "minecraft:recipe_shaped": {
+    "description": {
+      "identifier": "sl:sanity_anchor"
+    },
+    "tags": [
+      "crafting_table"
+    ],
+    "pattern": [
+      "SGS",
+      "SES",
+      "SSS"
+    ],
+    "key": {
+      "S": {
+        "item": "sl:stillcloth"
+      },
+      "G": {
+        "item": "minecraft:glowstone"
+      },
+      "E": {
+        "item": "sl:still_essence"
+      }
+    },
+    "result": {
+      "item": "sl:sanity_anchor",
+      "count": 1
+    }
+  }
+}

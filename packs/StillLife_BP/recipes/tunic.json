@@ -1,0 +1,25 @@
+{
+  "format_version": "1.20.10",
+  "minecraft:recipe_shaped": {
+    "description": {
+      "identifier": "sl:tunic"
+    },
+    "tags": [
+      "crafting_table"
+    ],
+    "pattern": [
+      "S S",
+      "SSS",
+      "SSS"
+    ],
+    "key": {
+      "S": {
+        "item": "sl:stillcloth"
+      }
+    },
+    "result": {
+      "item": "sl:stillcloth_tunic",
+      "count": 1
+    }
+  }
+}

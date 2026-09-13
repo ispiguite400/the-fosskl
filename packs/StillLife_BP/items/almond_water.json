@@ -1,0 +1,25 @@
+{
+  "format_version": "1.21.0",
+  "minecraft:item": {
+    "description": {
+      "identifier": "sl:almond_water",
+      "menu_category": {
+        "category": "nature"
+      }
+    },
+    "components": {
+      "minecraft:icon": "sl_almond_water",
+      "minecraft:max_stack_size": 16,
+      "minecraft:food": {
+        "nutrition": 4,
+        "saturation_modifier": "low",
+        "can_always_eat": true
+      },
+      "minecraft:use_animation": "drink",
+      "minecraft:use_modifiers": {
+        "use_duration": 1.6,
+        "movement_modifier": 0.35
+      }
+    }
+  }
+}

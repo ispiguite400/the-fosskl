@@ -1,0 +1,25 @@
+{
+  "format_version": "1.20.10",
+  "minecraft:recipe_shaped": {
+    "description": {
+      "identifier": "sl:trousers"
+    },
+    "tags": [
+      "crafting_table"
+    ],
+    "pattern": [
+      "SSS",
+      "S S",
+      "S S"
+    ],
+    "key": {
+      "S": {
+        "item": "sl:stillcloth"
+      }
+    },
+    "result": {
+      "item": "sl:stillcloth_trousers",
+      "count": 1
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "format_version": "1.20.10",
+  "minecraft:recipe_shapeless": {
+    "description": {
+      "identifier": "sl:distorted_compass"
+    },
+    "tags": [
+      "crafting_table"
+    ],
+    "ingredients": [
+      {
+        "item": "minecraft:compass"
+      },
+      {
+        "item": "sl:still_essence"
+      }
+    ],
+    "result": {
+      "item": "sl:distorted_compass",
+      "count": 1
+    }
+  }
+}

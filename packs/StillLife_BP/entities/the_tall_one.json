@@ -1,0 +1,332 @@
+{
+  "format_version": "1.21.0",
+  "minecraft:entity": {
+    "description": {
+      "identifier": "sl:the_tall_one",
+      "is_spawnable": true,
+      "is_summonable": true,
+      "is_experimental": false,
+      "properties": {
+        "sl:state": {
+          "type": "enum",
+          "values": [
+            "still",
+            "roaming",
+            "fleeing",
+            "friendly",
+            "hostile",
+            "betraying",
+            "jumpscare"
+          ],
+          "default": "hostile",
+          "client_sync": true
+        },
+        "sl:decay": {
+          "type": "int",
+          "range": [
+            0,
+            2
+          ],
+          "default": 0,
+          "client_sync": true
+        }
+      }
+    },
+    "component_groups": {
+      "sl:tall_hunting": {
+        "minecraft:behavior.hurt_by_target": {
+          "priority": 1
+        },
+        "minecraft:behavior.nearest_attackable_target": {
+          "priority": 3,
+          "must_see": false,
+          "must_reach": false,
+          "reselect_targets": true,
+          "within_radius": 48,
+          "entity_types": [
+            {
+              "filters": {
+                "test": "is_family",
+                "subject": "other",
+                "value": "player"
+              },
+              "max_dist": 48,
+              "must_see": false
+            }
+          ]
+        },
+        "minecraft:behavior.melee_attack": {
+          "priority": 3,
+          "speed_multiplier": 1.0,
+          "track_target": true,
+          "reach_multiplier": 1.9
+        }
+      },
+      "sl:tall_bonded": {
+        "minecraft:is_tamed": {},
+        "minecraft:behavior.follow_owner": {
+          "priority": 3,
+          "speed_multiplier": 1.0,
+          "start_distance": 10,
+          "stop_distance": 4
+        },
+        "minecraft:behavior.owner_hurt_by_target": {
+          "priority": 1
+        },
+        "minecraft:behavior.owner_hurt_target": {
+          "priority": 1
+        },
+        "minecraft:behavior.melee_attack": {
+          "priority": 4,
+          "speed_multiplier": 1.1,
+          "track_target": true,
+          "reach_multiplier": 1.9
+        }
+      },
+      "sl:tall_grabbing": {
+        "minecraft:movement": {
+          "value": 0.0
+        }
+      },
+      "sl:tall_enraged": {
+        "minecraft:movement": {
+          "value": 0.33
+        },
+        "minecraft:attack": {
+          "damage": 14
+        },
+        "minecraft:behavior.nearest_attackable_target": {
+          "priority": 3,
+          "must_see": false,
+          "must_reach": false,
+          "reselect_targets": true,
+          "within_radius": 64,
+          "entity_types": [
+            {
+              "filters": {
+                "test": "is_family",
+                "subject": "other",
+                "value": "player"
+              },
+              "max_dist": 64,
+              "must_see": false
+            }
+          ]
+        },
+        "minecraft:behavior.melee_attack": {
+          "priority": 2,
+          "speed_multiplier": 1.2,
+          "track_target": true,
+          "reach_multiplier": 2.1
+        }
+      }
+    },
+    "components": {
+      "minecraft:type_family": {
+        "family": [
+          "sl_apex",
+          "the_tall_one",
+          "monster",
+          "mob"
+        ]
+      },
+      "minecraft:collision_box": {
+        "width": 1.1,
+        "height": 4.9
+      },
+      "minecraft:health": {
+        "value": 260,
+        "max": 260
+      },
+      "minecraft:physics": {},
+      "minecraft:pushable": {
+        "is_pushable": false,
+        "is_pushable_by_piston": false
+      },
+      "minecraft:knockback_resistance": {
+        "value": 0.92
+      },
+      "minecraft:movement": {
+        "value": 0.265
+      },
+      "minecraft:navigation.walk": {
+        "can_pass_doors": true,
+        "can_open_doors": true,
+        "avoid_water": true,
+        "can_break_doors": true
+      },
+      "minecraft:movement.basic": {},
+      "minecraft:jump.static": {},
+      "minecraft:can_climb": {},
+      "minecraft:breathable": {
+        "breathes_air": true,
+        "breathes_water": true
+      },
+      "minecraft:fire_immune": {},
+      "minecraft:damage_sensor": {
+        "triggers": [
+          {
+            "cause": "fall",
+            "deals_damage": false
+          },
+          {
+            "cause": "drowning",
+            "deals_damage": false
+          },
+          {
+            "cause": "lightning",
+            "deals_damage": false
+          }
+        ]
+      },
+      "minecraft:attack": {
+        "damage": 9
+      },
+      "minecraft:boss": {
+        "should_darken_sky": false,
+        "hud_range": 64,
+        "name": "The Tall One"
+      },
+      "minecraft:persistent": {},
+      "minecraft:nameable": {},
+      "minecraft:experience_reward": {
+        "on_death": "120"
+      },
+      "minecraft:loot": {
+        "table": "loot_tables/entities/tall_one.json"
+      },
+      "minecraft:ambient_sound_interval": {
+        "value": 14.0,
+        "range": 26.0,
+        "event_name": "ambient"
+      },
+      "minecraft:rideable": {
+        "seat_count": 1,
+        "family_types": [
+          "player"
+        ],
+        "pull_in_entities": false,
+        "controlling_seat": 0,
+        "crouching_skip_interact": true,
+        "interact_text": "",
+        "seats": [
+          {
+            "position": [
+              0,
+              4.1,
+              -0.9
+            ],
+            "lock_rider_rotation": 0
+          }
+        ]
+      },
+      "minecraft:behavior.float": {
+        "priority": 0
+      },
+      "minecraft:behavior.random_stroll": {
+        "priority": 9,
+        "speed_multiplier": 0.7
+      },
+      "minecraft:behavior.look_at_player": {
+        "priority": 10,
+        "look_distance": 40,
+        "probability": 0.9
+      }
+    },
+    "events": {
+      "minecraft:entity_spawned": {
+        "add": {
+          "component_groups": [
+            "sl:tall_hunting"
+          ]
+        },
+        "set_property": {
+          "sl:state": "'hostile'"
+        }
+      },
+      "sl:hunt": {
+        "remove": {
+          "component_groups": [
+            "sl:tall_bonded",
+            "sl:tall_grabbing",
+            "sl:tall_enraged"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "sl:tall_hunting"
+          ]
+        },
+        "set_property": {
+          "sl:state": "'hostile'"
+        }
+      },
+      "sl:bond": {
+        "remove": {
+          "component_groups": [
+            "sl:tall_hunting",
+            "sl:tall_grabbing",
+            "sl:tall_enraged"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "sl:tall_bonded"
+          ]
+        },
+        "set_property": {
+          "sl:state": "'friendly'"
+        }
+      },
+      "sl:grab": {
+        "remove": {
+          "component_groups": [
+            "sl:tall_hunting",
+            "sl:tall_bonded",
+            "sl:tall_enraged"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "sl:tall_grabbing"
+          ]
+        },
+        "set_property": {
+          "sl:state": "'grabbing'"
+        }
+      },
+      "sl:enrage": {
+        "remove": {
+          "component_groups": [
+            "sl:tall_hunting",
+            "sl:tall_bonded",
+            "sl:tall_grabbing"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "sl:tall_enraged"
+          ]
+        },
+        "set_property": {
+          "sl:state": "'betraying'"
+        }
+      },
+      "sl:decay_0": {
+        "set_property": {
+          "sl:decay": 0
+        }
+      },
+      "sl:decay_1": {
+        "set_property": {
+          "sl:decay": 1
+        }
+      },
+      "sl:decay_2": {
+        "set_property": {
+          "sl:decay": 2
+        }
+      }
+    }
+  }
+}

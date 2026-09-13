@@ -1,0 +1,78 @@
+{
+  "resource_pack_name": "still_life",
+  "texture_name": "atlas.items",
+  "texture_data": {
+    "sl_cotton": {
+      "textures": "textures/items/sl_cotton"
+    },
+    "sl_stillcloth": {
+      "textures": "textures/items/sl_stillcloth"
+    },
+    "sl_almond_water": {
+      "textures": "textures/items/sl_almond_water"
+    },
+    "sl_bitter_almond_water": {
+      "textures": "textures/items/sl_bitter_almond_water"
+    },
+    "sl_cotton_bandage": {
+      "textures": "textures/items/sl_cotton_bandage"
+    },
+    "sl_flicker_lantern": {
+      "textures": "textures/items/sl_flicker_lantern"
+    },
+    "sl_camcorder": {
+      "textures": "textures/items/sl_camcorder"
+    },
+    "sl_polaroid": {
+      "textures": "textures/items/sl_polaroid"
+    },
+    "sl_noclip_charm": {
+      "textures": "textures/items/sl_noclip_charm"
+    },
+    "sl_exit_sign_shard": {
+      "textures": "textures/items/sl_exit_sign_shard"
+    },
+    "sl_frontrooms_key": {
+      "textures": "textures/items/sl_frontrooms_key"
+    },
+    "sl_stillcloth_hood": {
+      "textures": "textures/items/sl_stillcloth_hood"
+    },
+    "sl_stillcloth_tunic": {
+      "textures": "textures/items/sl_stillcloth_tunic"
+    },
+    "sl_stillcloth_trousers": {
+      "textures": "textures/items/sl_stillcloth_trousers"
+    },
+    "sl_stillcloth_treads": {
+      "textures": "textures/items/sl_stillcloth_treads"
+    },
+    "sl_hum_tuner": {
+      "textures": "textures/items/sl_hum_tuner"
+    },
+    "sl_tall_ones_tooth": {
+      "textures": "textures/items/sl_tall_ones_tooth"
+    },
+    "sl_clarks_whistle": {
+      "textures": "textures/items/sl_clarks_whistle"
+    },
+    "sl_static_blade": {
+      "textures": "textures/items/sl_static_blade"
+    },
+    "sl_wall_pry_bar": {
+      "textures": "textures/items/sl_wall_pry_bar"
+    },
+    "sl_sanity_anchor": {
+      "textures": "textures/items/sl_sanity_anchor"
+    },
+    "sl_distorted_compass": {
+      "textures": "textures/items/sl_distorted_compass"
+    },
+    "sl_reel_of_tape": {
+      "textures": "textures/items/sl_reel_of_tape"
+    },
+    "sl_still_essence": {
+      "textures": "textures/items/sl_still_essence"
+    }
+  }
+}

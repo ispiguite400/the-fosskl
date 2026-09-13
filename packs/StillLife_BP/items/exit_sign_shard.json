@@ -1,0 +1,21 @@
+{
+  "format_version": "1.21.0",
+  "minecraft:item": {
+    "description": {
+      "identifier": "sl:exit_sign_shard",
+      "menu_category": {
+        "category": "items"
+      }
+    },
+    "components": {
+      "minecraft:icon": "sl_exit_sign_shard",
+      "minecraft:max_stack_size": 16,
+      "minecraft:glint": true,
+      "minecraft:cooldown": {
+        "category": "sl_noclip",
+        "duration": 12.0
+      },
+      "minecraft:hover_text_color": "green"
+    }
+  }
+}

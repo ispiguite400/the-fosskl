@@ -1,0 +1,118 @@
+{
+  "format_version": "1.14.0",
+  "entity_sounds": {
+    "entities": {
+      "sl:still_villager": {
+        "volume": 1.0,
+        "pitch": [
+          0.62,
+          0.92
+        ],
+        "events": {
+          "ambient": "sl.still.idle",
+          "hurt": "sl.still.hurt",
+          "death": "sl.still.death"
+        }
+      },
+      "sl:still_cow": {
+        "volume": 1.0,
+        "pitch": [
+          0.62,
+          0.92
+        ],
+        "events": {
+          "ambient": "sl.still.idle",
+          "hurt": "sl.still.hurt",
+          "death": "sl.still.death"
+        }
+      },
+      "sl:still_pig": {
+        "volume": 1.0,
+        "pitch": [
+          0.62,
+          0.92
+        ],
+        "events": {
+          "ambient": "sl.still.idle",
+          "hurt": "sl.still.hurt",
+          "death": "sl.still.death"
+        }
+      },
+      "sl:still_sheep": {
+        "volume": 1.0,
+        "pitch": [
+          0.62,
+          0.92
+        ],
+        "events": {
+          "ambient": "sl.still.idle",
+          "hurt": "sl.still.hurt",
+          "death": "sl.still.death"
+        }
+      },
+      "sl:still_chicken": {
+        "volume": 1.0,
+        "pitch": [
+          0.62,
+          0.92
+        ],
+        "events": {
+          "ambient": "sl.still.idle",
+          "hurt": "sl.still.hurt",
+          "death": "sl.still.death"
+        }
+      },
+      "sl:still_wolf": {
+        "volume": 1.0,
+        "pitch": [
+          0.62,
+          0.92
+        ],
+        "events": {
+          "ambient": "sl.still.idle",
+          "hurt": "sl.still.hurt",
+          "death": "sl.still.death"
+        }
+      },
+      "sl:still_player": {
+        "volume": 1.0,
+        "pitch": [
+          0.62,
+          0.92
+        ],
+        "events": {
+          "ambient": "sl.still.idle",
+          "hurt": "sl.still.hurt",
+          "death": "sl.still.death"
+        }
+      },
+      "sl:the_tall_one": {
+        "volume": 1.0,
+        "pitch": [
+          0.7,
+          0.85
+        ],
+        "events": {
+          "ambient": "sl.tall.roar",
+          "hurt": "sl.still.hurt",
+          "death": "sl.tall.roar",
+          "step": "sl.tall.step",
+          "attack": "sl.tall.roar"
+        }
+      },
+      "sl:captain_clark": {
+        "volume": 1.0,
+        "pitch": [
+          0.85,
+          1.0
+        ],
+        "events": {
+          "ambient": "sl.clark.roar",
+          "hurt": "sl.still.hurt",
+          "death": "sl.clark.roar",
+          "attack": "sl.clark.roar"
+        }
+      }
+    }
+  }
+}

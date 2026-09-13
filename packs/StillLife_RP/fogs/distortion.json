@@ -1,0 +1,12 @@
+{
+  "format_version": "1.16.100",
+  "minecraft:fog_settings": {
+    "description": { "identifier": "sl:distortion" },
+    "distance": {
+      "air": {
+        "fog_start": 26.0, "fog_end": 110.0,
+        "fog_color": "#8E7F46", "render_distance_type": "render"
+      }
+    }
+  }
+}

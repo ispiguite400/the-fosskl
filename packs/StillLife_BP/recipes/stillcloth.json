@@ -1,0 +1,24 @@
+{
+  "format_version": "1.20.10",
+  "minecraft:recipe_shaped": {
+    "description": {
+      "identifier": "sl:stillcloth"
+    },
+    "tags": [
+      "crafting_table"
+    ],
+    "pattern": [
+      "##",
+      "##"
+    ],
+    "key": {
+      "#": {
+        "item": "sl:cotton"
+      }
+    },
+    "result": {
+      "item": "sl:stillcloth",
+      "count": 1
+    }
+  }
+}

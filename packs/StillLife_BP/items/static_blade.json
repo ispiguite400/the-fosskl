@@ -1,0 +1,52 @@
+{
+  "format_version": "1.21.0",
+  "minecraft:item": {
+    "description": {
+      "identifier": "sl:static_blade",
+      "menu_category": {
+        "category": "equipment"
+      }
+    },
+    "components": {
+      "minecraft:icon": "sl_static_blade",
+      "minecraft:max_stack_size": 1,
+      "minecraft:damage": 9,
+      "minecraft:hand_equipped": true,
+      "minecraft:glint": true,
+      "minecraft:durability": {
+        "max_durability": 980
+      },
+      "minecraft:enchantable": {
+        "slot": "sword",
+        "value": 16
+      },
+      "minecraft:repairable": {
+        "repair_items": [
+          {
+            "items": [
+              "sl:still_essence"
+            ],
+            "repair_amount": 180
+          }
+        ]
+      },
+      "minecraft:digger": {
+        "use_efficiency": true,
+        "destroy_speeds": [
+          {
+            "block": {
+              "tags": "q.any_tag('wool')"
+            },
+            "speed": 12
+          }
+        ]
+      },
+      "minecraft:tags": {
+        "tags": [
+          "sl:backrooms_gear",
+          "minecraft:is_sword"
+        ]
+      }
+    }
+  }
+}
