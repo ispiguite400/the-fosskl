@@ -117,43 +117,43 @@ def paint_cube(px, c, uv, rnd, decay):
 
 
 def paint_face_details(img, c, uv, style, rnd):
-    """Eyes / mouth on the -Z face. In the movie the faces are the tell."""
+    """Eyes and mouth on the -Z face.
+
+    Vanilla-shaped eyes: one sclera pixel and one pupil pixel each, pupils
+    inboard, mirrored left to right. The still life look comes from the
+    colour wash, the torn scanlines and the warped proportions -- not from
+    hollowing the eyes out.
+    """
     w, h, d = [int(math.ceil(v)) for v in c["size"]]
     x, y, fw, fh = face_rects(uv[0], uv[1], w, h, d)["north"]
     dr = ImageDraw.Draw(img)
     st = FACE_STYLE[style]
-    VOID = (6, 5, 4, 255)
+    sclera = st["sclera"] + (255,)
+    pupil = st["pupil"] + (255,)
+    ew = st.get("w", 2)
 
-    eyes = list(st["eyes"])
-    mode = rnd.random()
-    if mode < 0.18:
-        eyes = eyes[:1]                                   # one eye missing
-    elif mode < 0.30 and fh > 5:
-        eyes.append((rnd.randrange(max(1, fw - 1)), 1))   # a spare one
-
-    for (ex, ey) in eyes:
-        ex, ey = min(ex, fw - 2), min(ey, fh - 2)
-        dr.rectangle([x + ex, y + ey, x + ex + 1, y + ey], fill=VOID)
-        # the smear: eyes run down the face like wet paint
-        if rnd.random() < 0.55:
-            for k in range(1, rnd.randint(2, max(2, fh - ey - 1))):
-                if y + ey + k < y + fh:
-                    o = img.getpixel((x + ex, y + ey + k))
-                    img.putpixel((x + ex, y + ey + k),
-                                 (int(o[0] * 0.35), int(o[1] * 0.34), int(o[2] * 0.32), 255))
+    for i, (ex, ey) in enumerate(st["eyes"]):
+        ex = max(0, min(ex, fw - ew))
+        ey = max(0, min(ey, fh - 1))
+        if ew == 1:
+            img.putpixel((x + ex, y + ey), pupil)
+            continue
+        left = i == 0
+        # pupil sits toward the middle of the face, sclera outboard
+        img.putpixel((x + ex + (0 if left else 1), y + ey), sclera)
+        img.putpixel((x + ex + (1 if left else 0), y + ey), pupil)
 
     if st["mouth"]:
         mx, my, mw, mh = st["mouth"]
         if my + mh <= fh and mx + mw <= fw:
             dr.rectangle([x + mx, y + my, x + mx + mw - 1, y + my + mh - 1],
-                         fill=VOID if rnd.random() < 0.6 else (40, 30, 28, 255))
+                         fill=(0x2A, 0x20, 0x1C, 255))
     if st["brow"]:
-        dr.rectangle([x, y + 1, x + fw - 1, y + 1], fill=(0, 0, 0, 90))
+        dr.rectangle([x, y + 1, x + fw - 1, y + 1], fill=(0, 0, 0, 58))
     if st.get("scar"):
         # the real Clark's scar, over his left brow, copied badly
         for k in range(3):
-            px = x + 1 + k
-            py = y + 1 - min(1, k)
+            px, py = x + 1 + k, y + 1 - min(1, k)
             if 0 <= px - x < fw and 0 <= py - y < fh:
                 o = img.getpixel((px, py))
                 img.putpixel((px, py), (min(255, int(o[0] * 1.5 + 40)),

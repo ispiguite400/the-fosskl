@@ -96,7 +96,8 @@ def humanoid(tall=1.0, skin="skin", top="shirt", bottom="pants", hair="hair",
                 cube("head", [-4, sh, -4], [8, 8, 8], P[skin], face=face),
             ], parent="body"),
             bone("hat", [0, sh, 0], [
-                cube("hat", [-4, sh, -4], [8, 8, 8], P[hair], inflate=0.5),
+                cube("hairTop",  [-4, sh + 6, -4], [8, 2, 8], P[hair], inflate=0.4),
+                cube("hairBack", [-4, sh + 1, 3.4], [8, 5, 1], P[hair], inflate=0.3),
             ], parent="head"),
             bone("rightArm", [-bw - 1, sh - 2, 0], [
                 cube("rightArm", [-bw - gap - aw, hip, -2], [aw, lh, 4], P[ac]),
@@ -182,8 +183,8 @@ def build_all():
     M["still_cow"] = quadruped(
         bw=12, bh=10, bd=18, legh=12, legw=4,
         head=dict(y=21, w=8, h=8, d=8, col="cow_light"),
-        extras=[cube("hornR", [-7, 23, -12], [1, 3, 1], P["horn"]),
-                cube("hornL", [6, 23, -12], [1, 3, 1], P["horn"], mirror=True)],
+        extras=[cube("hornR", [-5, 23, -13], [1, 3, 1], P["horn"]),
+                cube("hornL", [4, 23, -13], [1, 3, 1], P["horn"], mirror=True)],
         body_col="cow_dark", leg_col="cow_dark", face="cow")
 
     # --- STILL LIFE: PIG -------------------------------------------------
@@ -233,9 +234,9 @@ def build_all():
     M["still_wolf"] = quadruped(
         bw=6, bh=6, bd=14, legh=8, legw=2,
         head=dict(y=14, w=6, h=6, d=6, col="wolf"),
-        extras=[cube("earR", [-3, 17, -16], [2, 2, 1], P["wolf_dk"]),
-                cube("earL", [1, 17, -16], [2, 2, 1], P["wolf_dk"], mirror=True),
-                cube("muzzle", [-1.5, 12, -18], [3, 3, 2], P["wolf_dk"])],
+        extras=[cube("earR", [-3, 17, -12], [2, 2, 1], P["wolf_dk"]),
+                cube("earL", [1, 17, -12], [2, 2, 1], P["wolf_dk"], mirror=True),
+                cube("muzzle", [-1.5, 11.5, -15], [3, 3, 2], P["wolf_dk"])],
         body_col="wolf", leg_col="wolf_dk", face="wolf", tail=(2, 8, 2))
 
     # --- THE COPY (player-shaped still life) -----------------------------
@@ -318,18 +319,32 @@ def build_all():
 
 MOBS = build_all()
 
-FACE_STYLE = {  # eye placement per face type: (list of (x,y) in face-local px)
-    "villager": dict(eyes=[(2, 3), (5, 3)], mouth=(3, 6, 2, 1), brow=True),
-    "human":    dict(eyes=[(2, 3), (5, 3)], mouth=(3, 6, 2, 1), brow=False),
-    "copy":     dict(eyes=[(2, 3), (5, 3)], mouth=(2, 6, 4, 1), brow=False),
-    "tall":     dict(eyes=[(1, 3), (6, 3)], mouth=(1, 5, 6, 3), brow=False),
-    "clark":    dict(eyes=[(2, 3), (5, 3)], mouth=None, brow=True, scar=True),
-    "cow":      dict(eyes=[(1, 2), (6, 2)], mouth=(2, 5, 4, 2), brow=False),
-    "pig":      dict(eyes=[(1, 2), (6, 2)], mouth=(2, 5, 4, 2), brow=False),
-    "sheep":    dict(eyes=[(1, 1), (4, 1)], mouth=(2, 4, 2, 1), brow=False),
-    "wolf":     dict(eyes=[(1, 1), (4, 1)], mouth=(2, 3, 2, 2), brow=False),
-    "bird":     dict(eyes=[(0, 1), (3, 1)], mouth=None, brow=False),
-    "animal":   dict(eyes=[(1, 2), (5, 2)], mouth=None, brow=False),
+FACE_STYLE = {
+    # Proper Minecraft eyes: a sclera pixel and a pupil pixel per eye, drawn
+    # symmetrically so the pupils sit inboard the way vanilla mobs' do.
+    # `w` is the eye width in pixels -- 1 on faces too narrow for a pair.
+    "villager": dict(eyes=[(1, 3), (5, 3)], w=2, sclera=(0xF2, 0xF0, 0xE6),
+                     pupil=(0x3C, 0x4C, 0x6A), mouth=(3, 6, 2, 1), brow=True),
+    "human":    dict(eyes=[(1, 3), (5, 3)], w=2, sclera=(0xF4, 0xF2, 0xEA),
+                     pupil=(0x4A, 0x33, 0x22), mouth=(3, 6, 2, 1), brow=False),
+    "copy":     dict(eyes=[(1, 3), (5, 3)], w=2, sclera=(0xEE, 0xEC, 0xE2),
+                     pupil=(0x3A, 0x4E, 0x74), mouth=(2, 6, 4, 1), brow=False),
+    "tall":     dict(eyes=[(1, 3), (5, 3)], w=2, sclera=(0xE6, 0xE2, 0xD2),
+                     pupil=(0x2A, 0x26, 0x22), mouth=(1, 6, 6, 2), brow=False),
+    "clark":    dict(eyes=[(1, 3), (5, 3)], w=2, sclera=(0xF0, 0xEC, 0xDE),
+                     pupil=(0x4A, 0x2E, 0x1C), mouth=None, brow=True, scar=True),
+    "cow":      dict(eyes=[(1, 2), (5, 2)], w=2, sclera=(0xF0, 0xEE, 0xE6),
+                     pupil=(0x2E, 0x24, 0x1C), mouth=(2, 5, 4, 2), brow=False),
+    "pig":      dict(eyes=[(1, 2), (5, 2)], w=2, sclera=(0xF2, 0xEA, 0xE6),
+                     pupil=(0x33, 0x22, 0x1E), mouth=(2, 5, 4, 2), brow=False),
+    "sheep":    dict(eyes=[(0, 2), (4, 2)], w=2, sclera=(0xF2, 0xF0, 0xEA),
+                     pupil=(0x2C, 0x26, 0x20), mouth=(2, 4, 2, 1), brow=False),
+    "wolf":     dict(eyes=[(0, 1), (4, 1)], w=2, sclera=(0xF0, 0xEE, 0xE8),
+                     pupil=(0x3A, 0x2C, 0x1E), mouth=(2, 3, 2, 2), brow=False),
+    "bird":     dict(eyes=[(0, 1), (3, 1)], w=1, sclera=(0xF0, 0xEE, 0xE6),
+                     pupil=(0x28, 0x22, 0x1C), mouth=None, brow=False),
+    "animal":   dict(eyes=[(1, 2), (5, 2)], w=2, sclera=(0xF0, 0xEE, 0xE6),
+                     pupil=(0x2E, 0x26, 0x1E), mouth=None, brow=False),
 }
 
 
