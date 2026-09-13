@@ -84,6 +84,13 @@ A newly spawned still life rolls 58% still / 24% roaming / 12% neutral /
 with a stinger. A second later it decides what it is — and *that* decision
 reads your ledger.
 
+**The Copy** is the one that matters. A Bedrock add-on cannot read your real
+skin and put it on a custom entity — there is no API for it — so instead of a
+clean player lookalike, The Copy is a person the world got *most* of the way
+right: two different sleeve colours, a right arm that hangs lower than the
+left, hands a different tone from the face, one leg half a pixel too wide, and
+a colour wash heavy enough that it never reads as anyone you know.
+
 **Every still life drops the same thing whatever shape it was wearing:**
 Cotton or white wool, and occasionally Still Essence.
 

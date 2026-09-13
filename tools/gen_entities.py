@@ -116,7 +116,7 @@ def paint_cube(px, c, uv, rnd, decay):
                                           int(o[2] * 0.40), 255)
 
 
-def paint_face_details(img, c, uv, style, rnd):
+def paint_face_details(img, c, uv, style, rnd, decay=0.0):
     """Eyes and mouth on the -Z face.
 
     Vanilla-shaped eyes: one sclera pixel and one pupil pixel each, pupils
@@ -128,8 +128,14 @@ def paint_face_details(img, c, uv, style, rnd):
     x, y, fw, fh = face_rects(uv[0], uv[1], w, h, d)["north"]
     dr = ImageDraw.Draw(img)
     st = FACE_STYLE[style]
-    sclera = st["sclera"] + (255,)
-    pupil = st["pupil"] + (255,)
+    def age(col):
+        t = decay * 0.6
+        col = toward(col, BACKROOMS_YELLOW, 0.18 * t + 0.10)
+        g = sum(col) / 3
+        return tuple(int(v + (g - v) * (0.30 * t)) for v in col) + (255,)
+
+    sclera = age(st["sclera"])
+    pupil = age(st["pupil"])
     ew = st.get("w", 2)
 
     for i, (ex, ey) in enumerate(st["eyes"]):
@@ -224,17 +230,22 @@ def build(name, model, decay=0.0, seed=None):
         paint_cube(px, c, place[i], rnd, decay)
     for i, c in enumerate(cubes):
         if c["face"]:
-            paint_face_details(img, c, place[i], c["face"], rnd)
+            paint_face_details(img, c, place[i], c["face"], rnd, decay)
     os.makedirs(TEX_DIR, exist_ok=True)
     img.save(os.path.join(TEX_DIR, f"{name}.png"))
     return tw, th, (hi[1] - lo[1]) / 16
 
 
+# How hard the still-life wash hits each mob. Clark keeps most of his colour
+# -- the costume is the whole point of him, and the render controller adds its
+# own sepia in-game. The Copy takes a heavy dose: it is meant to look like a
+# person remembered badly, not like a clean player skin.
+BASE_DECAY = {"the_tall_one": 0.5, "captain_clark": 0.12, "still_player": 0.38}
+
+
 if __name__ == "__main__":
     for n, m in MOBS.items():
-        # Clark keeps most of his colour -- the costume is the whole point of
-        # him, and the render controller adds its own sepia wash in-game
-        decay = {"the_tall_one": 0.5, "captain_clark": 0.12}.get(n, 0.0)
+        decay = BASE_DECAY.get(n, 0.0)
         tw, th, hgt = build(n, m, decay=decay)
         print(f"{n:18s} atlas {tw}x{th}  height {hgt:.2f} blocks")
     # extra decayed variants: the world's later, worse attempts at a copy
@@ -243,7 +254,7 @@ if __name__ == "__main__":
             tw, th, _ = build(n, MOBS[n], decay=d, seed=hash(n + lvl) & 0xFFFF)
             os.rename(os.path.join(TEX_DIR, f"{n}.png"),
                       os.path.join(TEX_DIR, f"{n}_{lvl}.png"))
-        build(n, MOBS[n], decay=0.0)   # restore the clean pass
+        build(n, MOBS[n], decay=BASE_DECAY.get(n, 0.0))   # restore the base pass
         print(f"{n:18s} + decayed variants v2/v3")
 
 

@@ -39,6 +39,15 @@ P = {
     "brass":     (0xB8, 0x92, 0x3C),
     "pale":      (0xCB, 0xC2, 0xA8),
     "void":      (0x0A, 0x0A, 0x0A),
+    # The Copy. Not Steve -- a person the world half-remembers, assembled
+    # from references that do not match each other.
+    "cp_skin":   (0xA6, 0x91, 0x72),
+    "cp_skin2":  (0x8E, 0x7E, 0x66),
+    "cp_shirt":  (0x4E, 0x56, 0x7E),
+    "cp_shirt2": (0x5C, 0x55, 0x62),
+    "cp_pants":  (0x3A, 0x38, 0x4C),
+    "cp_pants2": (0x45, 0x3E, 0x38),
+    "cp_hair":   (0x2E, 0x26, 0x1E),
     # Cap'n Clark, the furniture-store pirate mascot the Backrooms copied
     "ck_teal":   (0x2E, 0x8C, 0x8E),   # turquoise button-up, big collars
     "ck_vest":   (0xC9, 0xB9, 0x92),   # long beige vest
@@ -240,7 +249,43 @@ def build_all():
         body_col="wolf", leg_col="wolf_dk", face="wolf", tail=(2, 8, 2))
 
     # --- THE COPY (player-shaped still life) -----------------------------
-    M["still_player"] = humanoid(tall=1.0, face="copy")
+    # Built bespoke rather than from humanoid(), because the whole point of it
+    # is that nothing matches: the sleeves are two different colours, the right
+    # arm hangs lower than the left, the hands are a different tone from the
+    # face, and one leg is a shade too wide. Bedrock cannot read a player's
+    # real skin onto a custom entity, so instead of a clean Steve this is a
+    # person the world got most of the way right.
+    M["still_player"] = dict(texture=(64, 64), bones=[
+        bone("root", [0, 0, 0], []),
+        bone("waist", [0, 12, 0], [], parent="root"),
+        bone("body", [0, 24, 0], [
+            cube("body",  [-4, 12, -2], [8, 12, 4], P["cp_shirt"]),
+            cube("patch", [-4, 16, -2.3], [3, 5, 1], P["cp_shirt2"]),
+        ], parent="waist"),
+        bone("head", [0, 24, 0], [
+            cube("head", [-4, 24, -4], [8, 8, 8], P["cp_skin"], face="copy"),
+        ], parent="body"),
+        bone("hat", [0, 24, 0], [
+            cube("hairTop",  [-4, 30, -4], [8, 2, 8], P["cp_hair"], inflate=0.4),
+            cube("hairBack", [-4, 25, 3.4], [8, 5, 1], P["cp_hair"], inflate=0.3),
+        ], parent="head"),
+        # right arm: wrong sleeve colour, and 1.5px too long
+        bone("rightArm", [-5, 22, 0], [
+            cube("rSleeve", [-8, 13.5, -2], [4, 10.5, 4], P["cp_shirt2"]),
+            cube("rHand",   [-8, 10.5, -2], [4, 3, 4], P["cp_skin2"]),
+        ], parent="body"),
+        bone("leftArm", [5, 22, 0], [
+            cube("lSleeve", [4, 15, -2], [4, 9, 4], P["cp_shirt"], mirror=True),
+            cube("lHand",   [4, 12, -2], [4, 3, 4], P["cp_skin"], mirror=True),
+        ], parent="body"),
+        bone("rightLeg", [-1.9, 12, 0], [
+            cube("rightLeg", [-4, 0, -2], [4, 12, 4], P["cp_pants"]),
+        ], parent="root"),
+        # left leg: half a pixel too wide, and the wrong colour entirely
+        bone("leftLeg", [1.9, 12, 0], [
+            cube("leftLeg", [0, 0, -2], [4.5, 12, 4], P["cp_pants2"], mirror=True),
+        ], parent="root"),
+    ])
 
     # --- THE TALL ONE (boss) ---------------------------------------------
     # tall and lanky, but the limbs are a different tone from the torso or the
