@@ -231,8 +231,24 @@ where there was wall with the **Frontrooms Key**.
 
 ### Captain Clark
 
+<p align="center"><img src="docs/clark.png" alt="Captain Clark" width="100%"></p>
+
 Somewhere six to nine sectors from where you came in is a chamber: one enormous
 open floor, every light on, no cover. 340 HP, a boss bar, and a darkened sky.
+
+He is not a monster the Backrooms invented. He is a **Still Life of Clark
+wearing Clark's own costume** — Cap'n Clark, the pirate mascot from the
+furniture-store commercial he shot himself. The world copied the man at the
+worst possible moment and got the details almost right: tricorne with two
+feathers, turquoise button-up with big collars under a long beige vest, purple
+sash, dark brown trousers, a white sock and a brown Oxford on the right foot
+and an amber wooden peg on the left. Eight fingers on each hand, brass rings on
+both. He stands about 2.4 blocks — a head and a half over you, nowhere near
+the Tall One.
+
+And his right arm is still held out at an angle, because on the day it copied
+him there was a crutch tucked under it, and the copy kept the shape but not
+the crutch.
 
 - **66% HP** — he stops being careful. Charge attacks, 15 damage.
 - **33% HP** — 18 damage, immune to knockback, and he starts making copies of

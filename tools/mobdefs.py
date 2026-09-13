@@ -39,6 +39,20 @@ P = {
     "brass":     (0xB8, 0x92, 0x3C),
     "pale":      (0xCB, 0xC2, 0xA8),
     "void":      (0x0A, 0x0A, 0x0A),
+    # Cap'n Clark, the furniture-store pirate mascot the Backrooms copied
+    "ck_teal":   (0x2E, 0x8C, 0x8E),   # turquoise button-up, big collars
+    "ck_vest":   (0xC9, 0xB9, 0x92),   # long beige vest
+    "ck_sash":   (0x6B, 0x3E, 0x7A),   # purplish sash
+    "ck_belt":   (0x1A, 0x16, 0x12),
+    "ck_pants":  (0x4A, 0x38, 0x28),   # dark brown
+    "ck_peg":    (0xC8, 0x8E, 0x3C),   # amber wooden peg leg
+    "ck_sock":   (0xE8, 0xE6, 0xDC),   # white crew sock, right leg only
+    "ck_shoe":   (0x5A, 0x3C, 0x24),   # brown Oxford
+    "ck_skin":   (0x82, 0x59, 0x40),
+    "ck_beard":  (0x1E, 0x18, 0x14),
+    "ck_hat":    (0x2A, 0x24, 0x1E),   # tricorne
+    "ck_feath":  (0xE4, 0xD8, 0xB4),
+    "ck_feath2": (0x9A, 0x2E, 0x2E),
 }
 
 
@@ -235,19 +249,69 @@ def build_all():
                                  thin_arms=False, face="tall", girth=1, gap=1)
 
     # --- CAPTAIN CLARK (backrooms boss) ----------------------------------
-    clark = humanoid(tall=1.35, skin="pale", top="olive", bottom="olive_dk",
-                     hair="olive_dk", face="clark")
-    # peaked cap + shoulder boards + the lamp fused into his chest
-    for b in clark["bones"]:
-        if b["name"] == "hat":
-            b["cubes"] = [
-                cube("cap",   [-4.5, 30.2, -4.5], [9, 3, 9], P["olive_dk"]),
-                cube("brim",  [-4.5, 30.2, -8.0], [9, 1, 4], P["void"]),
-                cube("badge", [-1.5, 31.2, -5.0], [3, 2, 1], P["brass"]),
-            ]
-        if b["name"] == "body":
-            b["cubes"].append(cube("lamp", [-2, 22, -3.5], [4, 4, 2], P["beak"]))
-    M["captain_clark"] = clark
+    # A large Still Life copying Clark as "Cap'n Clark", the pirate mascot
+    # from his own furniture-store commercial: tricorne with two feathers,
+    # turquoise button-up under a long beige vest, purple sash, an amber peg
+    # leg on the left, and a right arm still held out at the angle of the
+    # crutch he had tucked under it on set. ~2.4 blocks -- malformed and a
+    # head and a half taller than a player, but nowhere near the Tall One.
+    M["captain_clark"] = dict(texture=(128, 128), bones=[
+        bone("root", [0, 0, 0], []),
+        bone("waist", [0, 15, 0], [], parent="root"),
+        bone("body", [0, 30, 0], [
+            cube("shirt",  [-4, 15, -2], [8, 15, 4], P["ck_teal"]),
+            cube("vestR",  [-4, 16, -2], [3, 13.5, 4], P["ck_vest"], inflate=0.30),
+            cube("vestL",  [1, 16, -2],  [3, 13.5, 4], P["ck_vest"], inflate=0.30,
+                 mirror=True),
+            cube("vestBk", [-4, 16, 1.4], [8, 13.5, 1], P["ck_vest"], inflate=0.30),
+            cube("sash",   [-4, 18.5, -2], [8, 3, 4],  P["ck_sash"], inflate=0.62),
+            cube("belt",   [-4, 15, -2], [8, 2, 4],  P["ck_belt"], inflate=0.55),
+            cube("collarR", [-4.3, 26.5, -2.8], [3, 3, 1], P["ck_teal"]),
+            cube("collarL", [1.3, 26.5, -2.8], [3, 3, 1], P["ck_teal"], mirror=True),
+        ], parent="waist"),
+        bone("head", [0, 30, 0], [
+            cube("head",  [-4, 30, -4], [8, 8, 8], P["ck_skin"], face="clark"),
+            cube("beard", [-4, 30, -4.6], [8, 3, 1], P["ck_beard"]),
+            cube("jawR",  [-4.5, 30, -4], [1, 3, 8], P["ck_beard"]),
+            cube("jawL",  [3.5, 30, -4], [1, 3, 8], P["ck_beard"], mirror=True),
+        ], parent="body"),
+        bone("hat", [0, 38, 0], [
+            cube("crown",  [-4, 38, -4], [8, 3, 8], P["ck_hat"], inflate=0.55),
+            cube("brim",   [-6.5, 37.6, -6.5], [13, 1, 13], P["ck_hat"]),
+            cube("cornF",  [-2.5, 38.4, -6.6], [5, 2, 1], P["ck_hat"]),
+            cube("cornR",  [-6.6, 38.4, -2.5], [1, 2, 5], P["ck_hat"]),
+            cube("cornL",  [5.6, 38.4, -2.5], [1, 2, 5], P["ck_hat"], mirror=True),
+            cube("feath1", [4.4, 40.5, -2], [1, 6, 4], P["ck_feath"]),
+            cube("feath2", [5.6, 39.5, 0.5], [1, 5, 4], P["ck_feath2"]),
+        ], parent="head"),
+        # the arm the crutch was under. it never came back down.
+        bone("rightArm", [-5, 28, 0], [
+            cube("rSleeve", [-8, 17, -2], [4, 13, 4], P["ck_teal"]),
+            cube("rCuff",   [-8, 16, -2], [4, 2, 4], P["ck_vest"], inflate=0.25),
+            cube("rHand",   [-8.5, 12, -2.5], [5, 4, 5], P["ck_skin"]),
+            cube("rRing1",  [-8.7, 13, -2.7], [1, 1, 1], P["brass"]),
+            cube("rRing2",  [-8.7, 14, -1.2], [1, 1, 1], P["brass"]),
+        ], parent="body", rotation=[0, 0, -34]),
+        bone("leftArm", [5, 28, 0], [
+            cube("lSleeve", [4, 17, -2], [4, 13, 4], P["ck_teal"], mirror=True),
+            cube("lCuff",   [4, 16, -2], [4, 2, 4], P["ck_vest"], inflate=0.25),
+            cube("lHand",   [3.5, 12, -2.5], [5, 4, 5], P["ck_skin"], mirror=True),
+            cube("lRing1",  [8.2, 13, -2.7], [1, 1, 1], P["brass"]),
+            cube("lRing2",  [8.2, 14, -1.2], [1, 1, 1], P["brass"]),
+        ], parent="body", rotation=[0, 0, 11]),
+        # right leg: sock and Oxford shoe
+        bone("rightLeg", [-1.9, 15, 0], [
+            cube("rTrouser", [-4, 4, -2], [4, 11, 4], P["ck_pants"]),
+            cube("rSock",    [-4, 2, -2], [4, 2, 4], P["ck_sock"], inflate=0.1),
+            cube("rShoe",    [-4, 0, -2.8], [4, 2, 5], P["ck_shoe"]),
+        ], parent="root"),
+        # left leg: the peg
+        bone("leftLeg", [1.9, 15, 0], [
+            cube("lTrouser", [0, 7, -2], [4, 8, 4], P["ck_pants"], mirror=True),
+            cube("lPegTop",  [0.5, 4, -1.5], [3, 3, 3], P["ck_peg"]),
+            cube("lPeg",     [1, 0, -1], [2, 4, 2], P["ck_peg"]),
+        ], parent="root"),
+    ])
 
     return M
 
@@ -259,7 +323,7 @@ FACE_STYLE = {  # eye placement per face type: (list of (x,y) in face-local px)
     "human":    dict(eyes=[(2, 3), (5, 3)], mouth=(3, 6, 2, 1), brow=False),
     "copy":     dict(eyes=[(2, 3), (5, 3)], mouth=(2, 6, 4, 1), brow=False),
     "tall":     dict(eyes=[(1, 3), (6, 3)], mouth=(1, 5, 6, 3), brow=False),
-    "clark":    dict(eyes=[(2, 3), (5, 3)], mouth=(2, 6, 4, 1), brow=True),
+    "clark":    dict(eyes=[(2, 3), (5, 3)], mouth=None, brow=True, scar=True),
     "cow":      dict(eyes=[(1, 2), (6, 2)], mouth=(2, 5, 4, 2), brow=False),
     "pig":      dict(eyes=[(1, 2), (6, 2)], mouth=(2, 5, 4, 2), brow=False),
     "sheep":    dict(eyes=[(1, 1), (4, 1)], mouth=(2, 4, 2, 1), brow=False),

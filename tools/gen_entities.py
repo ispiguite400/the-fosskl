@@ -149,6 +149,16 @@ def paint_face_details(img, c, uv, style, rnd):
                          fill=VOID if rnd.random() < 0.6 else (40, 30, 28, 255))
     if st["brow"]:
         dr.rectangle([x, y + 1, x + fw - 1, y + 1], fill=(0, 0, 0, 90))
+    if st.get("scar"):
+        # the real Clark's scar, over his left brow, copied badly
+        for k in range(3):
+            px = x + 1 + k
+            py = y + 1 - min(1, k)
+            if 0 <= px - x < fw and 0 <= py - y < fh:
+                o = img.getpixel((px, py))
+                img.putpixel((px, py), (min(255, int(o[0] * 1.5 + 40)),
+                                        min(255, int(o[1] * 1.35 + 26)),
+                                        min(255, int(o[2] * 1.3 + 22)), 255))
 
 
 # ------------------------------------------------------------------ build
@@ -222,7 +232,9 @@ def build(name, model, decay=0.0, seed=None):
 
 if __name__ == "__main__":
     for n, m in MOBS.items():
-        decay = 0.5 if n in ("the_tall_one", "captain_clark") else 0.0
+        # Clark keeps most of his colour -- the costume is the whole point of
+        # him, and the render controller adds its own sepia wash in-game
+        decay = {"the_tall_one": 0.5, "captain_clark": 0.12}.get(n, 0.0)
         tw, th, hgt = build(n, m, decay=decay)
         print(f"{n:18s} atlas {tw}x{th}  height {hgt:.2f} blocks")
     # extra decayed variants: the world's later, worse attempts at a copy
