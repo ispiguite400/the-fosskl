@@ -1,5 +1,13 @@
 /* Drive the STILL LIFE scripts against the stub and surface everything
  * that safe() would otherwise swallow. */
+// Seeded PRNG so a run is reproducible: the spawner, the disposition rolls and
+// the jump scares are all chance-gated, and a flaky harness is worse than none.
+let _seed = 20240617;
+Math.random = () => {
+  _seed = (Math.imul(_seed, 1664525) + 1013904223) >>> 0;
+  return _seed / 4294967296;
+};
+
 const warnings = new Map();
 const realWarn = console.warn;
 console.warn = (...a) => {
@@ -67,6 +75,27 @@ p.location = { x: 256024, y: 61, z: 256024 };
 world.getDimension("the_end")._ents.push(p);
 for (let i = 0; i < 900; i++) _tick();
 
+// ---- directed: a copy holding its pose breaks it when danger turns up.
+// The entity's own sensor covers the player walking near; this is the other
+// half, which only the script can see.
+// Run it well away from the mobs spawned at setup -- an apex counts as danger
+// too, so a sentinel parked next to the Tall One would wake for the wrong reason.
+const ow = world.getDimension("overworld");
+p.dimension = ow;
+p.location = { x: 8000, y: 64, z: 8000 };
+const sentinel = ow.spawnEntity("sl:still_cow", { x: 8005, y: 64, z: 8000 });
+sentinel.setProperty("sl:motion", "sentinel");
+sentinel.setProperty("sl:awake", false);
+const woke = () => CALLS.events.some((e) => e === `sl:still_cow#${sentinel.id} sl:wake`);
+for (let i = 0; i < 60; i++) _tick();          // nothing dangerous yet
+const wokeEarly = woke();
+ow.spawnEntity("minecraft:zombie", { x: 8009, y: 64, z: 8000 });
+for (let i = 0; i < 60; i++) _tick();
+const wokeOnDanger = !wokeEarly && woke();
+
+// let the ambient spawner run long enough to exercise the disposition rolls
+for (let i = 0; i < 2400; i++) _tick();
+
 console.warn = realWarn;
 const bad = [...warnings.entries()].filter(([k]) => k.includes("[STILL LIFE]"));
 console.log(`ticks run: ${system.currentTick}`);
@@ -84,6 +113,7 @@ if (bad.length) {
 
 // ------------------------------------------------ did it actually DO things
 const cmds = CALLS.commands;
+const ev = CALLS.events;
 const has = (re) => cmds.some((c) => re.test(c));
 const checks = [
   ["backrooms sectors built",   has(/^fill 2560\d\d /)],
@@ -104,6 +134,9 @@ const checks = [
   ["corruption persisted",      typeof world.getDynamicProperty("sl:corruption") === "number"],
   ["a build was recorded",      Number(world.getDynamicProperty("sl:build_n") ?? 0) > 0],
   ["landmarks recorded",        !!world.getDynamicProperty("sl:landmarks")],
+  ["temperament rolled",        ev.some((e) => /sl:be_(peaceful|neutral|hostile)$/.test(e))],
+  ["motion rolled",             ev.some((e) => /sl:to_(wander|sentinel|statue)$/.test(e))],
+  ["danger wakes a sentinel",   wokeOnDanger],
 ];
 console.log("\nbehaviour checks:");
 let failed = 0;

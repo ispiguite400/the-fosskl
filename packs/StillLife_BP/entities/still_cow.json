@@ -11,14 +11,41 @@
           "type": "enum",
           "values": [
             "still",
+            "alert",
             "roaming",
             "fleeing",
+            "neutral",
             "friendly",
             "hostile",
             "betraying",
             "jumpscare"
           ],
           "default": "still",
+          "client_sync": true
+        },
+        "sl:temper": {
+          "type": "enum",
+          "values": [
+            "peaceful",
+            "neutral",
+            "hostile"
+          ],
+          "default": "peaceful",
+          "client_sync": true
+        },
+        "sl:motion": {
+          "type": "enum",
+          "values": [
+            "wander",
+            "sentinel",
+            "statue"
+          ],
+          "default": "wander",
+          "client_sync": true
+        },
+        "sl:awake": {
+          "type": "bool",
+          "default": true,
           "client_sync": true
         },
         "sl:decay": {
@@ -33,18 +60,98 @@
       }
     },
     "component_groups": {
-      "sl:mode_still": {
-        "minecraft:movement": {
-          "value": 0.0
-        },
-        "minecraft:behavior.look_at_player": {
-          "priority": 8,
-          "look_distance": 14,
-          "probability": 0.014,
-          "angle_of_view_horizontal": 360
+      "sl:temper_peaceful": {
+        "minecraft:damage_sensor": {
+          "triggers": [
+            {
+              "cause": "all",
+              "deals_damage": true,
+              "on_damage": {
+                "filters": {
+                  "test": "is_family",
+                  "subject": "other",
+                  "value": "player"
+                },
+                "event": "sl:to_flee",
+                "target": "self"
+              }
+            }
+          ]
         }
       },
-      "sl:mode_roam": {
+      "sl:temper_neutral": {
+        "minecraft:damage_sensor": {
+          "triggers": [
+            {
+              "cause": "all",
+              "deals_damage": true,
+              "on_damage": {
+                "filters": {
+                  "test": "is_family",
+                  "subject": "other",
+                  "value": "player"
+                },
+                "event": "sl:wake",
+                "target": "self"
+              }
+            }
+          ]
+        },
+        "minecraft:behavior.hurt_by_target": {
+          "priority": 1
+        },
+        "minecraft:behavior.melee_attack": {
+          "priority": 2,
+          "speed_multiplier": 1.15,
+          "track_target": true
+        }
+      },
+      "sl:temper_hostile": {
+        "minecraft:damage_sensor": {
+          "triggers": [
+            {
+              "cause": "all",
+              "deals_damage": true,
+              "on_damage": {
+                "filters": {
+                  "test": "is_family",
+                  "subject": "other",
+                  "value": "player"
+                },
+                "event": "sl:wake",
+                "target": "self"
+              }
+            }
+          ]
+        },
+        "minecraft:behavior.hurt_by_target": {
+          "priority": 1
+        },
+        "minecraft:behavior.nearest_attackable_target": {
+          "priority": 3,
+          "must_see": true,
+          "must_reach": false,
+          "reselect_targets": true,
+          "within_radius": 18,
+          "entity_types": [
+            {
+              "filters": {
+                "test": "is_family",
+                "subject": "other",
+                "value": "player"
+              },
+              "max_dist": 18,
+              "must_see": true
+            }
+          ]
+        },
+        "minecraft:behavior.melee_attack": {
+          "priority": 2,
+          "speed_multiplier": 1.25,
+          "track_target": true
+        }
+      },
+      "sl:motion_wander": {
         "minecraft:behavior.random_stroll": {
           "priority": 6,
           "speed_multiplier": 0.62
@@ -53,6 +160,35 @@
           "priority": 7,
           "look_distance": 9,
           "probability": 0.05
+        },
+        "minecraft:behavior.random_look_around": {
+          "priority": 9
+        }
+      },
+      "sl:motion_hold": {
+        "minecraft:movement": {
+          "value": 0.0
+        },
+        "minecraft:behavior.look_at_player": {
+          "priority": 8,
+          "look_distance": 16,
+          "probability": 0.02,
+          "angle_of_view_horizontal": 360
+        }
+      },
+      "sl:motion_awake": {
+        "minecraft:movement": {
+          "value": 0.23
+        },
+        "minecraft:behavior.random_stroll": {
+          "priority": 6,
+          "speed_multiplier": 0.9
+        },
+        "minecraft:behavior.look_at_player": {
+          "priority": 5,
+          "look_distance": 18,
+          "probability": 0.5,
+          "angle_of_view_horizontal": 360
         },
         "minecraft:behavior.random_look_around": {
           "priority": 9
@@ -93,60 +229,6 @@
           "speed_multiplier": 1.0
         }
       },
-      "sl:mode_neutral": {
-        "minecraft:behavior.hurt_by_target": {
-          "priority": 1
-        },
-        "minecraft:behavior.melee_attack": {
-          "priority": 2,
-          "speed_multiplier": 1.15,
-          "track_target": true
-        },
-        "minecraft:behavior.random_stroll": {
-          "priority": 6,
-          "speed_multiplier": 0.6
-        },
-        "minecraft:behavior.look_at_player": {
-          "priority": 7,
-          "look_distance": 10,
-          "probability": 0.06
-        }
-      },
-      "sl:mode_hostile": {
-        "minecraft:movement": {
-          "value": 0.26
-        },
-        "minecraft:behavior.hurt_by_target": {
-          "priority": 1
-        },
-        "minecraft:behavior.nearest_attackable_target": {
-          "priority": 3,
-          "must_see": true,
-          "must_reach": false,
-          "reselect_targets": true,
-          "within_radius": 18,
-          "entity_types": [
-            {
-              "filters": {
-                "test": "is_family",
-                "subject": "other",
-                "value": "player"
-              },
-              "max_dist": 18,
-              "must_see": true
-            }
-          ]
-        },
-        "minecraft:behavior.melee_attack": {
-          "priority": 4,
-          "speed_multiplier": 1.25,
-          "track_target": true
-        },
-        "minecraft:behavior.random_stroll": {
-          "priority": 7,
-          "speed_multiplier": 0.8
-        }
-      },
       "sl:mode_friend": {
         "minecraft:is_tamed": {},
         "minecraft:persistent": {},
@@ -161,11 +243,6 @@
         },
         "minecraft:behavior.owner_hurt_target": {
           "priority": 2
-        },
-        "minecraft:behavior.melee_attack": {
-          "priority": 3,
-          "speed_multiplier": 1.2,
-          "track_target": true
         },
         "minecraft:behavior.look_at_player": {
           "priority": 8,
@@ -185,29 +262,6 @@
         },
         "minecraft:attack": {
           "damage": 5
-        },
-        "minecraft:behavior.nearest_attackable_target": {
-          "priority": 3,
-          "must_see": false,
-          "must_reach": false,
-          "reselect_targets": true,
-          "within_radius": 24,
-          "entity_types": [
-            {
-              "filters": {
-                "test": "is_family",
-                "subject": "other",
-                "value": "player"
-              },
-              "max_dist": 24,
-              "must_see": false
-            }
-          ]
-        },
-        "minecraft:behavior.melee_attack": {
-          "priority": 3,
-          "speed_multiplier": 1.4,
-          "track_target": true
         }
       }
     },
@@ -300,25 +354,104 @@
           }
         ]
       },
-      "minecraft:damage_sensor": {
-        "triggers": [
-          {
-            "cause": "all",
-            "deals_damage": true,
-            "on_damage": {
-              "filters": {
-                "test": "is_family",
-                "subject": "other",
-                "value": "player"
-              },
-              "event": "sl:struck_by_player",
-              "target": "self"
-            }
-          }
-        ]
-      },
       "minecraft:environment_sensor": {
         "triggers": [
+          {
+            "filters": {
+              "all_of": [
+                {
+                  "test": "enum_property",
+                  "domain": "sl:motion",
+                  "value": "sentinel"
+                },
+                {
+                  "test": "bool_property",
+                  "domain": "sl:awake",
+                  "value": false
+                },
+                {
+                  "test": "distance_to_nearest_player",
+                  "operator": "<",
+                  "value": 8.0
+                }
+              ]
+            },
+            "event": "sl:wake",
+            "target": "self"
+          },
+          {
+            "filters": {
+              "all_of": [
+                {
+                  "test": "enum_property",
+                  "domain": "sl:motion",
+                  "value": "sentinel"
+                },
+                {
+                  "test": "bool_property",
+                  "domain": "sl:awake",
+                  "value": true
+                },
+                {
+                  "test": "distance_to_nearest_player",
+                  "operator": ">",
+                  "value": 16.0
+                }
+              ]
+            },
+            "event": "sl:sleep",
+            "target": "self"
+          },
+          {
+            "filters": {
+              "all_of": [
+                {
+                  "test": "enum_property",
+                  "domain": "sl:motion",
+                  "value": "statue"
+                },
+                {
+                  "test": "bool_property",
+                  "domain": "sl:awake",
+                  "value": false
+                },
+                {
+                  "test": "distance_to_nearest_player",
+                  "operator": "<",
+                  "value": 4.0
+                },
+                {
+                  "test": "random_chance",
+                  "value": 26
+                }
+              ]
+            },
+            "event": "sl:wake",
+            "target": "self"
+          },
+          {
+            "filters": {
+              "all_of": [
+                {
+                  "test": "enum_property",
+                  "domain": "sl:motion",
+                  "value": "statue"
+                },
+                {
+                  "test": "bool_property",
+                  "domain": "sl:awake",
+                  "value": true
+                },
+                {
+                  "test": "distance_to_nearest_player",
+                  "operator": ">",
+                  "value": 12.0
+                }
+              ]
+            },
+            "event": "sl:sleep",
+            "target": "self"
+          },
           {
             "filters": {
               "all_of": [
@@ -328,13 +461,18 @@
                   "value": "minecraft:is_tamed"
                 },
                 {
+                  "test": "enum_property",
+                  "domain": "sl:temper",
+                  "value": "peaceful"
+                },
+                {
                   "test": "distance_to_nearest_player",
                   "operator": "<",
-                  "value": 3.5
+                  "value": 3.0
                 },
                 {
                   "test": "random_chance",
-                  "value": 220
+                  "value": 260
                 }
               ]
             },
@@ -386,74 +524,194 @@
     },
     "events": {
       "minecraft:entity_spawned": {
-        "randomize": [
+        "sequence": [
           {
-            "weight": 58,
-            "trigger": "sl:to_still"
+            "randomize": [
+              {
+                "weight": 55,
+                "trigger": "sl:be_peaceful"
+              },
+              {
+                "weight": 30,
+                "trigger": "sl:be_neutral"
+              },
+              {
+                "weight": 15,
+                "trigger": "sl:be_hostile"
+              }
+            ]
           },
           {
-            "weight": 24,
-            "trigger": "sl:to_roam"
-          },
-          {
-            "weight": 12,
-            "trigger": "sl:to_neutral"
-          },
-          {
-            "weight": 6,
-            "trigger": "sl:to_hostile"
+            "randomize": [
+              {
+                "weight": 45,
+                "trigger": "sl:to_wander"
+              },
+              {
+                "weight": 37,
+                "trigger": "sl:to_sentinel"
+              },
+              {
+                "weight": 18,
+                "trigger": "sl:to_statue"
+              }
+            ]
           }
         ]
       },
-      "sl:to_still": {
+      "sl:be_peaceful": {
         "remove": {
           "component_groups": [
-            "sl:mode_roam",
-            "sl:mode_flee",
-            "sl:mode_neutral",
-            "sl:mode_hostile",
-            "sl:mode_friend",
-            "sl:mode_betray"
+            "sl:temper_neutral",
+            "sl:temper_hostile"
           ]
         },
         "add": {
           "component_groups": [
-            "sl:mode_still"
+            "sl:temper_peaceful"
           ]
         },
         "set_property": {
-          "sl:state": "'still'"
+          "sl:temper": "'peaceful'"
         }
       },
-      "sl:to_roam": {
+      "sl:be_neutral": {
         "remove": {
           "component_groups": [
-            "sl:mode_still",
+            "sl:temper_peaceful",
+            "sl:temper_hostile"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "sl:temper_neutral"
+          ]
+        },
+        "set_property": {
+          "sl:temper": "'neutral'"
+        }
+      },
+      "sl:be_hostile": {
+        "remove": {
+          "component_groups": [
+            "sl:temper_peaceful",
+            "sl:temper_neutral"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "sl:temper_hostile"
+          ]
+        },
+        "set_property": {
+          "sl:temper": "'hostile'"
+        }
+      },
+      "sl:to_wander": {
+        "remove": {
+          "component_groups": [
+            "sl:motion_hold",
+            "sl:motion_awake",
             "sl:mode_flee",
-            "sl:mode_neutral",
-            "sl:mode_hostile",
             "sl:mode_friend",
             "sl:mode_betray"
           ]
         },
         "add": {
           "component_groups": [
-            "sl:mode_roam"
+            "sl:motion_wander"
           ]
         },
         "set_property": {
-          "sl:state": "'roaming'"
+          "sl:motion": "'wander'",
+          "sl:state": "'roaming'",
+          "sl:awake": true
+        }
+      },
+      "sl:to_sentinel": {
+        "remove": {
+          "component_groups": [
+            "sl:motion_wander",
+            "sl:motion_awake",
+            "sl:mode_flee",
+            "sl:mode_friend",
+            "sl:mode_betray"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "sl:motion_hold"
+          ]
+        },
+        "set_property": {
+          "sl:motion": "'sentinel'",
+          "sl:state": "'still'",
+          "sl:awake": false
+        }
+      },
+      "sl:to_statue": {
+        "remove": {
+          "component_groups": [
+            "sl:motion_wander",
+            "sl:motion_awake",
+            "sl:mode_flee",
+            "sl:mode_friend",
+            "sl:mode_betray"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "sl:motion_hold"
+          ]
+        },
+        "set_property": {
+          "sl:motion": "'statue'",
+          "sl:state": "'still'",
+          "sl:awake": false
+        }
+      },
+      "sl:wake": {
+        "remove": {
+          "component_groups": [
+            "sl:motion_wander",
+            "sl:motion_hold"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "sl:motion_awake"
+          ]
+        },
+        "set_property": {
+          "sl:state": "'alert'",
+          "sl:awake": true
+        }
+      },
+      "sl:sleep": {
+        "remove": {
+          "component_groups": [
+            "sl:motion_wander",
+            "sl:motion_awake"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "sl:motion_hold"
+          ]
+        },
+        "set_property": {
+          "sl:state": "'still'",
+          "sl:awake": false
         }
       },
       "sl:to_flee": {
         "remove": {
           "component_groups": [
-            "sl:mode_still",
-            "sl:mode_roam",
-            "sl:mode_neutral",
-            "sl:mode_hostile",
             "sl:mode_friend",
-            "sl:mode_betray"
+            "sl:mode_betray",
+            "sl:motion_wander",
+            "sl:motion_hold",
+            "sl:motion_awake"
           ]
         },
         "add": {
@@ -462,134 +720,143 @@
           ]
         },
         "set_property": {
-          "sl:state": "'fleeing'"
-        }
-      },
-      "sl:to_neutral": {
-        "remove": {
-          "component_groups": [
-            "sl:mode_still",
-            "sl:mode_roam",
-            "sl:mode_flee",
-            "sl:mode_hostile",
-            "sl:mode_friend",
-            "sl:mode_betray"
-          ]
-        },
-        "add": {
-          "component_groups": [
-            "sl:mode_neutral"
-          ]
-        },
-        "set_property": {
-          "sl:state": "'still'"
-        }
-      },
-      "sl:to_hostile": {
-        "remove": {
-          "component_groups": [
-            "sl:mode_still",
-            "sl:mode_roam",
-            "sl:mode_flee",
-            "sl:mode_neutral",
-            "sl:mode_friend",
-            "sl:mode_betray"
-          ]
-        },
-        "add": {
-          "component_groups": [
-            "sl:mode_hostile"
-          ]
-        },
-        "set_property": {
-          "sl:state": "'hostile'"
+          "sl:state": "'fleeing'",
+          "sl:awake": true
         }
       },
       "sl:to_friend": {
-        "remove": {
-          "component_groups": [
-            "sl:mode_still",
-            "sl:mode_roam",
-            "sl:mode_flee",
-            "sl:mode_neutral",
-            "sl:mode_hostile",
-            "sl:mode_betray"
-          ]
-        },
-        "add": {
-          "component_groups": [
-            "sl:mode_friend"
-          ]
-        },
-        "set_property": {
-          "sl:state": "'friendly'"
-        }
-      },
-      "sl:to_betray": {
-        "remove": {
-          "component_groups": [
-            "sl:mode_still",
-            "sl:mode_roam",
-            "sl:mode_flee",
-            "sl:mode_neutral",
-            "sl:mode_hostile",
-            "sl:mode_friend"
-          ]
-        },
-        "add": {
-          "component_groups": [
-            "sl:mode_betray"
-          ]
-        },
-        "set_property": {
-          "sl:state": "'betraying'"
-        }
+        "sequence": [
+          {
+            "remove": {
+              "component_groups": [
+                "sl:temper_peaceful",
+                "sl:temper_hostile"
+              ]
+            },
+            "add": {
+              "component_groups": [
+                "sl:temper_neutral"
+              ]
+            },
+            "set_property": {
+              "sl:temper": "'neutral'"
+            }
+          },
+          {
+            "remove": {
+              "component_groups": [
+                "sl:mode_flee",
+                "sl:mode_betray",
+                "sl:motion_wander",
+                "sl:motion_hold",
+                "sl:motion_awake"
+              ]
+            },
+            "add": {
+              "component_groups": [
+                "sl:mode_friend"
+              ]
+            },
+            "set_property": {
+              "sl:state": "'friendly'",
+              "sl:awake": true
+            }
+          }
+        ]
       },
       "sl:on_tame": {
-        "remove": {
-          "component_groups": [
-            "sl:mode_still",
-            "sl:mode_roam",
-            "sl:mode_flee",
-            "sl:mode_neutral",
-            "sl:mode_hostile",
-            "sl:mode_betray"
-          ]
-        },
-        "add": {
-          "component_groups": [
-            "sl:mode_friend"
-          ]
-        },
-        "set_property": {
-          "sl:state": "'friendly'"
-        }
+        "sequence": [
+          {
+            "remove": {
+              "component_groups": [
+                "sl:temper_peaceful",
+                "sl:temper_hostile"
+              ]
+            },
+            "add": {
+              "component_groups": [
+                "sl:temper_neutral"
+              ]
+            },
+            "set_property": {
+              "sl:temper": "'neutral'"
+            }
+          },
+          {
+            "remove": {
+              "component_groups": [
+                "sl:mode_flee",
+                "sl:mode_betray",
+                "sl:motion_wander",
+                "sl:motion_hold",
+                "sl:motion_awake"
+              ]
+            },
+            "add": {
+              "component_groups": [
+                "sl:mode_friend"
+              ]
+            },
+            "set_property": {
+              "sl:state": "'friendly'",
+              "sl:awake": true
+            }
+          }
+        ]
+      },
+      "sl:to_betray": {
+        "sequence": [
+          {
+            "remove": {
+              "component_groups": [
+                "sl:temper_peaceful",
+                "sl:temper_neutral"
+              ]
+            },
+            "add": {
+              "component_groups": [
+                "sl:temper_hostile"
+              ]
+            },
+            "set_property": {
+              "sl:temper": "'hostile'"
+            }
+          },
+          {
+            "remove": {
+              "component_groups": [
+                "sl:mode_flee",
+                "sl:mode_friend",
+                "sl:motion_wander",
+                "sl:motion_hold",
+                "sl:motion_awake"
+              ]
+            },
+            "add": {
+              "component_groups": [
+                "sl:mode_betray"
+              ]
+            },
+            "set_property": {
+              "sl:state": "'betraying'",
+              "sl:awake": true
+            }
+          }
+        ]
       },
       "sl:calm_down": {
         "randomize": [
           {
-            "weight": 70,
-            "trigger": "sl:to_still"
+            "weight": 42,
+            "trigger": "sl:to_sentinel"
           },
           {
-            "weight": 30,
-            "trigger": "sl:to_roam"
-          }
-        ]
-      },
-      "sl:struck_by_player": {
-        "randomize": [
-          {
-            "weight": 62,
-            "trigger": "sl:to_flee"
+            "weight": 38,
+            "trigger": "sl:to_wander"
           },
           {
-            "weight": 30,
-            "trigger": "sl:to_neutral"
-          },
-          {
-            "weight": 8,
-            "trigger": "sl:to_hostile"
+            "weight": 20,
+            "trigger": "sl:to_statue"
           }
         ]
       },
@@ -602,6 +869,87 @@
           {
             "weight": 26,
             "trigger": "sl:to_flee"
+          }
+        ]
+      },
+      "sl:to_still": {
+        "remove": {
+          "component_groups": [
+            "sl:motion_wander",
+            "sl:motion_awake",
+            "sl:mode_flee",
+            "sl:mode_friend",
+            "sl:mode_betray"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "sl:motion_hold"
+          ]
+        },
+        "set_property": {
+          "sl:motion": "'sentinel'",
+          "sl:state": "'still'",
+          "sl:awake": false
+        }
+      },
+      "sl:to_roam": {
+        "remove": {
+          "component_groups": [
+            "sl:motion_hold",
+            "sl:motion_awake",
+            "sl:mode_flee",
+            "sl:mode_friend",
+            "sl:mode_betray"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "sl:motion_wander"
+          ]
+        },
+        "set_property": {
+          "sl:motion": "'wander'",
+          "sl:state": "'roaming'",
+          "sl:awake": true
+        }
+      },
+      "sl:to_neutral": {
+        "remove": {
+          "component_groups": [
+            "sl:temper_peaceful",
+            "sl:temper_hostile"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "sl:temper_neutral"
+          ]
+        },
+        "set_property": {
+          "sl:temper": "'neutral'"
+        }
+      },
+      "sl:to_hostile": {
+        "sequence": [
+          {
+            "remove": {
+              "component_groups": [
+                "sl:temper_peaceful",
+                "sl:temper_neutral"
+              ]
+            },
+            "add": {
+              "component_groups": [
+                "sl:temper_hostile"
+              ]
+            },
+            "set_property": {
+              "sl:temper": "'hostile'"
+            }
+          },
+          {
+            "trigger": "sl:wake"
           }
         ]
       },

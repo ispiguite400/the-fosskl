@@ -18,9 +18,30 @@ import json, os
 BP = os.path.join(os.path.dirname(__file__), "..", "packs", "StillLife_BP")
 FV = "1.21.0"
 
-STATES = ["still", "roaming", "fleeing", "friendly", "hostile", "betraying", "jumpscare"]
-GROUPS = ["sl:mode_still", "sl:mode_roam", "sl:mode_flee", "sl:mode_neutral",
-          "sl:mode_hostile", "sl:mode_friend", "sl:mode_betray"]
+STATES = ["still", "alert", "roaming", "fleeing", "neutral", "friendly",
+          "hostile", "betraying", "jumpscare"]
+
+# Two rolls, made independently at spawn, that together decide what a copy is.
+#
+#   temperament -- how it treats you:
+#       peaceful  it will never start anything. Hurt it and it runs.
+#       neutral   it hits back, but only if you swing first.
+#       hostile   it was already wrong when it arrived.
+#
+#   motion -- how it moves:
+#       wander    walks the world like the animal it is copying.
+#       sentinel  holds the pose until something comes near, then moves.
+#       statue    holds the pose. Needs you very close before it breaks.
+#
+# The two axes own disjoint components -- temperament owns targeting and
+# damage response, motion owns movement and stroll -- so they compose without
+# ever fighting over the same component slot.
+TEMPERS = ["peaceful", "neutral", "hostile"]
+MOTIONS = ["wander", "sentinel", "statue"]
+
+TEMPER_G = ["sl:temper_peaceful", "sl:temper_neutral", "sl:temper_hostile"]
+MOTION_G = ["sl:motion_wander", "sl:motion_hold", "sl:motion_awake"]
+BOND_G = ["sl:mode_flee", "sl:mode_friend", "sl:mode_betray"]
 
 
 def w(rel, obj):
@@ -29,13 +50,35 @@ def w(rel, obj):
     json.dump(obj, open(p, "w"), indent=2)
 
 
-def ev(add, prop, extra=None):
-    e = {"remove": {"component_groups": [g for g in GROUPS if g != add]},
-         "add": {"component_groups": [add]},
-         "set_property": {"sl:state": f"'{prop}'"}}
-    if extra:
-        e.update(extra)
-    return e
+def temper_ev(add, name):
+    """Swap within the temperament axis. How it moves is left alone."""
+    return {"remove": {"component_groups": [g for g in TEMPER_G if g != add]},
+            "add": {"component_groups": [add]},
+            "set_property": {"sl:temper": f"'{name}'"}}
+
+
+def motion_ev(add, name, state, awake):
+    """Swap within the movement axis. Temperament is left alone."""
+    return {"remove": {"component_groups":
+                       [g for g in MOTION_G if g != add] + BOND_G},
+            "add": {"component_groups": [add]},
+            "set_property": {"sl:motion": f"'{name}'", "sl:state": f"'{state}'",
+                             "sl:awake": awake}}
+
+
+def wake_ev(add, state, awake):
+    """A held copy breaking pose, or settling back. Archetype is preserved."""
+    return {"remove": {"component_groups": [g for g in MOTION_G if g != add]},
+            "add": {"component_groups": [add]},
+            "set_property": {"sl:state": f"'{state}'", "sl:awake": awake}}
+
+
+def bond_ev(add, state):
+    """Flee, friendship and betrayal outrank both axes and own movement."""
+    return {"remove": {"component_groups":
+                       [g for g in BOND_G if g != add] + MOTION_G},
+            "add": {"component_groups": [add]},
+            "set_property": {"sl:state": f"'{state}'", "sl:awake": True}}
 
 
 def player_target(dist=16, must_see=True):
@@ -82,24 +125,48 @@ def still_life(name, health, speed, dmg, box, family, sounds=True,
                 "sprint_speed_multiplier": 1.9}],
             "on_escape": [{"event": "sl:calm_down", "target": "self"}],
         },
-        # taking a hit wakes it up; what it becomes is decided by the script,
-        # which knows how you have treated everything else
-        "minecraft:damage_sensor": {
-            "triggers": [{
-                "cause": "all", "deals_damage": True,
-                "on_damage": {
-                    "filters": {"test": "is_family", "subject": "other", "value": "player"},
-                    "event": "sl:struck_by_player", "target": "self"},
-            }]
-        },
+        # How it reacts to being hit depends on its temperament, so the damage
+        # sensor lives in the temperament groups rather than here.
+        #
+        # This is the "only moves when something is near" rule, and it is
+        # declarative on purpose: it keeps working on copies that are loaded
+        # but far from any script tick.
         "minecraft:environment_sensor": {
-            "triggers": [{
-                "filters": {"all_of": [
+            "triggers": [
+                # a sentinel holds its pose until you come near it
+                {"filters": {"all_of": [
+                    {"test": "enum_property", "domain": "sl:motion", "value": "sentinel"},
+                    {"test": "bool_property", "domain": "sl:awake", "value": False},
+                    {"test": "distance_to_nearest_player", "operator": "<", "value": 8.0}]},
+                 "event": "sl:wake", "target": "self"},
+                # and settles again once you are well clear
+                {"filters": {"all_of": [
+                    {"test": "enum_property", "domain": "sl:motion", "value": "sentinel"},
+                    {"test": "bool_property", "domain": "sl:awake", "value": True},
+                    {"test": "distance_to_nearest_player", "operator": ">", "value": 16.0}]},
+                 "event": "sl:sleep", "target": "self"},
+                # a statue needs you much closer, and even then it is a coin flip
+                {"filters": {"all_of": [
+                    {"test": "enum_property", "domain": "sl:motion", "value": "statue"},
+                    {"test": "bool_property", "domain": "sl:awake", "value": False},
+                    {"test": "distance_to_nearest_player", "operator": "<", "value": 4.0},
+                    {"test": "random_chance", "value": 26}]},
+                 "event": "sl:wake", "target": "self"},
+                {"filters": {"all_of": [
+                    {"test": "enum_property", "domain": "sl:motion", "value": "statue"},
+                    {"test": "bool_property", "domain": "sl:awake", "value": True},
+                    {"test": "distance_to_nearest_player", "operator": ">", "value": 12.0}]},
+                 "event": "sl:sleep", "target": "self"},
+                # anything that is awake and is standing right on top of you
+                # may bolt, whatever it is
+                {"filters": {"all_of": [
                     {"test": "has_component", "operator": "!=",
                      "value": "minecraft:is_tamed"},
-                    {"test": "distance_to_nearest_player", "operator": "<", "value": 3.5},
-                    {"test": "random_chance", "value": 220}]},
-                "event": "sl:startled", "target": "self"}]
+                    {"test": "enum_property", "domain": "sl:temper", "value": "peaceful"},
+                    {"test": "distance_to_nearest_player", "operator": "<", "value": 3.0},
+                    {"test": "random_chance", "value": 260}]},
+                 "event": "sl:startled", "target": "self"},
+            ]
         },
         # feed it cotton and it may decide it likes you
         "minecraft:tameable": {
@@ -121,18 +188,59 @@ def still_life(name, health, speed, dmg, box, family, sounds=True,
     if scale != 1.0:
         comp["minecraft:scale"] = {"value": scale}
 
+    def hurt_by(event):
+        return {"triggers": [{
+            "cause": "all", "deals_damage": True,
+            "on_damage": {
+                "filters": {"test": "is_family", "subject": "other", "value": "player"},
+                "event": event, "target": "self"}}]}
+
     groups = {
-        "sl:mode_still": {
-            "minecraft:movement": {"value": 0.0},
-            # occasionally, very slowly, it turns to look at you
-            "minecraft:behavior.look_at_player": {"priority": 8, "look_distance": 14,
-                                                  "probability": 0.014, "angle_of_view_horizontal": 360},
+        # ---- axis A: temperament. Owns targeting and damage response only.
+        "sl:temper_peaceful": {
+            # it will not fight you. Ever. Hit it and it leaves.
+            "minecraft:damage_sensor": hurt_by("sl:to_flee"),
         },
-        "sl:mode_roam": {
+        "sl:temper_neutral": {
+            "minecraft:damage_sensor": hurt_by("sl:wake"),
+            "minecraft:behavior.hurt_by_target": {"priority": 1},
+            "minecraft:behavior.melee_attack": {"priority": 2, "speed_multiplier": 1.15,
+                                                "track_target": True},
+        },
+        "sl:temper_hostile": {
+            "minecraft:damage_sensor": hurt_by("sl:wake"),
+            "minecraft:behavior.hurt_by_target": {"priority": 1},
+            "minecraft:behavior.nearest_attackable_target": player_target(18),
+            "minecraft:behavior.melee_attack": {"priority": 2, "speed_multiplier": 1.25,
+                                                "track_target": True},
+        },
+
+        # ---- axis B: motion. Owns movement, stroll and looking around only.
+        "sl:motion_wander": {
             "minecraft:behavior.random_stroll": {"priority": 6, "speed_multiplier": 0.62},
-            "minecraft:behavior.look_at_player": {"priority": 7, "look_distance": 9, "probability": 0.05},
+            "minecraft:behavior.look_at_player": {"priority": 7, "look_distance": 9,
+                                                  "probability": 0.05},
             "minecraft:behavior.random_look_around": {"priority": 9},
         },
+        # holding the pose. This is the only group that pins movement to zero.
+        "sl:motion_hold": {
+            "minecraft:movement": {"value": 0.0},
+            # occasionally, very slowly, it turns to look at you
+            "minecraft:behavior.look_at_player": {"priority": 8, "look_distance": 16,
+                                                  "probability": 0.02,
+                                                  "angle_of_view_horizontal": 360},
+        },
+        # broke pose because something came near. Moves with intent.
+        "sl:motion_awake": {
+            "minecraft:movement": {"value": round(speed * 1.15, 3)},
+            "minecraft:behavior.random_stroll": {"priority": 6, "speed_multiplier": 0.9},
+            "minecraft:behavior.look_at_player": {"priority": 5, "look_distance": 18,
+                                                  "probability": 0.5,
+                                                  "angle_of_view_horizontal": 360},
+            "minecraft:behavior.random_look_around": {"priority": 9},
+        },
+
+        # ---- axis C: bonds. These outrank both axes and own movement while up.
         "sl:mode_flee": {
             "minecraft:movement": {"value": round(speed * 1.85, 3)},
             "minecraft:behavior.panic": {"priority": 1, "speed_multiplier": 1.35},
@@ -145,21 +253,6 @@ def still_life(name, health, speed, dmg, box, family, sounds=True,
                 "on_escape": [{"event": "sl:calm_down", "target": "self"}]},
             "minecraft:behavior.random_stroll": {"priority": 6, "speed_multiplier": 1.0},
         },
-        "sl:mode_neutral": {
-            "minecraft:behavior.hurt_by_target": {"priority": 1},
-            "minecraft:behavior.melee_attack": {"priority": 2, "speed_multiplier": 1.15,
-                                                "track_target": True},
-            "minecraft:behavior.random_stroll": {"priority": 6, "speed_multiplier": 0.6},
-            "minecraft:behavior.look_at_player": {"priority": 7, "look_distance": 10, "probability": 0.06},
-        },
-        "sl:mode_hostile": {
-            "minecraft:movement": {"value": round(speed * 1.3, 3)},
-            "minecraft:behavior.hurt_by_target": {"priority": 1},
-            "minecraft:behavior.nearest_attackable_target": player_target(18),
-            "minecraft:behavior.melee_attack": {"priority": 4, "speed_multiplier": 1.25,
-                                                "track_target": True},
-            "minecraft:behavior.random_stroll": {"priority": 7, "speed_multiplier": 0.8},
-        },
         "sl:mode_friend": {
             "minecraft:is_tamed": {},
             "minecraft:persistent": {},
@@ -167,48 +260,72 @@ def still_life(name, health, speed, dmg, box, family, sounds=True,
                                                 "start_distance": 8, "stop_distance": 2.5},
             "minecraft:behavior.owner_hurt_by_target": {"priority": 2},
             "minecraft:behavior.owner_hurt_target": {"priority": 2},
-            "minecraft:behavior.melee_attack": {"priority": 3, "speed_multiplier": 1.2,
-                                                "track_target": True},
             "minecraft:behavior.look_at_player": {"priority": 8, "look_distance": 8, "probability": 0.10},
             "minecraft:behavior.random_stroll": {"priority": 9, "speed_multiplier": 0.6},
         },
         # it still follows you. it is just not on your side any more.
+        # Targeting and the swing itself come from the temperament group the
+        # betrayal event forces on, so nothing here fights it for the slot.
         "sl:mode_betray": {
             "minecraft:is_tamed": {},
             "minecraft:persistent": {},
             "minecraft:movement": {"value": round(speed * 1.5, 3)},
             "minecraft:attack": {"damage": dmg + 2},
-            "minecraft:behavior.nearest_attackable_target": player_target(24, must_see=False),
-            "minecraft:behavior.melee_attack": {"priority": 3, "speed_multiplier": 1.4,
-                                                "track_target": True},
         },
     }
 
     events = {
-        "minecraft:entity_spawned": {"randomize": [
-            {"weight": 58, "trigger": "sl:to_still"},
-            {"weight": 24, "trigger": "sl:to_roam"},
-            {"weight": 12, "trigger": "sl:to_neutral"},
-            {"weight": 6, "trigger": "sl:to_hostile"}]},
-        "sl:to_still": ev("sl:mode_still", "still"),
-        "sl:to_roam": ev("sl:mode_roam", "roaming"),
-        "sl:to_flee": ev("sl:mode_flee", "fleeing"),
-        "sl:to_neutral": ev("sl:mode_neutral", "still"),
-        "sl:to_hostile": ev("sl:mode_hostile", "hostile"),
-        "sl:to_friend": ev("sl:mode_friend", "friendly"),
-        "sl:to_betray": ev("sl:mode_betray", "betraying"),
-        "sl:on_tame": ev("sl:mode_friend", "friendly"),
+        # the two rolls are made independently, so every combination exists:
+        # a peaceful wanderer is a normal animal, a hostile sentinel is a
+        # statue that charges the moment you walk past it
+        "minecraft:entity_spawned": {"sequence": [
+            {"randomize": [
+                {"weight": 55, "trigger": "sl:be_peaceful"},
+                {"weight": 30, "trigger": "sl:be_neutral"},
+                {"weight": 15, "trigger": "sl:be_hostile"}]},
+            {"randomize": [
+                {"weight": 45, "trigger": "sl:to_wander"},
+                {"weight": 37, "trigger": "sl:to_sentinel"},
+                {"weight": 18, "trigger": "sl:to_statue"}]},
+        ]},
+
+        "sl:be_peaceful": temper_ev("sl:temper_peaceful", "peaceful"),
+        "sl:be_neutral": temper_ev("sl:temper_neutral", "neutral"),
+        "sl:be_hostile": temper_ev("sl:temper_hostile", "hostile"),
+
+        "sl:to_wander": motion_ev("sl:motion_wander", "wander", "roaming", True),
+        "sl:to_sentinel": motion_ev("sl:motion_hold", "sentinel", "still", False),
+        "sl:to_statue": motion_ev("sl:motion_hold", "statue", "still", False),
+
+        "sl:wake": wake_ev("sl:motion_awake", "alert", True),
+        "sl:sleep": wake_ev("sl:motion_hold", "still", False),
+
+        "sl:to_flee": bond_ev("sl:mode_flee", "fleeing"),
+        # a bond decides the temperament too: something that has adopted you
+        # will defend you, and something that has turned will hunt you,
+        # whatever it happened to roll when it spawned
+        "sl:to_friend": {"sequence": [temper_ev("sl:temper_neutral", "neutral"),
+                                      bond_ev("sl:mode_friend", "friendly")]},
+        "sl:on_tame": {"sequence": [temper_ev("sl:temper_neutral", "neutral"),
+                                    bond_ev("sl:mode_friend", "friendly")]},
+        "sl:to_betray": {"sequence": [temper_ev("sl:temper_hostile", "hostile"),
+                                      bond_ev("sl:mode_betray", "betraying")]},
+
+        # once it has escaped, it settles into a new pose somewhere else
         "sl:calm_down": {"randomize": [
-            {"weight": 70, "trigger": "sl:to_still"},
-            {"weight": 30, "trigger": "sl:to_roam"}]},
-        # a still life that is struck mostly runs. Sometimes it does not.
-        "sl:struck_by_player": {"randomize": [
-            {"weight": 62, "trigger": "sl:to_flee"},
-            {"weight": 30, "trigger": "sl:to_neutral"},
-            {"weight": 8, "trigger": "sl:to_hostile"}]},
+            {"weight": 42, "trigger": "sl:to_sentinel"},
+            {"weight": 38, "trigger": "sl:to_wander"},
+            {"weight": 20, "trigger": "sl:to_statue"}]},
         "sl:startled": {"randomize": [
             {"weight": 74, "trigger": "sl:noop"},
             {"weight": 26, "trigger": "sl:to_flee"}]},
+        # kept so the script can still push a copy straight into a mood
+        "sl:to_still": motion_ev("sl:motion_hold", "sentinel", "still", False),
+        "sl:to_roam": motion_ev("sl:motion_wander", "wander", "roaming", True),
+        "sl:to_neutral": temper_ev("sl:temper_neutral", "neutral"),
+        "sl:to_hostile": {"sequence": [
+            temper_ev("sl:temper_hostile", "hostile"),
+            {"trigger": "sl:wake"}]},
         "sl:noop": {},
         "sl:jumpscare_pose": {"set_property": {"sl:state": "'jumpscare'"}},
         "sl:decay_0": {"set_property": {"sl:decay": 0}},
@@ -225,6 +342,12 @@ def still_life(name, health, speed, dmg, box, family, sounds=True,
                 "properties": {
                     "sl:state": {"type": "enum", "values": STATES,
                                  "default": "still", "client_sync": True},
+                    "sl:temper": {"type": "enum", "values": TEMPERS,
+                                  "default": "peaceful", "client_sync": True},
+                    "sl:motion": {"type": "enum", "values": MOTIONS,
+                                  "default": "wander", "client_sync": True},
+                    "sl:awake": {"type": "bool", "default": True,
+                                 "client_sync": True},
                     "sl:decay": {"type": "int", "range": [0, 2],
                                  "default": 0, "client_sync": True},
                 },

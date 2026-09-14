@@ -134,9 +134,113 @@ def jumpscare_anim(fam):
     return {"loop": False, "animation_length": 1.1, "bones": b}
 
 
+def idle_anim(fam):
+    """The living idle -- breathing, weight shift, a slow scan of the room.
+
+    Every copy runs this whether it is walking or holding a pose, which is
+    what makes a still life read as *paused* rather than as a lump of geometry.
+    Amplitude is scaled by variable.sl_rest so it fades out as the copy starts
+    to walk and the stride takes over. Molang trig is in degrees, so the
+    multipliers on query.life_time are degrees-per-second: 110 is roughly a
+    three-second breath, 23 a fifteen-second scan.
+    """
+    R = "variable.sl_rest"
+    L = "query.life_time"
+    P = "variable.sl_seed"                       # per-entity phase offset
+    br = f"1.0 + math.sin({L} * 110 + {P}) * 0.020 * {R}"
+    b = {}
+    if fam in ("humanoid", "tall"):
+        # a tall thing sways more slowly and further
+        k = 1.0 if fam == "humanoid" else 1.8
+        b["body"] = {
+            "scale": [br, "1.0", br],
+            "rotation": [f"math.sin({L} * 55 + {P}) * {0.9 * k} * {R}", 0,
+                         f"math.cos({L} * 37 + {P}) * {1.2 * k} * {R}"],
+            "position": [0, f"math.sin({L} * 110 + {P}) * {0.16 * k} * {R}", 0]}
+        b["head"] = {"rotation": [
+            f"math.sin({L} * 23 + {P}) * {3.2 * k} * {R}",
+            f"math.sin({L} * 13 + {P}) * {11.0} * {R}",
+            f"math.cos({L} * 29 + {P}) * 1.6 * {R}"]}
+        b["leftArm"] = {"rotation": [f"math.sin({L} * 47 + {P}) * 2.4 * {R}", 0,
+                                     f"1.6 + math.cos({L} * 41 + {P}) * 1.5 * {R}"]}
+        b["rightArm"] = {"rotation": [f"math.cos({L} * 43 + {P}) * 2.4 * {R}", 0,
+                                      f"-1.6 - math.sin({L} * 41 + {P}) * 1.5 * {R}"]}
+    elif fam == "villager":
+        b["body"] = {"scale": [br, "1.0", br],
+                     "rotation": [f"math.sin({L} * 51 + {P}) * 0.8 * {R}", 0,
+                                  f"math.cos({L} * 33 + {P}) * 1.0 * {R}"],
+                     "position": [0, f"math.sin({L} * 110 + {P}) * 0.15 * {R}", 0]}
+        b["head"] = {"rotation": [f"math.sin({L} * 21 + {P}) * 3.0 * {R}",
+                                  f"math.sin({L} * 11 + {P}) * 13.0 * {R}",
+                                  f"math.cos({L} * 27 + {P}) * 1.4 * {R}"]}
+        b["arms"] = {"rotation": [f"math.sin({L} * 45 + {P}) * 2.0 * {R}", 0, 0],
+                     "position": [0, f"math.sin({L} * 110 + {P}) * 0.1 * {R}", 0]}
+    elif fam == "quad":
+        b["body"] = {"scale": ["1.0", br, br],
+                     "rotation": [0, 0, f"math.cos({L} * 39 + {P}) * 1.4 * {R}"],
+                     "position": [0, f"math.sin({L} * 110 + {P}) * 0.13 * {R}", 0]}
+        # the slow graze: head dips, holds, comes back up
+        b["head"] = {"rotation": [f"6.0 * {R} + math.sin({L} * 19 + {P}) * 7.0 * {R}",
+                                  f"math.sin({L} * 12 + {P}) * 12.0 * {R}",
+                                  f"math.cos({L} * 25 + {P}) * 2.0 * {R}"]}
+        # legs barely shift weight when standing
+        for i, sgn in enumerate((1, -1, -1, 1)):
+            b[f"leg{i}"] = {"rotation": [
+                f"math.sin({L} * 31 + {P} + {i * 90}) * {1.1 * sgn} * {R}", 0, 0]}
+    elif fam == "bird":
+        b["body"] = {"scale": [br, br, "1.0"],
+                     "position": [0, f"math.sin({L} * 130 + {P}) * 0.14 * {R}", 0]}
+        # a bird's head is never still: fast, jerky, punctuated
+        b["head"] = {"rotation": [f"math.sin({L} * 37 + {P}) * 5.0 * {R}",
+                                  f"math.sin({L} * 61 + {P}) * 22.0 * {R}", 0],
+                     "position": [0, 0, f"math.cos({L} * 61 + {P}) * 0.5 * {R}"]}
+        b["wing0"] = {"rotation": [0, 0, f"-2.0 - math.sin({L} * 71 + {P}) * 3.0 * {R}"]}
+        b["wing1"] = {"rotation": [0, 0, f"2.0 + math.sin({L} * 71 + {P}) * 3.0 * {R}"]}
+        for i in (0, 1):
+            b[f"leg{i}"] = {"rotation": [
+                f"math.sin({L} * 29 + {P} + {i * 180}) * 1.6 * {R}", 0, 0]}
+    return {"loop": True, "bones": b}
+
+
+def alert_anim(fam):
+    """Breaking pose. The head comes up first, then the body follows.
+
+    This is the tell that a sentinel has noticed you, so it is deliberately
+    readable from a distance: a sharp lift, then a slow settle into a stance
+    that is clearly no longer the pose it was holding.
+    """
+    head = {"rotation": {"0.0": [0, 0, 0], "0.12": [-22, 0, 0],
+                         "0.45": [-12, 14, 0], "0.9": [-9, -12, 0],
+                         "1.5": [-6, 0, 0]}}
+    body = {"rotation": {"0.0": [0, 0, 0], "0.16": [-6, 0, 0], "1.5": [-2, 0, 0]},
+            "position": {"0.0": [0, 0, 0], "0.16": [0, 0.4, 0], "1.5": [0, 0.15, 0]}}
+    b = {"head": head, "body": body}
+    if fam in ("humanoid", "tall"):
+        b["leftArm"] = {"rotation": {"0.0": [0, 0, 0], "0.2": [-14, 0, 9],
+                                     "1.5": [-5, 0, 5]}}
+        b["rightArm"] = {"rotation": {"0.0": [0, 0, 0], "0.2": [-14, 0, -9],
+                                      "1.5": [-5, 0, -5]}}
+    elif fam == "villager":
+        b["arms"] = {"rotation": {"0.0": [0, 0, 0], "0.2": [-18, 0, 0],
+                                  "1.5": [-7, 0, 0]}}
+    elif fam == "quad":
+        # head snaps up out of the graze, front legs plant
+        for i in (0, 1):
+            b[f"leg{i}"] = {"rotation": {"0.0": [0, 0, 0], "0.14": [-9, 0, 0],
+                                         "1.5": [-3, 0, 0]}}
+    elif fam == "bird":
+        b["wing0"] = {"rotation": {"0.0": [0, 0, 0], "0.1": [0, 0, -52],
+                                   "0.6": [0, 0, -14], "1.5": [0, 0, -6]}}
+        b["wing1"] = {"rotation": {"0.0": [0, 0, 0], "0.1": [0, 0, 52],
+                                   "0.6": [0, 0, 14], "1.5": [0, 0, 6]}}
+    return {"loop": "hold_on_last_frame", "animation_length": 1.5, "bones": b}
+
+
 def gen_animations():
     anims = {f"animation.sl.distort.{f}": distort_anim(f) for f in FAM_BONES}
     anims.update({f"animation.sl.jumpscare.{f}": jumpscare_anim(f) for f in FAM_BONES})
+    anims.update({f"animation.sl.idle.{f}": idle_anim(f) for f in FAM_BONES})
+    anims.update({f"animation.sl.alert.{f}": alert_anim(f) for f in FAM_BONES})
     # the world's later, worse copies twitch harder
     w("animations/distort.animation.json", {"format_version": "1.8.0", "animations": anims})
     print(f"animations: {len(anims)} generated (distort + jumpscare per family)")
@@ -224,6 +328,7 @@ def gen_render_controllers():
 def client_entity(name, cfg):
     fam = cfg["fam"]
     vanilla = cfg.get("vanilla", False)
+    boss = cfg.get("boss", False)
     multi = cfg["decay"] > 1 and not vanilla
     tex = {"default": "textures/entity/steve" if vanilla
            else f"textures/entity/still_life/{name}"}
@@ -234,17 +339,26 @@ def client_entity(name, cfg):
     anims = {
         "move": f"animation.sl.{FAM_MOVE[fam]}.move",
         "look_at": "animation.sl.look_at_target",
-        "breathe": "animation.sl.idle_breath",
+        "idle": f"animation.sl.idle.{fam}",
+        "alert": f"animation.sl.alert.{fam}",
         "distort": f"animation.sl.distort.{fam}",
         "panic": "animation.sl.flee_panic",
         "attack": f"animation.sl.{FAM_ATTACK[fam]}.attack",
         "jumpscare": f"animation.sl.jumpscare.{fam}",
         "action": f"controller.animation.sl.action.{fam}",
     }
-    animate = ["look_at", "move",
-               {"breathe": "query.modified_move_speed < 0.05"},
+    # idle runs unconditionally -- it is amplitude-gated by variable.sl_rest
+    # instead, so a copy that is walking blends smoothly out of it rather than
+    # popping between two animations
+    animate = ["look_at", "move", "idle",
                {"panic": "query.property('sl:state') == 'fleeing'"},
                "action"]
+    # only the still lifes carry the temperament/motion properties; the two
+    # bosses have their own, much shorter state list
+    if not boss:
+        animate.insert(3, {"alert": "query.property('sl:state') == 'alert'"})
+    else:
+        anims.pop("alert", None)
     if vanilla:
         # it is the player model. Do not warp it.
         anims.pop("distort", None)
@@ -262,7 +376,10 @@ def client_entity(name, cfg):
         "variable.sl_seed = variable.sl_seed ?? math.random(0.0, 6.2832);",
         "variable.sl_skew = variable.sl_skew ?? math.random(-1.0, 1.0);",
         "variable.sl_awake = math.clamp(query.modified_move_speed * 6.0, 0.0, 1.0);",
-        "variable.sl_hostile = (query.property('sl:state') == 'hostile' || query.property('sl:state') == 'betraying') ? 1.0 : 0.0;",
+        "variable.sl_rest = 1.0 - variable.sl_awake;",
+        ("variable.sl_hostile = (query.property('sl:state') == 'hostile') ? 1.0 : 0.0;"
+         if boss else
+         "variable.sl_hostile = (query.property('sl:temper') == 'hostile' || query.property('sl:state') == 'betraying') ? 1.0 : 0.0;"),
         "variable.sl_t = query.life_time * (0.35 + variable.sl_awake * 5.5 + variable.sl_hostile * 3.0);",
         "variable.sl_amp = 0.30 + variable.sl_awake * 0.85 + query.property('sl:decay') * 0.35 + variable.sl_hostile * 0.6;",
     ]

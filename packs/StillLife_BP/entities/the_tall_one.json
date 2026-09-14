@@ -11,8 +11,10 @@
           "type": "enum",
           "values": [
             "still",
+            "alert",
             "roaming",
             "fleeing",
+            "neutral",
             "friendly",
             "hostile",
             "betraying",

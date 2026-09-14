@@ -107,12 +107,52 @@ function ambientSpawn(p) {
   const e = safe(() => p.dimension.spawnEntity(kind, loc), "ambient-spawn");
   if (!e) return;
   tag(e, decayTier());
-  // a corrupt world produces angrier copies
-  const r = rnd();
-  if (r < 0.55 - t * 0.25) e.triggerEvent("sl:to_still");
-  else if (r < 0.80 - t * 0.1) e.triggerEvent("sl:to_roam");
-  else if (r < 0.93 - t * 0.15) e.triggerEvent("sl:to_neutral");
-  else e.triggerEvent("sl:to_hostile");
+  disposition(e, t);
+}
+
+/** Roll what a copy *is*, on two independent axes.
+ *
+ * Temperament and movement are decided separately on purpose: a copy that
+ * walks around is not thereby harmless, and a copy holding a pose is not
+ * thereby dangerous. Corruption pushes the temperament roll toward hostile
+ * and leaves the movement roll alone -- a rotten world is meaner, not stiller.
+ */
+function disposition(e, t) {
+  safe(() => {
+    const r = rnd();
+    if (r < 0.55 - t * 0.34) e.triggerEvent("sl:be_peaceful");
+    else if (r < 0.85 - t * 0.16) e.triggerEvent("sl:be_neutral");
+    else e.triggerEvent("sl:be_hostile");
+
+    const m = rnd();
+    if (m < 0.45) e.triggerEvent("sl:to_wander");
+    else if (m < 0.82) e.triggerEvent("sl:to_sentinel");
+    else e.triggerEvent("sl:to_statue");
+  }, "disposition");
+}
+
+/** Sentinels also break pose for things that are not you.
+ *
+ * The entity's own environment sensor covers player proximity with no script
+ * tick at all; this pass adds the rest of what counts as danger -- a monster
+ * nearby, an apex in the area -- which the sensor cannot express.
+ */
+function dangerPass(p) {
+  const threats = safe(() => p.dimension.getEntities({
+    location: p.location, maxDistance: 40, families: ["monster"],
+  }), "threats") ?? [];
+  const apex = safe(() => p.dimension.getEntities({
+    location: p.location, maxDistance: 60, families: ["sl_apex"],
+  }), "apex") ?? [];
+  const all = threats.concat(apex);
+  if (!all.length) return;
+
+  for (const e of stillsNear(p, 48)) {
+    const held = safe(() => e.getProperty("sl:awake") === false, "awake") === true;
+    if (!held) continue;
+    const near = all.some((m) => dist2(m.location, e.location) < 18 * 18);
+    if (near) safe(() => e.triggerEvent("sl:wake"), "danger-wake");
+  }
 }
 
 // ----------------------------------------------------- friendship, and not
@@ -159,6 +199,11 @@ export function install() {
   every(400, () => {
     for (const p of world.getAllPlayers()) betrayalPass(p);
   }, "still-betray");
+
+  // sentinels react to danger that is not the player
+  every(40, () => {
+    for (const p of world.getAllPlayers()) dangerPass(p);
+  }, "still-danger");
 
   // taming feedback + the karma reward for being kind to a copy
   safe(() => world.afterEvents.entityHitEntity.subscribe(() => {}), "noop");

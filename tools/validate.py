@@ -326,6 +326,62 @@ uuids = [bpm["header"]["uuid"], rpm["header"]["uuid"]] + \
 if len(set(uuids)) != len(uuids):
     err("duplicate UUIDs across manifests")
 
+# ------------------------------------- still life axes: no component fights
+# Temperament and movement are separate component groups that are active at
+# the same time. If any component appeared in two groups that can both be on,
+# whichever the engine applied last would silently win -- so check every
+# combination that can actually occur.
+TEMPER_G = ["sl:temper_peaceful", "sl:temper_neutral", "sl:temper_hostile"]
+MOTION_G = ["sl:motion_wander", "sl:motion_hold", "sl:motion_awake"]
+BOND_G = ["sl:mode_flee", "sl:mode_friend", "sl:mode_betray"]
+
+for ident, (path, ent) in bp_ents.items():
+    groups = ent.get("component_groups", {})
+    if not all(g in groups for g in TEMPER_G):
+        continue                                   # not a still life
+    name = os.path.basename(path)
+    for temper in TEMPER_G:
+        # a bond owns movement outright, so motion groups are off while one is up
+        for other in [[m] for m in MOTION_G] + [[b] for b in BOND_G]:
+            seen = {}
+            for grp in [temper] + other:
+                for comp in groups.get(grp, {}):
+                    if comp in seen:
+                        err(f"{name}: {comp} is in both {seen[comp]} and {grp}, "
+                            f"which can be active together")
+                    seen[comp] = grp
+    # every event a state machine hop names has to be a real event
+    events = ent.get("events", {})
+    for ev_name, body in events.items():
+        stack = [body]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, dict):
+                for k, v in node.items():
+                    if k == "trigger" and v not in events:
+                        err(f"{name}: event {ev_name} triggers missing {v}")
+                    if k == "component_groups":
+                        for cg in v:
+                            if cg not in groups:
+                                err(f"{name}: event {ev_name} names missing group {cg}")
+                    stack.append(v)
+            elif isinstance(node, list):
+                stack.extend(node)
+    # anything a filter or animation compares against must be a declared value
+    props = ent.get("description", {}).get("properties", {})
+    for pname in ("sl:state", "sl:temper", "sl:motion"):
+        if pname not in props:
+            err(f"{name}: missing property {pname}")
+    # the spawn table has to be able to produce every temperament and every
+    # movement archetype, or a whole category of copy silently never appears
+    spawned = json.dumps(events.get("minecraft:entity_spawned", {}))
+    for t in ("peaceful", "neutral", "hostile"):
+        if f"sl:be_{t}" not in spawned:
+            err(f"{name}: spawn table can never roll temperament {t}")
+    for m in ("wander", "sentinel", "statue"):
+        if f"sl:to_{m}" not in spawned:
+            err(f"{name}: spawn table can never roll motion {m}")
+
 # ------------------------------------------------------------------ report
 print(f"entities {len(bp_ents)}  items {len(items)}  blocks {len(blocks)}  "
       f"sounds {len(sound_ids)}")

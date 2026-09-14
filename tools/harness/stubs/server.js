@@ -4,7 +4,7 @@ export const EquipmentSlot = { Head:"Head", Chest:"Chest", Legs:"Legs", Feet:"Fe
 export class ItemStack { constructor(id,n=1){ this.typeId=id; this.amount=n; } }
 export class BlockPermutation { static resolve(id){ return { type:{id} }; } }
 
-export const CALLS = { commands:[], sounds:[], spawns:[], setBlocks:0, effects:[] };
+export const CALLS = { commands:[], sounds:[], spawns:[], setBlocks:0, effects:[], events:[] };
 
 class Block {
   constructor(dim,x,y,z){ this.dimension=dim; this.x=x; this.y=y; this.z=z;
@@ -25,7 +25,7 @@ class Entity {
   getProperty(k){ return this._props[k]; }
   setProperty(k,v){ this._props[k]=v; }
   triggerEvent(e){ if(typeof e!=="string") throw new Error("triggerEvent needs a string");
-    this._lastEvent=e; }
+    this._lastEvent=e; CALLS.events.push(`${this.typeId}#${this.id} ${e}`); }
   addTag(t){ this._tags.add(t); return true; }
   hasTag(t){ return this._tags.has(t); }
   remove(){ this.isValid=false; }
@@ -77,6 +77,7 @@ class Dimension {
     if(q?.tags) l=l.filter(e=>q.tags.every(t=>e.hasTag(t)));
     if(q?.families) l=l.filter(e=>q.families.some(f=>
        (f==="still_life"&&e.typeId.startsWith("sl:still_"))||
+       (f==="monster"&&/^minecraft:(zombie|skeleton|creeper|spider|husk)/.test(e.typeId))||
        (f==="sl_apex"&&(e.typeId==="sl:the_tall_one"||e.typeId==="sl:captain_clark"))));
     return l; }
   getPlayers(q){ return world._players; }
