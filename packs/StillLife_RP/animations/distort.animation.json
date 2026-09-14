@@ -946,35 +946,49 @@
             "1.0 + math.sin(query.life_time * 110 + variable.sl_seed) * 0.020 * variable.sl_rest"
           ],
           "rotation": [
-            "math.sin(query.life_time * 55 + variable.sl_seed) * 0.9 * variable.sl_rest",
+            "math.sin(query.life_time * 55 + variable.sl_seed) * 1.8 * variable.sl_rest",
             0,
-            "math.cos(query.life_time * 37 + variable.sl_seed) * 1.2 * variable.sl_rest"
+            "math.cos(query.life_time * 37 + variable.sl_seed) * 2.4 * variable.sl_rest"
           ],
           "position": [
-            0,
-            "math.sin(query.life_time * 110 + variable.sl_seed) * 0.16 * variable.sl_rest",
+            "math.cos(query.life_time * 37 + variable.sl_seed) * 0.22 * variable.sl_rest",
+            "math.sin(query.life_time * 110 + variable.sl_seed) * 0.34 * variable.sl_rest",
             0
           ]
         },
         "head": {
           "rotation": [
-            "math.sin(query.life_time * 23 + variable.sl_seed) * 3.2 * variable.sl_rest",
-            "math.sin(query.life_time * 13 + variable.sl_seed) * 11.0 * variable.sl_rest",
-            "math.cos(query.life_time * 29 + variable.sl_seed) * 1.6 * variable.sl_rest"
+            "math.sin(query.life_time * 23 + variable.sl_seed) * 6.0 * variable.sl_rest",
+            "math.sin(query.life_time * 13 + variable.sl_seed) * 19.0 * variable.sl_rest",
+            "math.cos(query.life_time * 29 + variable.sl_seed) * 3.2 * variable.sl_rest"
           ]
         },
         "leftArm": {
           "rotation": [
-            "math.sin(query.life_time * 47 + variable.sl_seed) * 2.4 * variable.sl_rest",
+            "math.sin(query.life_time * 47 + variable.sl_seed) * 5.0 * variable.sl_rest",
             0,
-            "1.6 + math.cos(query.life_time * 41 + variable.sl_seed) * 1.5 * variable.sl_rest"
+            "2.0 + math.cos(query.life_time * 41 + variable.sl_seed) * 3.2 * variable.sl_rest"
           ]
         },
         "rightArm": {
           "rotation": [
-            "math.cos(query.life_time * 43 + variable.sl_seed) * 2.4 * variable.sl_rest",
+            "math.cos(query.life_time * 43 + variable.sl_seed) * 5.0 * variable.sl_rest",
             0,
-            "-1.6 - math.sin(query.life_time * 41 + variable.sl_seed) * 1.5 * variable.sl_rest"
+            "-2.0 - math.sin(query.life_time * 41 + variable.sl_seed) * 3.2 * variable.sl_rest"
+          ]
+        },
+        "leftLeg": {
+          "rotation": [
+            "math.cos(query.life_time * 37 + variable.sl_seed) * 2.2 * variable.sl_rest",
+            0,
+            0
+          ]
+        },
+        "rightLeg": {
+          "rotation": [
+            "-math.cos(query.life_time * 37 + variable.sl_seed) * 2.2 * variable.sl_rest",
+            0,
+            0
           ]
         }
       }
@@ -989,35 +1003,49 @@
             "1.0 + math.sin(query.life_time * 110 + variable.sl_seed) * 0.020 * variable.sl_rest"
           ],
           "rotation": [
-            "math.sin(query.life_time * 55 + variable.sl_seed) * 1.62 * variable.sl_rest",
+            "math.sin(query.life_time * 55 + variable.sl_seed) * 3.24 * variable.sl_rest",
             0,
-            "math.cos(query.life_time * 37 + variable.sl_seed) * 2.16 * variable.sl_rest"
+            "math.cos(query.life_time * 37 + variable.sl_seed) * 4.32 * variable.sl_rest"
           ],
           "position": [
-            0,
-            "math.sin(query.life_time * 110 + variable.sl_seed) * 0.28800000000000003 * variable.sl_rest",
+            "math.cos(query.life_time * 37 + variable.sl_seed) * 0.396 * variable.sl_rest",
+            "math.sin(query.life_time * 110 + variable.sl_seed) * 0.6120000000000001 * variable.sl_rest",
             0
           ]
         },
         "head": {
           "rotation": [
-            "math.sin(query.life_time * 23 + variable.sl_seed) * 5.760000000000001 * variable.sl_rest",
-            "math.sin(query.life_time * 13 + variable.sl_seed) * 11.0 * variable.sl_rest",
-            "math.cos(query.life_time * 29 + variable.sl_seed) * 1.6 * variable.sl_rest"
+            "math.sin(query.life_time * 23 + variable.sl_seed) * 10.8 * variable.sl_rest",
+            "math.sin(query.life_time * 13 + variable.sl_seed) * 19.0 * variable.sl_rest",
+            "math.cos(query.life_time * 29 + variable.sl_seed) * 3.2 * variable.sl_rest"
           ]
         },
         "leftArm": {
           "rotation": [
-            "math.sin(query.life_time * 47 + variable.sl_seed) * 2.4 * variable.sl_rest",
+            "math.sin(query.life_time * 47 + variable.sl_seed) * 5.0 * variable.sl_rest",
             0,
-            "1.6 + math.cos(query.life_time * 41 + variable.sl_seed) * 1.5 * variable.sl_rest"
+            "2.0 + math.cos(query.life_time * 41 + variable.sl_seed) * 3.2 * variable.sl_rest"
           ]
         },
         "rightArm": {
           "rotation": [
-            "math.cos(query.life_time * 43 + variable.sl_seed) * 2.4 * variable.sl_rest",
+            "math.cos(query.life_time * 43 + variable.sl_seed) * 5.0 * variable.sl_rest",
             0,
-            "-1.6 - math.sin(query.life_time * 41 + variable.sl_seed) * 1.5 * variable.sl_rest"
+            "-2.0 - math.sin(query.life_time * 41 + variable.sl_seed) * 3.2 * variable.sl_rest"
+          ]
+        },
+        "leftLeg": {
+          "rotation": [
+            "math.cos(query.life_time * 37 + variable.sl_seed) * 2.2 * variable.sl_rest",
+            0,
+            0
+          ]
+        },
+        "rightLeg": {
+          "rotation": [
+            "-math.cos(query.life_time * 37 + variable.sl_seed) * 2.2 * variable.sl_rest",
+            0,
+            0
           ]
         }
       }
@@ -1032,32 +1060,46 @@
             "1.0 + math.sin(query.life_time * 110 + variable.sl_seed) * 0.020 * variable.sl_rest"
           ],
           "rotation": [
-            "math.sin(query.life_time * 51 + variable.sl_seed) * 0.8 * variable.sl_rest",
+            "math.sin(query.life_time * 51 + variable.sl_seed) * 1.7 * variable.sl_rest",
             0,
-            "math.cos(query.life_time * 33 + variable.sl_seed) * 1.0 * variable.sl_rest"
+            "math.cos(query.life_time * 33 + variable.sl_seed) * 2.2 * variable.sl_rest"
           ],
           "position": [
-            0,
-            "math.sin(query.life_time * 110 + variable.sl_seed) * 0.15 * variable.sl_rest",
+            "math.cos(query.life_time * 33 + variable.sl_seed) * 0.2 * variable.sl_rest",
+            "math.sin(query.life_time * 110 + variable.sl_seed) * 0.32 * variable.sl_rest",
             0
           ]
         },
         "head": {
           "rotation": [
-            "math.sin(query.life_time * 21 + variable.sl_seed) * 3.0 * variable.sl_rest",
-            "math.sin(query.life_time * 11 + variable.sl_seed) * 13.0 * variable.sl_rest",
-            "math.cos(query.life_time * 27 + variable.sl_seed) * 1.4 * variable.sl_rest"
+            "math.sin(query.life_time * 21 + variable.sl_seed) * 5.5 * variable.sl_rest",
+            "math.sin(query.life_time * 11 + variable.sl_seed) * 21.0 * variable.sl_rest",
+            "math.cos(query.life_time * 27 + variable.sl_seed) * 3.0 * variable.sl_rest"
           ]
         },
         "arms": {
           "rotation": [
-            "math.sin(query.life_time * 45 + variable.sl_seed) * 2.0 * variable.sl_rest",
+            "math.sin(query.life_time * 45 + variable.sl_seed) * 4.5 * variable.sl_rest",
             0,
             0
           ],
           "position": [
             0,
-            "math.sin(query.life_time * 110 + variable.sl_seed) * 0.1 * variable.sl_rest",
+            "math.sin(query.life_time * 110 + variable.sl_seed) * 0.22 * variable.sl_rest",
+            0
+          ]
+        },
+        "leg0": {
+          "rotation": [
+            "math.cos(query.life_time * 33 + variable.sl_seed) * 2.0 * variable.sl_rest",
+            0,
+            0
+          ]
+        },
+        "leg1": {
+          "rotation": [
+            "-math.cos(query.life_time * 33 + variable.sl_seed) * 2.0 * variable.sl_rest",
+            0,
             0
           ]
         }

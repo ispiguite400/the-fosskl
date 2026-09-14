@@ -154,27 +154,34 @@ def idle_anim(fam):
         k = 1.0 if fam == "humanoid" else 1.8
         b["body"] = {
             "scale": [br, "1.0", br],
-            "rotation": [f"math.sin({L} * 55 + {P}) * {0.9 * k} * {R}", 0,
-                         f"math.cos({L} * 37 + {P}) * {1.2 * k} * {R}"],
-            "position": [0, f"math.sin({L} * 110 + {P}) * {0.16 * k} * {R}", 0]}
+            "rotation": [f"math.sin({L} * 55 + {P}) * {1.8 * k} * {R}", 0,
+                         f"math.cos({L} * 37 + {P}) * {2.4 * k} * {R}"],
+            "position": [f"math.cos({L} * 37 + {P}) * {0.22 * k} * {R}",
+                         f"math.sin({L} * 110 + {P}) * {0.34 * k} * {R}", 0]}
         b["head"] = {"rotation": [
-            f"math.sin({L} * 23 + {P}) * {3.2 * k} * {R}",
-            f"math.sin({L} * 13 + {P}) * {11.0} * {R}",
-            f"math.cos({L} * 29 + {P}) * 1.6 * {R}"]}
-        b["leftArm"] = {"rotation": [f"math.sin({L} * 47 + {P}) * 2.4 * {R}", 0,
-                                     f"1.6 + math.cos({L} * 41 + {P}) * 1.5 * {R}"]}
-        b["rightArm"] = {"rotation": [f"math.cos({L} * 43 + {P}) * 2.4 * {R}", 0,
-                                      f"-1.6 - math.sin({L} * 41 + {P}) * 1.5 * {R}"]}
+            f"math.sin({L} * 23 + {P}) * {6.0 * k} * {R}",
+            f"math.sin({L} * 13 + {P}) * 19.0 * {R}",
+            f"math.cos({L} * 29 + {P}) * 3.2 * {R}"]}
+        b["leftArm"] = {"rotation": [f"math.sin({L} * 47 + {P}) * 5.0 * {R}", 0,
+                                     f"2.0 + math.cos({L} * 41 + {P}) * 3.2 * {R}"]}
+        b["rightArm"] = {"rotation": [f"math.cos({L} * 43 + {P}) * 5.0 * {R}", 0,
+                                      f"-2.0 - math.sin({L} * 41 + {P}) * 3.2 * {R}"]}
+        # the weight shifts from one leg to the other, slowly
+        b["leftLeg"] = {"rotation": [f"math.cos({L} * 37 + {P}) * 2.2 * {R}", 0, 0]}
+        b["rightLeg"] = {"rotation": [f"-math.cos({L} * 37 + {P}) * 2.2 * {R}", 0, 0]}
     elif fam == "villager":
         b["body"] = {"scale": [br, "1.0", br],
-                     "rotation": [f"math.sin({L} * 51 + {P}) * 0.8 * {R}", 0,
-                                  f"math.cos({L} * 33 + {P}) * 1.0 * {R}"],
-                     "position": [0, f"math.sin({L} * 110 + {P}) * 0.15 * {R}", 0]}
-        b["head"] = {"rotation": [f"math.sin({L} * 21 + {P}) * 3.0 * {R}",
-                                  f"math.sin({L} * 11 + {P}) * 13.0 * {R}",
-                                  f"math.cos({L} * 27 + {P}) * 1.4 * {R}"]}
-        b["arms"] = {"rotation": [f"math.sin({L} * 45 + {P}) * 2.0 * {R}", 0, 0],
-                     "position": [0, f"math.sin({L} * 110 + {P}) * 0.1 * {R}", 0]}
+                     "rotation": [f"math.sin({L} * 51 + {P}) * 1.7 * {R}", 0,
+                                  f"math.cos({L} * 33 + {P}) * 2.2 * {R}"],
+                     "position": [f"math.cos({L} * 33 + {P}) * 0.2 * {R}",
+                                  f"math.sin({L} * 110 + {P}) * 0.32 * {R}", 0]}
+        b["head"] = {"rotation": [f"math.sin({L} * 21 + {P}) * 5.5 * {R}",
+                                  f"math.sin({L} * 11 + {P}) * 21.0 * {R}",
+                                  f"math.cos({L} * 27 + {P}) * 3.0 * {R}"]}
+        b["arms"] = {"rotation": [f"math.sin({L} * 45 + {P}) * 4.5 * {R}", 0, 0],
+                     "position": [0, f"math.sin({L} * 110 + {P}) * 0.22 * {R}", 0]}
+        b["leg0"] = {"rotation": [f"math.cos({L} * 33 + {P}) * 2.0 * {R}", 0, 0]}
+        b["leg1"] = {"rotation": [f"-math.cos({L} * 33 + {P}) * 2.0 * {R}", 0, 0]}
     elif fam == "quad":
         b["body"] = {"scale": ["1.0", br, br],
                      "rotation": [0, 0, f"math.cos({L} * 39 + {P}) * 1.4 * {R}"],
