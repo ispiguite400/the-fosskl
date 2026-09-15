@@ -1,5 +1,27 @@
 # Troubleshooting
 
+## It will not import
+
+Minecraft refuses the file outright — no pack appears in the list.
+
+```bash
+node tools/check-import.mjs dist/AI_Citizens.mcaddon
+```
+
+The manifest is parsed before anything else, so a single value that release does
+not understand rejects the whole package. Two have caused this here:
+
+- **A dependency version that is not SemVer.** `"version": "beta"` is only
+  understood by 1.21.120+; on anything older the manifest fails to parse. Use
+  `"2.0.0"`, which resolves forward to any 2.x.
+- **`min_engine_version` above the player's game.** Declaring 1.21.120 makes
+  every earlier release refuse the import.
+
+Both are now checked at build time. Rebuild with `./tools/build.sh` and the
+default configuration asks for nothing version-specific.
+
+---
+
 ## Start here
 
 ```

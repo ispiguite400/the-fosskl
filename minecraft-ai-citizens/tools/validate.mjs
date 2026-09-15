@@ -159,33 +159,50 @@ ok(`${uuids.size} distinct UUIDs`);
 const usesNet = /from\s*["']\.\/transport_net\.js["']/
   .test(fs.readFileSync(path.join(BP, "scripts", "brain", "transport.js"), "utf8"));
 
-// Beta modules must use the dynamic "beta" string, not a pinned number: pinned
-// -beta versions stop resolving when Minecraft updates, which silently kills
-// the script module while the rest of the pack still loads.
+// Script module versions decide whether the manifest parses at all, so they are
+// checked here as well as in tools/check-import.mjs. The rules, learned the
+// hard way:
+//
+//   "2.0.0"       stable, resolves forward like npm's "^" - one number covers
+//                 every 2.x release. Imports everywhere. The default.
+//   "2.1.0-beta"  pinned beta: needed for chat listening, but tied to the one
+//                 Minecraft release that shipped that line.
+//   "beta"        dynamic beta: never needs bumping, but only 1.21.120+ knows
+//                 the string; older games reject the whole manifest and the
+//                 pack will not import.
 const serverDep = (bpManifest.dependencies || []).find((d) => d.module_name === "@minecraft/server");
+const minEngine = bpManifest.header.min_engine_version;
+const engineStr = Array.isArray(minEngine) ? minEngine.join(".") : String(minEngine);
+
 if (!serverDep) {
   fail("manifest does not depend on @minecraft/server");
-} else if (/-beta$/.test(serverDep.version)) {
-  fail(`@minecraft/server is pinned to "${serverDep.version}" - use "beta" so it survives updates`);
-} else {
-  ok(`@minecraft/server: ${serverDep.version}`);
-}
-for (const d of bpManifest.dependencies || []) {
-  if (d.module_name && /-beta$/.test(d.version || "")) {
-    fail(`${d.module_name} is pinned to "${d.version}" - use "beta"`);
+} else if (serverDep.version === "beta") {
+  const v = Array.isArray(minEngine) ? minEngine : [0, 0, 0];
+  const has120 = v[0] > 1 || (v[0] === 1 && (v[1] > 21 || (v[1] === 21 && v[2] >= 120)));
+  if (!has120) {
+    fail(`@minecraft/server is "beta" but min_engine_version is ${engineStr}; that string needs 1.21.120+`);
+  } else {
+    warn(`@minecraft/server is "beta" - only Minecraft 1.21.120+ can import this pack`);
   }
+} else if (/-beta/.test(String(serverDep.version))) {
+  warn(`@minecraft/server pinned to "${serverDep.version}" - imports only on the release that shipped that beta line`);
+} else {
+  ok(`@minecraft/server: ${serverDep.version} (stable, resolves forward)`);
 }
 
-// The dynamic "beta" string needs 1.21.120; declaring less makes the failure
-// silent instead of showing the pack as incompatible.
-const minEngine = bpManifest.header.min_engine_version;
-const usesDynamicBeta = serverDep && serverDep.version === "beta";
-const engineStr = minEngine.join(".");
-if (usesDynamicBeta && (minEngine[0] < 1 || minEngine[1] < 21 || (minEngine[1] === 21 && minEngine[2] < 120))) {
-  fail(`min_engine_version ${engineStr} is below 1.21.120, which the dynamic "beta" version needs`);
-} else {
-  ok(`min_engine_version ${engineStr} matches the modules declared`);
+for (const d of bpManifest.dependencies || []) {
+  if (!d.module_name) continue;
+  if (typeof d.version !== "string") {
+    fail(`${d.module_name}: script module versions must be strings`);
+  } else if (d.version !== "beta" && !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(d.version)) {
+    fail(`${d.module_name}: version "${d.version}" is not SemVer - the manifest will not parse`);
+  }
+  if (/-beta/.test(String(d.version)) && d.module_name !== "@minecraft/server" && !d.optional) {
+    warn(`${d.module_name} is a beta module and not marked optional`);
+  }
 }
+ok(`min_engine_version ${engineStr}`);
+
 const hasNetDep = (bpManifest.dependencies || []).some((d) => d.module_name === "@minecraft/server-net");
 if (usesNet && !hasNetDep) fail("transport.js uses @minecraft/server-net but the manifest does not declare it");
 if (!usesNet && hasNetDep) warn("manifest declares @minecraft/server-net but transport.js does not use it");

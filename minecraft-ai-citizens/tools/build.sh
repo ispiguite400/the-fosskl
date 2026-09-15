@@ -2,26 +2,26 @@
 #
 # Packages the add-on for Minecraft Bedrock.
 #
-#   ./tools/build.sh              the add-on. One file, everything in it:
-#                                 talking to citizens by typing in chat, the
-#                                 slash commands, the lot. Needs the "Beta APIs"
-#                                 toggle on the world (Minecraft 1.21.120+).
+#   ./tools/build.sh              the add-on. One file, everything in it.
+#                                 Imports on any Minecraft from 1.21.80 onwards,
+#                                 needs no experiments, and survives updates.
+#                                 You talk to citizens with /ai:tell.
 #
-#   ./tools/build.sh --stable     fallback for older games or worlds that cannot
-#                                 turn on Beta APIs. Everything works except
-#                                 chat listening; you talk to citizens with
-#                                 /ai:tell instead. Runs on 1.21.80+.
+#   SERVER_VERSION=2.1.0-beta MIN_ENGINE=1.21.90 ./tools/build.sh
+#                                 same add-on with chat listening, pinned to one
+#                                 Minecraft release. Only do this when you know
+#                                 the exact version you are building for - a
+#                                 beta pin that does not match refuses to import.
 #
 #   ./tools/build.sh --claude     adds @minecraft/server-net so citizens think
 #                                 through the Claude bridge. Bedrock Dedicated
 #                                 Server only - see docs/CLAUDE_SETUP.md.
 #
-#   ./tools/build.sh --both       builds the main one and the stable fallback.
-#
-# Why two tracks at all: reading chat is only possible through the beta script
-# API. Beta modules pinned to a number ("2.1.0-beta") stop resolving when
-# Minecraft updates, so this uses the dynamic "beta" string instead, which
-# always tracks the current beta and never needs bumping.
+# Why chat is not on by default: reading chat is only possible through the beta
+# script API, and every way of asking for it - a pinned "-beta" number or the
+# dynamic "beta" string - is tied to a particular range of Minecraft releases.
+# Get it wrong and the manifest will not parse, which is an import failure
+# rather than a missing feature. The default asks for nothing version-specific.
 #
 set -euo pipefail
 
@@ -29,14 +29,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 WITH_CLAUDE=0
-STABLE=0
-BOTH=0
+STABLE=1          # the import-safe configuration is now the only default
 for arg in "$@"; do
   case "$arg" in
     --claude) WITH_CLAUDE=1 ;;
-    --stable) STABLE=1 ;;
-    --both) BOTH=1 ;;
-    -h|--help) sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 1 ;;
   esac
 done
@@ -76,17 +73,29 @@ export { NET_AVAILABLE, postJson, transportName } from "./transport_none.js";
 EOF
   fi
 
-  STABLE="$stable" WITH_CLAUDE="$with_claude" python3 - <<'EOF'
+  STABLE="$stable" WITH_CLAUDE="$with_claude" \
+  SERVER_VERSION="${SERVER_VERSION:-}" MIN_ENGINE="${MIN_ENGINE:-}" python3 - <<'EOF'
 import json, os
 
 stable = os.environ["STABLE"] == "1"
 claude = os.environ["WITH_CLAUDE"] == "1"
 
-# Stable script versions resolve forward like npm's "^", so 2.0.0 is satisfied
-# by any 2.x. Pinned -beta versions do NOT, which is why the beta track uses the
-# dynamic "beta" string (Minecraft 1.21.120+) instead of a number.
-server_version = "2.0.0" if stable else "beta"
-min_engine = [1, 21, 80] if stable else [1, 21, 120]
+# A manifest is parsed before anything else happens, so every value in it has to
+# be something the player's version understands or the import is refused
+# outright. Two rules follow:
+#
+#  - a dependency version must be a vector or a real SemVer string. "beta" is
+#    neither; only 1.21.120+ special-cases it, and older games reject the whole
+#    manifest.
+#  - min_engine_version must not exceed the player's game, or the pack will not
+#    import at all.
+#
+# Stable versions resolve forward like npm's "^" - a 2.0.0 dependency is
+# satisfied by 2.7.0 - so one stable number covers every version from 1.21.80 to
+# today. That is the default, and it is the only configuration that needs no
+# knowledge of which release someone is on.
+server_version = os.environ.get("SERVER_VERSION") or "2.0.0"
+min_engine = [int(x) for x in (os.environ.get("MIN_ENGINE") or "1.21.80").split(".")]
 
 bp = json.load(open("packs/AI_Citizens_BP/manifest.json"))
 bp["header"]["min_engine_version"] = min_engine
@@ -94,8 +103,12 @@ deps = [d for d in bp.get("dependencies", []) if "module_name" not in d]
 deps.append({"module_name": "@minecraft/server", "version": server_version})
 deps.append({"module_name": "@minecraft/server-ui", "version": "2.0.0"})
 if claude:
-    deps.append({"module_name": "@minecraft/server-net", "version": "beta"})
+    # `optional` means a runtime without this module still loads the pack
+    # instead of refusing it; the script already degrades to the local brain.
+    deps.append({"module_name": "@minecraft/server-net",
+                 "version": "1.0.0-beta", "optional": True})
 bp["dependencies"] = deps
+bp.get("metadata", {}).pop("generated_with", None)
 json.dump(bp, open("packs/AI_Citizens_BP/manifest.json", "w"), indent=2)
 open("packs/AI_Citizens_BP/manifest.json", "a").write("\n")
 
@@ -105,10 +118,11 @@ lang = ("pack.name=AI Citizens\n"
         "pack.description=%s\n"
         "entity.ai:citizen.name=Citizen\n"
         "item.spawn_egg.entity.ai:citizen.name=Spawn Citizen\n")
-if stable:
-    desc = "Player-like AI settlers that build, talk and settle. Use /ai:spawn 4 to begin."
-else:
-    desc = "Player-like AI settlers that build, talk and settle. REQUIRES the Beta APIs world toggle. Use /ai:spawn 4 or just talk to them in chat."
+desc = ("Player-like AI settlers that mine, build, fight, talk and settle a town. "
+        "Type /ai:spawn 4 to begin, then /ai:doctor if anything looks wrong.")
+if not stable:
+    desc = ("Player-like AI settlers that mine, build, fight, talk and settle a town. "
+            "Needs the Beta APIs world toggle. Type /ai:spawn 4 to begin.")
 open("packs/AI_Citizens_BP/texts/en_US.lang", "w").write(lang % desc)
 EOF
 }
@@ -145,30 +159,37 @@ EOF
 rm -rf dist
 mkdir -p dist
 
-if [ "$BOTH" -eq 1 ]; then
-  echo "==> building AI Citizens (chat, Beta APIs)"
-  configure 0 "$WITH_CLAUDE"; node tools/validate.mjs > /dev/null; package ""
-  echo "==> building the stable fallback"
-  configure 1 "$WITH_CLAUDE"; node tools/validate.mjs > /dev/null; package "_stable"
-  configure 0 "$WITH_CLAUDE"          # leave the tree on the main configuration
-else
-  configure "$STABLE" "$WITH_CLAUDE"
-  echo "==> validating"
-  node tools/validate.mjs
-  echo "==> packaging"
-  SUFFIX=""; [ "$STABLE" -eq 1 ] && SUFFIX="_stable"
-  package "$SUFFIX"
+configure "$STABLE" "$WITH_CLAUDE"
+echo "==> validating"
+node tools/validate.mjs
+echo "==> packaging"
+package ""
+
+echo "==> checking the package will import"
+node tools/check-import.mjs dist/AI_Citizens.mcaddon
+
+CHAT_ON=0
+grep -q '"@minecraft/server",' /dev/null 2>&1 || true
+if python3 -c "
+import json,sys
+m=json.load(open('packs/AI_Citizens_BP/manifest.json'))
+d=[x for x in m['dependencies'] if x.get('module_name')=='@minecraft/server'][0]
+sys.exit(0 if '-beta' in str(d['version']) or d['version']=='beta' else 1)"; then
+  CHAT_ON=1
 fi
 
 echo
-if [ "$STABLE" -eq 1 ]; then
-  echo "Stable fallback: runs on 1.21.80+, no Beta APIs needed."
-  echo "  Talk to citizens with /ai:tell @Ada go mine iron"
-else
-  echo "One add-on, everything in it."
-  echo "  Turn on Beta APIs in the world (Settings -> Experiments)."
+if [ "$CHAT_ON" -eq 1 ]; then
+  echo "Built with chat listening (beta script API)."
+  echo "  Turn on Beta APIs in the world, and make sure this build's pinned"
+  echo "  version matches your Minecraft release, or it will not import."
   echo "  Then just talk to them:  @Ada go mine some iron"
-  echo "  Or use the commands:     /ai:spawn 4   /ai:cmd town   /ai:doctor"
+else
+  echo "Built for maximum compatibility: imports on any Minecraft 1.21.80+,"
+  echo "no experiments needed, and it survives game updates."
+  echo "  Spawn:  /ai:spawn 4"
+  echo "  Talk:   /ai:tell @Ada go mine some iron"
+  echo "  Check:  /ai:doctor"
 fi
 [ "$WITH_CLAUDE" -eq 1 ] && echo "Claude bridge enabled - see docs/CLAUDE_SETUP.md."
 echo

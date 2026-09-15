@@ -12,7 +12,7 @@
     "min_engine_version": [
       1,
       21,
-      120
+      80
     ]
   },
   "modules": [
@@ -48,7 +48,7 @@
     },
     {
       "module_name": "@minecraft/server",
-      "version": "beta"
+      "version": "2.0.0"
     },
     {
       "module_name": "@minecraft/server-ui",
@@ -59,11 +59,6 @@
     "authors": [
       "AI Citizens"
     ],
-    "license": "MIT",
-    "generated_with": {
-      "ai_citizens": [
-        "1.0.0"
-      ]
-    }
+    "license": "MIT"
   }
 }

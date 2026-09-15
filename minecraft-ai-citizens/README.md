@@ -16,8 +16,8 @@ bridge, and with a capable local brain when you don't.
 ```
 /ai:spawn 6
 /ai:cmd found Rivermeet
-@Ada go find iron, we need it for the walls
-everyone, follow me
+/ai:tell @Ada go find iron, we need it for the walls
+/ai:tell everyone, follow me
 ```
 
 ---
@@ -87,8 +87,7 @@ One file, everything in it.
 1. Open **`AI_Citizens.mcaddon`**. Minecraft imports both packs.
 2. In your world settings, activate **AI Citizens** under **Behaviour Packs**
    *and* **Resource Packs**.
-3. Under **Experiments**, turn on **Beta APIs**.
-4. Load the world and type `/ai:spawn 4`.
+3. Load the world and type `/ai:spawn 4`.
 
 If nothing appears, type `/ai:doctor`. It reports exactly which parts of the
 Script API this world has and whether the citizen entity can be spawned — one
@@ -96,20 +95,42 @@ command instead of guesswork.
 
 ### Requirements
 
-- Minecraft Bedrock **1.21.120** or newer
-- **Beta APIs** turned on for the world
+- Minecraft Bedrock **1.21.80** or newer
+- No experiments, no account, no network
 - Works in single-player, on Realms, on a dedicated server, on phones and on
   consoles that accept imported add-ons
 
-**Why Beta APIs?** Reading what you type in chat is only possible through
-Minecraft's beta script API — there is no stable equivalent. Rather than pin a
-beta version number (which stops resolving every time Minecraft updates, and is
-why an earlier build of this failed to load), the pack uses the dynamic `"beta"`
-string, which always tracks the current one and never needs changing.
+### Talking to them, and the one thing that is version-specific
 
-If you cannot turn on Beta APIs, build `./tools/build.sh --stable`. That runs on
-1.21.80+ with no experiments; everything works except typing in chat, and you
-talk to citizens with `/ai:tell @Ada go mine iron` instead.
+You talk to citizens with `/ai:tell`:
+
+```
+/ai:tell @Ada go mine some iron
+/ai:tell everyone, follow me
+```
+
+Reading what you type in **open chat** — so you can drop the `/ai:tell` — is
+only possible through Minecraft's *beta* script API, and every way of asking for
+it is tied to a particular range of releases:
+
+| Declared version | Works on | Cost of getting it wrong |
+|---|---|---|
+| `"2.0.0"` (default) | 1.21.80 → today | none; resolves forward like npm's `^` |
+| `"2.1.0-beta"` | only the release that shipped that line | **the pack will not import** |
+| `"beta"` | 1.21.120+ only | **the pack will not import** |
+
+A manifest is parsed before anything else happens, so a version string the game
+does not understand is not a missing feature — it is a refused import. The
+default therefore asks for nothing version-specific.
+
+To turn chat on for a version you know:
+
+```bash
+SERVER_VERSION=2.1.0-beta MIN_ENGINE=1.21.90 ./tools/build.sh
+```
+
+and enable **Beta APIs** on the world. `node tools/check-import.mjs` will tell
+you whether the result can actually be imported.
 
 ---
 
@@ -279,9 +300,8 @@ minecraft-ai-citizens/
 
 ```bash
 ./tools/build.sh                 # the add-on: dist/AI_Citizens.mcaddon
-./tools/build.sh --stable        # fallback: no Beta APIs, no chat listening
-./tools/build.sh --both          # both, side by side in dist/
 ./tools/build.sh --claude        # adds the Claude bridge (dedicated server)
+node tools/check-import.mjs      # will Minecraft accept the package?
 
 node tools/validate.mjs          # static checks: imports, JSON, pack references
 node tools/scenarios.mjs         # behaviour tests against a mock engine
@@ -317,10 +337,12 @@ Being straight about this, because it matters for what you should check first.
 - Every Molang query used is one Mojang documents, every entity property Molang
   reads is declared and `client_sync`, and no pre-release Script API is
   subscribed to without a guard. These checks exist because each of them was a
-  real bug that stopped the add-on working. Beta modules must use the dynamic
-  `"beta"` string rather than a pinned number, and `min_engine_version` must
-  match the modules declared — both are checked, because a pinned `2.1.0-beta`
-  silently stops resolving when Minecraft updates.
+  real bug that stopped the add-on working.
+- `tools/check-import.mjs` reads the built `.mcaddon` the way Minecraft parses
+  it — manifest grammar, SemVer validity, UUIDs, the script entry actually being
+  in the archive, and `min_engine_version` against a support floor. This exists
+  because a manifest can be perfectly valid *content* and still be refused at
+  import, which no other check in this repo could see.
 - 56 behaviour checks pass against the mock engine: a stocked builder finishes a
   cottage and its walls stand in the world; a miner cuts down twenty blocks to a
   buried seam and comes back with emeralds; commands are swallowed while normal

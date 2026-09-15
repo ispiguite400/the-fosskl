@@ -25,9 +25,7 @@ In the world's settings:
 - **Behaviour Packs** → activate **AI Citizens — Behavior**
 - **Resource Packs** → activate **AI Citizens — Resources**
   (the behaviour pack pulls this in, but check it took)
-- **Experiments** → turn on **Beta APIs**
-
-Load the world.
+Load the world. No experiments needed.
 
 ## 4. Spawn some people
 
@@ -51,17 +49,9 @@ starts planning what to build. Come back in a few Minecraft days.
 
 ## 6. Tell them what to do
 
-Just type at them:
-
 ```
-@Ada go mine some iron
-everyone, follow me
-anyone found iron yet?
-```
-
-Or use the commands:
-
-```
+/ai:tell @Ada go mine some iron
+/ai:tell everyone, follow me
 /ai:cmd build small_house
 /ai:cmd town
 ```
@@ -111,10 +101,10 @@ specific answer.
   pack needs a newer game than you have. Check the pack is listed and not greyed
   out, then try `/scriptevent ai:cmd doctor`.
 - **Citizens spawn but have no faces** → the resource pack is not active.
-- **The pack is greyed out** → your Minecraft is older than 1.21.120. Build
-  `./tools/build.sh --stable` and use that instead.
-- **Typing in chat does nothing, but `/ai:spawn` works** → Beta APIs is off.
-  Turn it on, or keep using `/ai:tell @Ada go mine iron`.
+- **It will not import at all** → run `node tools/check-import.mjs` on the file.
+  It checks the manifest the way Minecraft parses it and names the offending
+  value. The usual cause is a version string that release does not understand.
+- **The pack is greyed out** → your Minecraft is older than 1.21.80.
 - **They stand still** → `/ai:cmd status` and `/ai:cmd debug`.
 
 More: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
