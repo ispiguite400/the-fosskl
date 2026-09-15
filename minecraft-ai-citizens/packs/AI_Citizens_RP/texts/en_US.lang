@@ -1,0 +1,5 @@
+pack.name=AI Citizens — Resources
+pack.description=Skins, models and animations for the AI Citizens add-on.
+entity.ai:citizen.name=Citizen
+item.spawn_egg.entity.ai:citizen.name=Spawn Citizen
+entity.ai:nav_point.name=Waypoint

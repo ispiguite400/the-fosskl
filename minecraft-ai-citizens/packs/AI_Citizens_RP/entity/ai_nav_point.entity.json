@@ -1,0 +1,20 @@
+{
+  "format_version": "1.10.0",
+  "minecraft:client_entity": {
+    "description": {
+      "identifier": "ai:nav_point",
+      "materials": {
+        "default": "entity_alphatest"
+      },
+      "textures": {
+        "default": "textures/entity/ai_nav_point"
+      },
+      "geometry": {
+        "default": "geometry.ai_nav_point"
+      },
+      "render_controllers": [
+        "controller.render.ai_nav_point"
+      ]
+    }
+  }
+}

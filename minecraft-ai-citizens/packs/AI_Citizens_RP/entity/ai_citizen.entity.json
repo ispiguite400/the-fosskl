@@ -1,0 +1,77 @@
+{
+  "format_version": "1.10.0",
+  "minecraft:client_entity": {
+    "description": {
+      "identifier": "ai:citizen",
+      "min_engine_version": "1.21.90",
+      "materials": {
+        "default": "entity_alphatest"
+      },
+      "textures": {
+        "skin_00": "textures/entity/ai_citizen/citizen_00",
+        "skin_01": "textures/entity/ai_citizen/citizen_01",
+        "skin_02": "textures/entity/ai_citizen/citizen_02",
+        "skin_03": "textures/entity/ai_citizen/citizen_03",
+        "skin_04": "textures/entity/ai_citizen/citizen_04",
+        "skin_05": "textures/entity/ai_citizen/citizen_05",
+        "skin_06": "textures/entity/ai_citizen/citizen_06",
+        "skin_07": "textures/entity/ai_citizen/citizen_07",
+        "skin_08": "textures/entity/ai_citizen/citizen_08",
+        "skin_09": "textures/entity/ai_citizen/citizen_09",
+        "skin_10": "textures/entity/ai_citizen/citizen_10",
+        "skin_11": "textures/entity/ai_citizen/citizen_11",
+        "skin_12": "textures/entity/ai_citizen/citizen_12",
+        "skin_13": "textures/entity/ai_citizen/citizen_13",
+        "skin_14": "textures/entity/ai_citizen/citizen_14",
+        "skin_15": "textures/entity/ai_citizen/citizen_15",
+        "skin_16": "textures/entity/ai_citizen/citizen_16",
+        "skin_17": "textures/entity/ai_citizen/citizen_17",
+        "skin_18": "textures/entity/ai_citizen/citizen_18",
+        "skin_19": "textures/entity/ai_citizen/citizen_19"
+      },
+      "geometry": {
+        "default": "geometry.ai_citizen"
+      },
+      "animations": {
+        "base": "animation.ai_citizen.base",
+        "look_at_target": "animation.ai_citizen.look_at_target",
+        "idle": "animation.ai_citizen.idle",
+        "walk": "animation.ai_citizen.walk",
+        "sprint": "animation.ai_citizen.sprint",
+        "swim": "animation.ai_citizen.swim",
+        "swing": "animation.ai_citizen.swing",
+        "place": "animation.ai_citizen.place",
+        "craft": "animation.ai_citizen.craft",
+        "farm": "animation.ai_citizen.farm",
+        "talk": "animation.ai_citizen.talk",
+        "carry": "animation.ai_citizen.carry",
+        "cheer": "animation.ai_citizen.cheer",
+        "point": "animation.ai_citizen.point",
+        "sit": "animation.ai_citizen.sit",
+        "sleep": "animation.ai_citizen.sleep",
+        "hurt": "animation.ai_citizen.hurt",
+        "ctrl_general": "controller.animation.ai_citizen.general",
+        "ctrl_move": "controller.animation.ai_citizen.move",
+        "ctrl_action": "controller.animation.ai_citizen.action"
+      },
+      "scripts": {
+        "animate": [
+          "ctrl_general",
+          "ctrl_move",
+          "ctrl_action"
+        ],
+        "scale": "1.0"
+      },
+      "render_controllers": [
+        "controller.render.ai_citizen"
+      ],
+      "spawn_egg": {
+        "base_color": "#3F6EA5",
+        "overlay_color": "#E0C68B"
+      },
+      "enable_attachables": true,
+      "held_item_ignores_lighting": false,
+      "hide_armor": false
+    }
+  }
+}

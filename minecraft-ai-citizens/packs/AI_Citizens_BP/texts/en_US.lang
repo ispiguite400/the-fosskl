@@ -1,0 +1,4 @@
+pack.name=AI Citizens — Behavior
+pack.description=Player-like AI villagers that think, talk, build and settle. Behavior pack.
+entity.ai:citizen.name=Citizen
+item.spawn_egg.entity.ai:citizen.name=Spawn Citizen

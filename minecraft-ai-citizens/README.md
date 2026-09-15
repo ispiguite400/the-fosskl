@@ -1,0 +1,323 @@
+# AI Citizens
+
+A Minecraft Bedrock add-on that adds a mob which looks like a player, thinks
+like a person, and builds a town with you.
+
+Spawn one and you get a named settler with a face, a trade, a personality and
+a memory. They mine, chop, farm, craft, fight and build. They talk — in a
+caption above their head, never in chat — to you and to each other, about what
+they can actually see and what the town actually needs. Tell them what to do by
+typing in chat. Give them ground and enough of them, and they will turn it into
+a village and then a town, on their own.
+
+They can think with **Claude** (`claude-opus-5`) when you run the included
+bridge, and with a capable local brain when you don't.
+
+```
+!ai spawn 6
+!ai found Rivermeet
+@Ada go find iron, we need it for the walls
+everyone, follow me
+```
+
+---
+
+## Contents
+
+- [What they can do](#what-they-can-do)
+- [Install](#install)
+- [Talking to them](#talking-to-them)
+- [Giving them a Claude brain](#giving-them-a-claude-brain)
+- [Building a civilisation](#building-a-civilisation)
+- [What is in the box](#what-is-in-the-box)
+- [Development](#development)
+- [What has and hasn't been tested](#what-has-and-hasnt-been-tested)
+
+---
+
+## What they can do
+
+**They look like players.** Twenty procedurally generated player-model skins —
+farmer, miner, smith, scout, builder, guard, scholar, healer, hunter, trader,
+cook, fisher, mason, wanderer, elder, ranger, herbalist, cartwright, sentinel,
+chronicler. Full player geometry with hat and jacket overlay layers, and
+hand-written animations for walking, sprinting, swimming, mining, building,
+crafting, farming, talking, sitting, sleeping, cheering and pointing.
+
+**They do what a player does.**
+
+| | |
+|---|---|
+| **Mine** | Find ore, follow a vein, and cut a staircase down to seams they cannot reach. Sink a shaft when the surface is worked out. |
+| **Chop** | Fell whole trees, trunk by trunk. |
+| **Build** | Twelve structures from blueprints — cottage, storehouse, workshop, well, field, watchtower, town hall, shrine, walls, roads, lamp posts, camp. They fetch materials, place bottom-up, and tell you what they are short of. |
+| **Craft** | Thirty-odd recipes at a table or furnace, working backwards through the tree — no planks? They will go and fell a tree first. |
+| **Farm** | Till near water, sow, harvest at maturity, and re-sow behind themselves. |
+| **Fight** | Close on hostiles, swing with whatever weapon they have, retaliate when hit, and run when a fight is lost. Guards patrol and light the place at night. |
+| **Carry and store** | Fill chests, take what a build needs out again, hand items to you. |
+| **Look after themselves** | Eat when hungry, sleep at night, rest when exhausted. |
+
+**They see, and they talk about it.** Every couple of seconds a citizen builds
+a picture of the world around them — the time, the weather, who is nearby, what
+is threatening them, which ores are in sight and in which direction, what is
+dangerous. That picture is what they speak from. "There's iron in the rock over
+north-east, about six paces." "Mind the lava over west." "Not tonight. Not a
+creeper."
+
+**They talk to each other.** Idle citizens standing near each other strike up
+conversations, take turns, and remember what was said. Who they like and
+dislike changes with what you and they do.
+
+**Speech is always a caption.** Never chat spam. A line appears above their
+head, revealed a character at a time, and fades. Colour tells you the register:
+white for ordinary speech, green for friendly, red for alarm, yellow for taking
+an order, blue for work.
+
+**They remember.** Names, faces, places, facts, who helped and who hit them,
+and your standing orders — all of it survives a world reload.
+
+---
+
+## Install
+
+### The quick way
+
+1. Download or build `dist/AI_Citizens.mcaddon` (see [Development](#development)).
+2. Open it. Minecraft imports both packs.
+3. In your world settings, under **Behaviour Packs** and **Resource Packs**,
+   activate **AI Citizens**.
+4. Turn on **Beta APIs** in the world's experiment settings. (Script-driven
+   add-ons need it; this is the only experiment required.)
+5. Load the world and type `!ai spawn 4`.
+
+That is everything. No server, no account, no network — citizens think locally
+and everything above works.
+
+### Requirements
+
+- Minecraft Bedrock **1.21.90** or newer
+- **Beta APIs** experiment enabled on the world
+- Works in single-player, on Realms, on a dedicated server, on phones and on
+  consoles that accept imported add-ons
+
+---
+
+## Talking to them
+
+You talk to citizens by typing in chat. Three kinds of message:
+
+**Speak to one of them by name.** They answer, and do it.
+
+```
+@Ada go mine some iron
+Ada, follow me
+@Pell build a house here
+```
+
+**Speak to everybody.**
+
+```
+everyone, follow me
+all of you, stop
+```
+
+**Just talk.** Anything else you say is overheard by citizens within 32 blocks.
+Sociable ones answer; the rest get on with their work. Ask them a question and
+they will answer from what they actually know.
+
+```
+anyone found iron yet?
+what are you working on?
+```
+
+They understand plain instructions: follow, come here, stop, chop wood, mine
+iron, farm, build a house, guard, explore, attack, rest, store your goods. With
+the Claude bridge running they understand a great deal more than that, and they
+answer in their own voice.
+
+Commands to you-the-operator start with `!ai` and are never shown in chat:
+
+```
+!ai spawn 6 miner      spawn citizens
+!ai panel              open the control panel
+!ai found Rivermeet    found a settlement here
+!ai town               settlement report
+!ai list               who is alive and what they are doing
+!ai who Ada            one citizen in detail
+!ai build small_house  queue a building
+!ai job Ada builder    assign a trade
+!ai brain claude       choose the thinking engine
+!ai help               everything
+```
+
+The full list is in [docs/COMMANDS.md](docs/COMMANDS.md). Sneak-right-click a
+citizen to open their page in the control panel.
+
+---
+
+## Giving them a Claude brain
+
+Out of the box citizens run a local brain: a utility planner with a contextual
+dialogue writer. It is genuinely capable — it is what drives everything in the
+list above — and it needs no network.
+
+The Claude bridge replaces the *judgement* and the *voice*. Instead of picking
+a line from a bank, a citizen sends Claude who they are, what they can see,
+what they remember and what the town needs, and gets back what they say and
+what they do next.
+
+```
+cd bridge
+npm install
+ANTHROPIC_API_KEY=sk-ant-... npm start
+```
+
+Then, in game:
+
+```
+!ai bridge http://127.0.0.1:8787
+!ai brain claude
+!ai status
+```
+
+**One important limitation.** Bedrock only lets scripts make HTTP requests on a
+**Bedrock Dedicated Server**, through the `@minecraft/server-net` module. On a
+phone, a console, a Realm or single-player that module does not exist, so the
+Claude bridge cannot be reached from there and citizens use the local brain.
+This is a platform restriction, not a choice. Build with `./tools/build.sh
+--claude` and read [docs/CLAUDE_SETUP.md](docs/CLAUDE_SETUP.md) for the server
+setup.
+
+The two brains are not either/or. The local brain runs every think-tick and
+Claude's answer supersedes it when it arrives — so a slow or failed request
+makes citizens *less clever for a second*, never frozen and never silent. If the
+bridge goes away entirely they carry on without it, and `!ai status` says so.
+
+Details, cost control and safety notes: [docs/CLAUDE_SETUP.md](docs/CLAUDE_SETUP.md).
+
+---
+
+## Building a civilisation
+
+This is what the mob is best at.
+
+Stand somewhere with wood, stone and water, gather a few citizens, and:
+
+```
+!ai found Rivermeet
+```
+
+From then on the settlement runs itself.
+
+**Roles are assigned by need.** A town of five gets a builder, a woodcutter, a
+miner, a farmer and a crafter. At eight it gains a guard and a hauler; at ten,
+a scout and an architect. Lock a citizen's trade with `!ai job` and the
+allocator leaves them alone.
+
+**It decides what to build next.** Housing before ornament, food before
+luxuries, storage before statues. It surveys its own chests, works out what the
+queue is short of, and sends citizens to get it.
+
+**It grows in tiers.** Camp → hamlet → village → town, each unlocking new
+blueprints. A town with a spare bed and food in the stores attracts newcomers on
+its own, and announces them.
+
+**It leaves itself alone.** Citizens never quarry the town square or undermine
+a house — building footprints and the central plaza are off limits.
+
+More on the tier ladder, the blueprint format and how to add your own:
+[docs/CIVILIZATION.md](docs/CIVILIZATION.md).
+
+---
+
+## What is in the box
+
+```
+minecraft-ai-citizens/
+├── packs/
+│   ├── AI_Citizens_BP/          behaviour pack: entities + all the scripts
+│   │   ├── entities/            citizen and waypoint definitions (generated)
+│   │   └── scripts/             ~8,600 lines across 44 ES modules
+│   │       ├── core/            config, persistence, block and recipe knowledge
+│   │       ├── agent/           the citizen: personality, needs, memory, senses
+│   │       ├── actions/         the verbs: move, mine, build, craft, farm, fight
+│   │       ├── brain/           local planner, Claude client, decision schema
+│   │       ├── civ/             settlements, jobs, blueprints, territory
+│   │       ├── social/          dialogue, conversations, relationships
+│   │       ├── ui/              captions and the control panel
+│   │       └── commands/        chat parsing and command handlers
+│   └── AI_Citizens_RP/          resource pack: 20 skins, model, animations
+├── bridge/                      the Claude bridge (Node, one dependency)
+├── tools/                       generators, validator, simulator, build script
+└── docs/                        setup, commands, architecture, troubleshooting
+```
+
+---
+
+## Development
+
+```bash
+./tools/build.sh                 # build dist/AI_Citizens.mcaddon
+./tools/build.sh --claude        # same, with the Claude bridge enabled
+
+node tools/validate.mjs          # static checks: imports, JSON, pack references
+node tools/scenarios.mjs         # behaviour tests against a mock engine
+node tools/simulate.mjs 8000     # run a town for 8000 ticks and report
+node tools/simulate.mjs --verbose
+
+python3 tools/generate_skins.py     # regenerate the 20 skins
+python3 tools/generate_entities.py  # regenerate the entity definitions
+
+cd bridge && npm install && npm start
+DRY_RUN=true npm start           # test the wiring with no API calls, no cost
+node bridge/test-bridge.mjs      # end-to-end check against a running bridge
+```
+
+`tools/sim/` is a small mock of `@minecraft/server` — a voxel world, entities,
+containers, events and a stand-in for the vanilla pathfinder. It is not a
+Minecraft emulator, but it runs the real add-on code, which is how the mining,
+building, combat, conversation and persistence paths get exercised outside the
+game. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains the design.
+
+---
+
+## What has and hasn't been tested
+
+Being straight about this, because it matters for what you should check first.
+
+**Verified here, automatically:**
+
+- Every module imports cleanly and every named import resolves (44 modules,
+  276 imports).
+- All pack JSON parses; every texture, animation, geometry, render controller
+  and component group referenced by the entity definitions exists.
+- 34 behaviour checks pass against the mock engine: a stocked builder finishes a
+  cottage and its walls stand in the world; a miner cuts down twenty blocks to a
+  buried seam and comes back with emeralds; commands are swallowed while normal
+  chat is not; orders become tasks and replace each other; replies appear as
+  captions and never in chat; citizens hold conversations and remember them; a
+  settlement founds, divides up roles and plans buildings; a citizen fights back
+  when attacked; names, jobs, memory, personality and settlement membership all
+  survive a reload.
+- A 12,000-tick town runs with no runtime errors.
+- The bridge serves a real add-on context packet end to end in dry-run.
+
+**Not verified here, and worth checking first:**
+
+- Nothing has been run in an actual Minecraft client — there isn't one in this
+  environment. The pack structure, manifests and API usage are correct as far as
+  static checking and the mock can tell, but first-run in-game is on you.
+- The live Claude API call has not been made from here (no credentials
+  available), so the request shape is written to the documented API but
+  unproven. `node bridge/test-bridge.mjs` against a running bridge is the
+  one-command way to confirm it. The bridge degrades gracefully if a parameter
+  is rejected, and the add-on falls back to the local brain either way.
+- Bed and door block ids differ between Bedrock versions; both are marked
+  optional in the blueprints, so a mismatch costs you the furniture, not the
+  building.
+
+---
+
+## Licence
+
+MIT.

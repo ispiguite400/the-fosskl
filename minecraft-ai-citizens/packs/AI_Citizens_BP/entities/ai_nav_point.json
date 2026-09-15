@@ -1,0 +1,600 @@
+{
+  "format_version": "1.21.0",
+  "minecraft:entity": {
+    "description": {
+      "identifier": "ai:nav_point",
+      "is_spawnable": false,
+      "is_summonable": true,
+      "is_experimental": false
+    },
+    "component_groups": {
+      "ai:ch_0": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_0"
+          ]
+        }
+      },
+      "ai:ch_1": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_1"
+          ]
+        }
+      },
+      "ai:ch_2": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_2"
+          ]
+        }
+      },
+      "ai:ch_3": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_3"
+          ]
+        }
+      },
+      "ai:ch_4": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_4"
+          ]
+        }
+      },
+      "ai:ch_5": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_5"
+          ]
+        }
+      },
+      "ai:ch_6": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_6"
+          ]
+        }
+      },
+      "ai:ch_7": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_7"
+          ]
+        }
+      },
+      "ai:ch_8": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_8"
+          ]
+        }
+      },
+      "ai:ch_9": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_9"
+          ]
+        }
+      },
+      "ai:ch_10": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_10"
+          ]
+        }
+      },
+      "ai:ch_11": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_11"
+          ]
+        }
+      },
+      "ai:ch_12": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_12"
+          ]
+        }
+      },
+      "ai:ch_13": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_13"
+          ]
+        }
+      },
+      "ai:ch_14": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_14"
+          ]
+        }
+      },
+      "ai:ch_15": {
+        "minecraft:type_family": {
+          "family": [
+            "ai_nav_point",
+            "ai_nav_15"
+          ]
+        }
+      }
+    },
+    "components": {
+      "minecraft:type_family": {
+        "family": [
+          "ai_nav_point"
+        ]
+      },
+      "minecraft:collision_box": {
+        "width": 0.01,
+        "height": 0.01
+      },
+      "minecraft:health": {
+        "value": 1024,
+        "max": 1024
+      },
+      "minecraft:physics": {
+        "has_gravity": false,
+        "has_collision": false
+      },
+      "minecraft:pushable": {
+        "is_pushable": false,
+        "is_pushable_by_piston": false
+      },
+      "minecraft:knockback_resistance": {
+        "value": 1.0
+      },
+      "minecraft:fire_immune": {},
+      "minecraft:damage_sensor": {
+        "triggers": [
+          {
+            "on_damage": {},
+            "deals_damage": false
+          }
+        ]
+      },
+      "minecraft:persistent": {},
+      "minecraft:is_hidden_when_invisible": {},
+      "minecraft:loot": {
+        "table": "loot_tables/empty.json"
+      },
+      "minecraft:conditional_bandwidth_optimization": {}
+    },
+    "events": {
+      "ai:set_ch_0": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_1",
+            "ai:ch_2",
+            "ai:ch_3",
+            "ai:ch_4",
+            "ai:ch_5",
+            "ai:ch_6",
+            "ai:ch_7",
+            "ai:ch_8",
+            "ai:ch_9",
+            "ai:ch_10",
+            "ai:ch_11",
+            "ai:ch_12",
+            "ai:ch_13",
+            "ai:ch_14",
+            "ai:ch_15"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_0"
+          ]
+        }
+      },
+      "ai:set_ch_1": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_0",
+            "ai:ch_2",
+            "ai:ch_3",
+            "ai:ch_4",
+            "ai:ch_5",
+            "ai:ch_6",
+            "ai:ch_7",
+            "ai:ch_8",
+            "ai:ch_9",
+            "ai:ch_10",
+            "ai:ch_11",
+            "ai:ch_12",
+            "ai:ch_13",
+            "ai:ch_14",
+            "ai:ch_15"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_1"
+          ]
+        }
+      },
+      "ai:set_ch_2": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_0",
+            "ai:ch_1",
+            "ai:ch_3",
+            "ai:ch_4",
+            "ai:ch_5",
+            "ai:ch_6",
+            "ai:ch_7",
+            "ai:ch_8",
+            "ai:ch_9",
+            "ai:ch_10",
+            "ai:ch_11",
+            "ai:ch_12",
+            "ai:ch_13",
+            "ai:ch_14",
+            "ai:ch_15"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_2"
+          ]
+        }
+      },
+      "ai:set_ch_3": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_0",
+            "ai:ch_1",
+            "ai:ch_2",
+            "ai:ch_4",
+            "ai:ch_5",
+            "ai:ch_6",
+            "ai:ch_7",
+            "ai:ch_8",
+            "ai:ch_9",
+            "ai:ch_10",
+            "ai:ch_11",
+            "ai:ch_12",
+            "ai:ch_13",
+            "ai:ch_14",
+            "ai:ch_15"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_3"
+          ]
+        }
+      },
+      "ai:set_ch_4": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_0",
+            "ai:ch_1",
+            "ai:ch_2",
+            "ai:ch_3",
+            "ai:ch_5",
+            "ai:ch_6",
+            "ai:ch_7",
+            "ai:ch_8",
+            "ai:ch_9",
+            "ai:ch_10",
+            "ai:ch_11",
+            "ai:ch_12",
+            "ai:ch_13",
+            "ai:ch_14",
+            "ai:ch_15"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_4"
+          ]
+        }
+      },
+      "ai:set_ch_5": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_0",
+            "ai:ch_1",
+            "ai:ch_2",
+            "ai:ch_3",
+            "ai:ch_4",
+            "ai:ch_6",
+            "ai:ch_7",
+            "ai:ch_8",
+            "ai:ch_9",
+            "ai:ch_10",
+            "ai:ch_11",
+            "ai:ch_12",
+            "ai:ch_13",
+            "ai:ch_14",
+            "ai:ch_15"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_5"
+          ]
+        }
+      },
+      "ai:set_ch_6": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_0",
+            "ai:ch_1",
+            "ai:ch_2",
+            "ai:ch_3",
+            "ai:ch_4",
+            "ai:ch_5",
+            "ai:ch_7",
+            "ai:ch_8",
+            "ai:ch_9",
+            "ai:ch_10",
+            "ai:ch_11",
+            "ai:ch_12",
+            "ai:ch_13",
+            "ai:ch_14",
+            "ai:ch_15"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_6"
+          ]
+        }
+      },
+      "ai:set_ch_7": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_0",
+            "ai:ch_1",
+            "ai:ch_2",
+            "ai:ch_3",
+            "ai:ch_4",
+            "ai:ch_5",
+            "ai:ch_6",
+            "ai:ch_8",
+            "ai:ch_9",
+            "ai:ch_10",
+            "ai:ch_11",
+            "ai:ch_12",
+            "ai:ch_13",
+            "ai:ch_14",
+            "ai:ch_15"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_7"
+          ]
+        }
+      },
+      "ai:set_ch_8": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_0",
+            "ai:ch_1",
+            "ai:ch_2",
+            "ai:ch_3",
+            "ai:ch_4",
+            "ai:ch_5",
+            "ai:ch_6",
+            "ai:ch_7",
+            "ai:ch_9",
+            "ai:ch_10",
+            "ai:ch_11",
+            "ai:ch_12",
+            "ai:ch_13",
+            "ai:ch_14",
+            "ai:ch_15"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_8"
+          ]
+        }
+      },
+      "ai:set_ch_9": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_0",
+            "ai:ch_1",
+            "ai:ch_2",
+            "ai:ch_3",
+            "ai:ch_4",
+            "ai:ch_5",
+            "ai:ch_6",
+            "ai:ch_7",
+            "ai:ch_8",
+            "ai:ch_10",
+            "ai:ch_11",
+            "ai:ch_12",
+            "ai:ch_13",
+            "ai:ch_14",
+            "ai:ch_15"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_9"
+          ]
+        }
+      },
+      "ai:set_ch_10": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_0",
+            "ai:ch_1",
+            "ai:ch_2",
+            "ai:ch_3",
+            "ai:ch_4",
+            "ai:ch_5",
+            "ai:ch_6",
+            "ai:ch_7",
+            "ai:ch_8",
+            "ai:ch_9",
+            "ai:ch_11",
+            "ai:ch_12",
+            "ai:ch_13",
+            "ai:ch_14",
+            "ai:ch_15"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_10"
+          ]
+        }
+      },
+      "ai:set_ch_11": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_0",
+            "ai:ch_1",
+            "ai:ch_2",
+            "ai:ch_3",
+            "ai:ch_4",
+            "ai:ch_5",
+            "ai:ch_6",
+            "ai:ch_7",
+            "ai:ch_8",
+            "ai:ch_9",
+            "ai:ch_10",
+            "ai:ch_12",
+            "ai:ch_13",
+            "ai:ch_14",
+            "ai:ch_15"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_11"
+          ]
+        }
+      },
+      "ai:set_ch_12": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_0",
+            "ai:ch_1",
+            "ai:ch_2",
+            "ai:ch_3",
+            "ai:ch_4",
+            "ai:ch_5",
+            "ai:ch_6",
+            "ai:ch_7",
+            "ai:ch_8",
+            "ai:ch_9",
+            "ai:ch_10",
+            "ai:ch_11",
+            "ai:ch_13",
+            "ai:ch_14",
+            "ai:ch_15"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_12"
+          ]
+        }
+      },
+      "ai:set_ch_13": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_0",
+            "ai:ch_1",
+            "ai:ch_2",
+            "ai:ch_3",
+            "ai:ch_4",
+            "ai:ch_5",
+            "ai:ch_6",
+            "ai:ch_7",
+            "ai:ch_8",
+            "ai:ch_9",
+            "ai:ch_10",
+            "ai:ch_11",
+            "ai:ch_12",
+            "ai:ch_14",
+            "ai:ch_15"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_13"
+          ]
+        }
+      },
+      "ai:set_ch_14": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_0",
+            "ai:ch_1",
+            "ai:ch_2",
+            "ai:ch_3",
+            "ai:ch_4",
+            "ai:ch_5",
+            "ai:ch_6",
+            "ai:ch_7",
+            "ai:ch_8",
+            "ai:ch_9",
+            "ai:ch_10",
+            "ai:ch_11",
+            "ai:ch_12",
+            "ai:ch_13",
+            "ai:ch_15"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_14"
+          ]
+        }
+      },
+      "ai:set_ch_15": {
+        "remove": {
+          "component_groups": [
+            "ai:ch_0",
+            "ai:ch_1",
+            "ai:ch_2",
+            "ai:ch_3",
+            "ai:ch_4",
+            "ai:ch_5",
+            "ai:ch_6",
+            "ai:ch_7",
+            "ai:ch_8",
+            "ai:ch_9",
+            "ai:ch_10",
+            "ai:ch_11",
+            "ai:ch_12",
+            "ai:ch_13",
+            "ai:ch_14"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "ai:ch_15"
+          ]
+        }
+      }
+    }
+  }
+}
