@@ -193,11 +193,56 @@ for (const { entry, doc } of parsed) {
     }
   }
 }
+// --- version coherence ----------------------------------------------------
+// Minecraft replaces an installed pack only when the incoming version is
+// higher, so a build that forgets to bump is silently ignored as a duplicate.
+// And a behaviour pack whose dependency names a version the resource pack does
+// not have reports a missing dependency and does nothing.
+const headerVersions = new Map();
+for (const { entry, doc } of parsed) {
+  headerVersions.set(doc.header?.uuid, { v: doc.header?.version, entry });
+}
+const sameVersion = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+for (const { entry, doc } of parsed) {
+  for (const mod of doc.modules || []) {
+    if (!sameVersion(mod.version, doc.header.version)) {
+      fail(`${entry}: module version ${JSON.stringify(mod.version)} does not match ` +
+           `header.version ${JSON.stringify(doc.header.version)}`);
+    }
+  }
+  for (const dep of doc.dependencies || []) {
+    if (!dep.uuid) continue;
+    const target = headerVersions.get(dep.uuid);
+    if (target && !sameVersion(dep.version, target.v)) {
+      fail(`${entry}: depends on ${dep.uuid} at ${JSON.stringify(dep.version)}, ` +
+           `but ${target.entry} is ${JSON.stringify(target.v)} - Minecraft will report a missing dependency`);
+    }
+  }
+}
+
+const versions = new Set([...headerVersions.values()].map((x) => JSON.stringify(x.v)));
+if (versions.size > 1) {
+  fail(`the packs in this file have different versions (${[...versions].join(", ")})`);
+}
+
+const versionFile = new URL("../VERSION", import.meta.url).pathname;
+if (fs.existsSync(versionFile)) {
+  const want = fs.readFileSync(versionFile, "utf8").trim();
+  const got = (parsed[0]?.doc.header.version || []).join(".");
+  if (got !== want) {
+    fail(`package is version ${got} but VERSION says ${want} - rebuild so the bump is recorded`);
+  } else {
+    ok(`version ${got}, consistent across both packs`);
+  }
+}
+
 if (!errors) ok("every manifest value is one Minecraft can parse");
 
 console.log("");
 if (errors) {
-  console.error(`\x1b[31m${errors} problem(s) - this package would fail to import\x1b[0m\n`);
+  console.error(`\x1b[31m${errors} problem(s) - this package would be refused at import, ` +
+                `ignored as a duplicate, or load with a broken dependency\x1b[0m\n`);
   process.exit(1);
 }
 console.log(`\x1b[32mThis package should import cleanly on Minecraft ${SUPPORT_FLOOR.join(".")}+\x1b[0m\n`);

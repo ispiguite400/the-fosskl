@@ -42,6 +42,33 @@ BP="packs/AI_Citizens_BP"
 RP="packs/AI_Citizens_RP"
 TRANSPORT="$BP/scripts/brain/transport.js"
 
+# --------------------------------------------------------------------------
+# Pack version.
+#
+# Minecraft identifies a pack by UUID and only replaces an installed copy when
+# the incoming version is HIGHER - an equal or lower version is ignored as a
+# duplicate. Shipping successive builds all numbered 1.0.0 therefore means the
+# player keeps the first one forever, however many times they reinstall. So
+# every build bumps the patch number and writes it back.
+# --------------------------------------------------------------------------
+VERSION_FILE="VERSION"
+[ -f "$VERSION_FILE" ] || echo "1.0.0" > "$VERSION_FILE"
+
+if [ -n "${PACK_VERSION:-}" ]; then
+  VERSION="$PACK_VERSION"
+else
+  VERSION="$(python3 - "$VERSION_FILE" <<'EOF'
+import sys
+path = sys.argv[1]
+major, minor, patch = (int(x) for x in open(path).read().strip().split("."))
+patch += 1
+open(path, "w").write(f"{major}.{minor}.{patch}\n")
+print(f"{major}.{minor}.{patch}")
+EOF
+)"
+fi
+echo "==> version $VERSION"
+
 echo "==> generating entities and textures"
 python3 tools/generate_entities.py
 [ -f "$RP/textures/entity/ai_citizen/citizen_00.png" ] || python3 tools/generate_skins.py
@@ -73,7 +100,7 @@ export { NET_AVAILABLE, postJson, transportName } from "./transport_none.js";
 EOF
   fi
 
-  STABLE="$stable" WITH_CLAUDE="$with_claude" \
+  STABLE="$stable" WITH_CLAUDE="$with_claude" PACK_VERSION="$VERSION" \
   SERVER_VERSION="${SERVER_VERSION:-}" MIN_ENGINE="${MIN_ENGINE:-}" python3 - <<'EOF'
 import json, os
 
@@ -97,9 +124,26 @@ claude = os.environ["WITH_CLAUDE"] == "1"
 server_version = os.environ.get("SERVER_VERSION") or "2.0.0"
 min_engine = [int(x) for x in (os.environ.get("MIN_ENGINE") or "1.21.80").split(".")]
 
+version = [int(x) for x in os.environ["PACK_VERSION"].split(".")]
+
+rp_path = "packs/AI_Citizens_RP/manifest.json"
+rp = json.load(open(rp_path))
+rp["header"]["version"] = version
+rp["header"]["min_engine_version"] = min_engine
+for mod in rp.get("modules", []):
+    mod["version"] = version
+json.dump(rp, open(rp_path, "w"), indent=2)
+open(rp_path, "a").write("\n")
+
 bp = json.load(open("packs/AI_Citizens_BP/manifest.json"))
+bp["header"]["version"] = version
 bp["header"]["min_engine_version"] = min_engine
+for mod in bp.get("modules", []):
+    mod["version"] = version
 deps = [d for d in bp.get("dependencies", []) if "module_name" not in d]
+for d in deps:
+    if d.get("uuid") == rp["header"]["uuid"]:
+        d["version"] = version
 deps.append({"module_name": "@minecraft/server", "version": server_version})
 deps.append({"module_name": "@minecraft/server-ui", "version": "2.0.0"})
 if claude:
@@ -109,6 +153,14 @@ if claude:
                  "version": "1.0.0-beta", "optional": True})
 bp["dependencies"] = deps
 bp.get("metadata", {}).pop("generated_with", None)
+
+# So /ai:doctor can report which build is actually live - the whole reason this
+# was hard to diagnose is that an installed pack looks identical to a new one.
+gen = "packs/AI_Citizens_BP/scripts/core/generated.js"
+src = open(gen).read()
+src = "\n".join(l for l in src.split("\n") if "PACK_VERSION" not in l).rstrip()
+src += f'\nexport const PACK_VERSION = "{os.environ["PACK_VERSION"]}";\n'
+open(gen, "w").write(src)
 json.dump(bp, open("packs/AI_Citizens_BP/manifest.json", "w"), indent=2)
 open("packs/AI_Citizens_BP/manifest.json", "a").write("\n")
 
@@ -194,3 +246,4 @@ fi
 [ "$WITH_CLAUDE" -eq 1 ] && echo "Claude bridge enabled - see docs/CLAUDE_SETUP.md."
 echo
 echo "Install: open the .mcaddon, then activate both packs on your world."
+echo "Version: $VERSION  (higher than any previous build, so it replaces it)"

@@ -5,6 +5,7 @@ import { tell, broadcast, info, safe } from "../core/log.js";
 import { dist, prettyId, titleCase, compass } from "../core/util.js";
 import { takeName } from "./parser.js";
 import { jobBadge } from "../agent/citizen.js";
+import { PACK_VERSION } from "../core/generated.js";
 import { pushOrder, clearOrders, rememberPlace, remember } from "../agent/memory.js";
 import { say, TONE, interrupt } from "../ui/caption.js";
 import { openPanel } from "../ui/panel.js";
@@ -329,6 +330,10 @@ const COMMANDS = {
     const ok = (v) => (v ? "§a✔§r" : "§c✘§r");
 
     tell(player, "§bAI Citizens — diagnostics§r");
+    // Which build is actually running. Minecraft ignores an imported pack whose
+    // version is not higher than the installed one, so "I reinstalled it" and
+    // "the new code is running" are not the same thing - this tells them apart.
+    tell(player, `  §7pack version §f${PACK_VERSION}§r`);
     tell(player, `  ${ok(true)} script module loaded`);
     tell(player, `  ${ok(c.slashCommands && c.slashCommands.length)} slash commands: §f${(c.slashCommands || []).join(" ") || "none"}§r`);
     if (c.slashError) tell(player, `      §c${c.slashError}§r`);

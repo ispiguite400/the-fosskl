@@ -1,5 +1,33 @@
 # Troubleshooting
 
+## "This add-on is already installed" / duplicate
+
+Minecraft identifies a pack by its UUID, and **only replaces an installed copy
+when the incoming version is higher**. An equal or lower version is ignored as a
+duplicate — silently, so reinstalling appears to work while you carry on running
+the old code.
+
+That makes "I reinstalled it" and "the new code is running" two different
+things. To tell them apart:
+
+```
+/ai:doctor
+```
+
+The first line is the pack version. If it is not the version you just
+installed, the old copy is still live.
+
+Every build bumps the version automatically (`VERSION` in the repo root), so a
+fresh build always supersedes the last. If Minecraft still refuses:
+
+1. Remove the installed copy first — **Settings → Storage → Behaviour Packs**
+   (and **Resource Packs**), or delete the `AI_Citizens_BP` / `AI_Citizens_RP`
+   folders from your `behavior_packs` and `resource_packs` directories.
+2. Import the `.mcaddon` again.
+3. Re-activate both packs on the world and check `/ai:doctor`.
+
+---
+
 ## It will not import
 
 Minecraft refuses the file outright — no pack appears in the list.

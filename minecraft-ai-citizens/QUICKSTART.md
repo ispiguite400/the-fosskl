@@ -101,6 +101,10 @@ specific answer.
   pack needs a newer game than you have. Check the pack is listed and not greyed
   out, then try `/scriptevent ai:cmd doctor`.
 - **Citizens spawn but have no faces** → the resource pack is not active.
+- **"Already installed" / duplicate** → Minecraft only replaces a pack when the
+  incoming version is higher, and ignores it otherwise. Run `/ai:doctor`: the
+  first line is the pack version actually running. If it is not the one you just
+  installed, delete the old pack in Settings → Storage and import again.
 - **It will not import at all** → run `node tools/check-import.mjs` on the file.
   It checks the manifest the way Minecraft parses it and names the offending
   value. The usual cause is a version string that release does not understand.

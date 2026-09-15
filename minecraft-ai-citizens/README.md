@@ -89,9 +89,14 @@ One file, everything in it.
    *and* **Resource Packs**.
 3. Load the world and type `/ai:spawn 4`.
 
-If nothing appears, type `/ai:doctor`. It reports exactly which parts of the
-Script API this world has and whether the citizen entity can be spawned — one
-command instead of guesswork.
+If nothing appears, type `/ai:doctor`. It reports the pack version actually
+running, which parts of the Script API this world has, and whether the citizen
+entity can be spawned — one command instead of guesswork.
+
+**On reinstalling:** Minecraft replaces an installed pack only when the incoming
+version is higher, and silently ignores it otherwise. Every build bumps
+`VERSION` automatically so a new one always wins; `/ai:doctor` confirms which
+build is live.
 
 ### Requirements
 
