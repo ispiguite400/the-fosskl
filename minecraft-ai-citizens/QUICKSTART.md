@@ -5,17 +5,10 @@ Five minutes from nothing to a town.
 ## 1. Build the add-on
 
 ```bash
-./tools/build.sh --all
+./tools/build.sh
 ```
 
-That writes two files to `dist/`:
-
-- **`AI_Citizens.mcaddon`** — the safe one. Loads on any 1.21.80+ world.
-- **`AI_Citizens_chat.mcaddon`** — same, plus you can talk to citizens by
-  typing in chat. Needs **Beta APIs** turned on.
-
-Start with the safe one. Once you see citizens walking around, swap to the chat
-one if you want to talk to them by typing.
+That writes **`dist/AI_Citizens.mcaddon`** — one file with everything in it.
 
 No Bash? Zip the two folders yourself: `packs/AI_Citizens_BP` and
 `packs/AI_Citizens_RP`, each keeping its own folder name, into one archive
@@ -32,7 +25,7 @@ In the world's settings:
 - **Behaviour Packs** → activate **AI Citizens — Behavior**
 - **Resource Packs** → activate **AI Citizens — Resources**
   (the behaviour pack pulls this in, but check it took)
-- **Experiments** → turn on **Beta APIs** *(only needed for the chat build)*
+- **Experiments** → turn on **Beta APIs**
 
 Load the world.
 
@@ -58,15 +51,20 @@ starts planning what to build. Come back in a few Minecraft days.
 
 ## 6. Tell them what to do
 
+Just type at them:
+
 ```
-/ai:tell @Ada go mine some iron
-/ai:tell everyone, follow me
+@Ada go mine some iron
+everyone, follow me
+anyone found iron yet?
+```
+
+Or use the commands:
+
+```
 /ai:cmd build small_house
 /ai:cmd town
 ```
-
-On the chat build you can drop the `/ai:tell` and just type `@Ada go mine some
-iron` straight into chat.
 
 Sneak-right-click a citizen to open their page. `/ai:panel` opens the control
 panel. `/ai:cmd help` lists everything.
@@ -113,8 +111,10 @@ specific answer.
   pack needs a newer game than you have. Check the pack is listed and not greyed
   out, then try `/scriptevent ai:cmd doctor`.
 - **Citizens spawn but have no faces** → the resource pack is not active.
-- **Typing in chat does nothing** → you are on the safe build. Use `/ai:tell`,
-  or install `AI_Citizens_chat.mcaddon` with Beta APIs on.
+- **The pack is greyed out** → your Minecraft is older than 1.21.120. Build
+  `./tools/build.sh --stable` and use that instead.
+- **Typing in chat does nothing, but `/ai:spawn` works** → Beta APIs is off.
+  Turn it on, or keep using `/ai:tell @Ada go mine iron`.
 - **They stand still** → `/ai:cmd status` and `/ai:cmd debug`.
 
 More: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).

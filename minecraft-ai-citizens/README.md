@@ -16,11 +16,9 @@ bridge, and with a capable local brain when you don't.
 ```
 /ai:spawn 6
 /ai:cmd found Rivermeet
-/ai:tell @Ada go find iron, we need it for the walls
-/ai:tell everyone, follow me
+@Ada go find iron, we need it for the walls
+everyone, follow me
 ```
-
-Build the chat variant and you can drop the `/ai:tell` and just type at them.
 
 ---
 
@@ -82,30 +80,15 @@ and your standing orders — all of it survives a world reload.
 
 ## Install
 
-### Which build to use
-
-There are two, because one feature depends on an API Mojang has not finished.
-
-| | `AI_Citizens.mcaddon` | `AI_Citizens_chat.mcaddon` |
-|---|---|---|
-| Script API | stable | pre-release chat |
-| Loads on | any 1.21.80+ world | needs **Beta APIs** on |
-| Talk by typing in chat | ✘ | ✔ |
-| `/ai:tell @Ada go mine iron` | ✔ | ✔ |
-| Everything else | ✔ | ✔ |
-
-**Start with `AI_Citizens.mcaddon`.** It always loads. If it works, try the chat
-one — it is the nicer experience, and if your game is too old for the
-pre-release module it simply will not activate, which is easy to spot.
-
 ### Install
 
-1. Build both with `./tools/build.sh --all`, or take them from `dist/`.
-2. Open the `.mcaddon`. Minecraft imports both packs.
-3. In your world settings, activate **AI Citizens** under **Behaviour Packs**
+One file, everything in it.
+
+1. Open **`AI_Citizens.mcaddon`**. Minecraft imports both packs.
+2. In your world settings, activate **AI Citizens** under **Behaviour Packs**
    *and* **Resource Packs**.
-4. For the chat build only: turn on **Beta APIs** under **Experiments**.
-5. Load the world and type `/ai:spawn 4`.
+3. Under **Experiments**, turn on **Beta APIs**.
+4. Load the world and type `/ai:spawn 4`.
 
 If nothing appears, type `/ai:doctor`. It reports exactly which parts of the
 Script API this world has and whether the citizen entity can be spawned — one
@@ -113,29 +96,26 @@ command instead of guesswork.
 
 ### Requirements
 
-- Minecraft Bedrock **1.21.80** or newer
-- **Beta APIs** only for the chat build (and for the Claude bridge)
+- Minecraft Bedrock **1.21.120** or newer
+- **Beta APIs** turned on for the world
 - Works in single-player, on Realms, on a dedicated server, on phones and on
   consoles that accept imported add-ons
+
+**Why Beta APIs?** Reading what you type in chat is only possible through
+Minecraft's beta script API — there is no stable equivalent. Rather than pin a
+beta version number (which stops resolving every time Minecraft updates, and is
+why an earlier build of this failed to load), the pack uses the dynamic `"beta"`
+string, which always tracks the current one and never needs changing.
+
+If you cannot turn on Beta APIs, build `./tools/build.sh --stable`. That runs on
+1.21.80+ with no experiments; everything works except typing in chat, and you
+talk to citizens with `/ai:tell @Ada go mine iron` instead.
 
 ---
 
 ## Talking to them
 
-There are two ways in, and they do the same things.
-
-**Slash commands** work on every build:
-
-```
-/ai:spawn 6 miner
-/ai:tell @Ada go mine some iron
-/ai:tell everyone, follow me
-/ai:cmd found Rivermeet
-/ai:doctor
-```
-
-**Typing in chat** works on the chat build, and is what this was designed for.
-Three kinds of message:
+You talk to citizens by typing in chat. Three kinds of message:
 
 **Speak to one of them by name.** They answer, and do it.
 
@@ -180,8 +160,16 @@ Operator commands start with `!ai` in chat, or `/ai:cmd` anywhere:
 !ai help               /ai:cmd help
 ```
 
-There is also `/scriptevent ai:cmd spawn 4`, which needs no custom-command
-support at all — a last resort if the others are missing.
+Every one of these is also a real slash command with autocomplete, which is what
+the stable build uses and what still works if chat is ever unavailable:
+
+```
+/ai:spawn 6 miner        /ai:tell @Ada go mine some iron
+/ai:cmd found Rivermeet  /ai:panel        /ai:doctor
+```
+
+And `/scriptevent ai:cmd spawn 4` works even where custom commands do not — a
+last resort, but it has never not worked.
 
 The full list is in [docs/COMMANDS.md](docs/COMMANDS.md). Sneak-right-click a
 citizen to open their page in the control panel.
@@ -290,9 +278,9 @@ minecraft-ai-citizens/
 ## Development
 
 ```bash
-./tools/build.sh                 # safe build (stable Script API)
-./tools/build.sh --chat          # adds chat listening (needs Beta APIs)
-./tools/build.sh --all           # both, side by side in dist/
+./tools/build.sh                 # the add-on: dist/AI_Citizens.mcaddon
+./tools/build.sh --stable        # fallback: no Beta APIs, no chat listening
+./tools/build.sh --both          # both, side by side in dist/
 ./tools/build.sh --claude        # adds the Claude bridge (dedicated server)
 
 node tools/validate.mjs          # static checks: imports, JSON, pack references
@@ -329,7 +317,10 @@ Being straight about this, because it matters for what you should check first.
 - Every Molang query used is one Mojang documents, every entity property Molang
   reads is declared and `client_sync`, and no pre-release Script API is
   subscribed to without a guard. These checks exist because each of them was a
-  real bug that stopped the add-on working.
+  real bug that stopped the add-on working. Beta modules must use the dynamic
+  `"beta"` string rather than a pinned number, and `min_engine_version` must
+  match the modules declared — both are checked, because a pinned `2.1.0-beta`
+  silently stops resolving when Minecraft updates.
 - 56 behaviour checks pass against the mock engine: a stocked builder finishes a
   cottage and its walls stand in the world; a miner cuts down twenty blocks to a
   buried seam and comes back with emeralds; commands are swallowed while normal

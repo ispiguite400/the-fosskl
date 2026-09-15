@@ -37,17 +37,26 @@ that has no `item`. `/ai:doctor` tries to spawn one and tells you.
 **The pack is greyed out in the world settings.** Your game is older than the
 pack's `min_engine_version` (1.21.80). Update Minecraft.
 
-**The chat build will not activate.** It depends on the pre-release
-`@minecraft/server` beta line, which your version may not have. Use
-`AI_Citizens.mcaddon` instead and control them with `/ai:tell`.
+**The pack is there but citizens do nothing, and `/ai:doctor` does not exist.**
+The script module did not load. Either Beta APIs is off (the add-on needs it for
+chat), or your Minecraft predates 1.21.120. Turn the toggle on, or build
+`./tools/build.sh --stable` which needs neither.
+
+**It worked, then a Minecraft update broke it.** That is the signature of a
+pinned beta module version — `-beta` versions do not auto-upgrade, so a pinned
+one stops resolving on the next release. This add-on uses the dynamic `"beta"`
+string precisely to avoid that; if you see it, check that
+`packs/AI_Citizens_BP/manifest.json` still says `"version": "beta"` and re-run
+`./tools/build.sh`.
 
 ---
 
 ## Nothing happens at all
 
-**`!ai` commands do nothing, but `/ai:cmd` works.** You are on the safe build,
-which cannot read chat. That is expected — use the slash commands, or install
-the chat build with Beta APIs on.
+**Typing in chat does nothing, but `/ai:cmd` works.** Chat listening is off:
+either Beta APIs is not enabled on this world, or you are running the
+`--stable` build. `/ai:doctor` says which. The slash commands do everything chat
+does in the meantime.
 
 **Neither works.** The behaviour pack is not active, or the script module failed
 to load. Check the world's behaviour pack list, then the content log (Settings →

@@ -158,6 +158,34 @@ ok(`${uuids.size} distinct UUIDs`);
 // Match a real re-export, not the explanatory comment in the stub.
 const usesNet = /from\s*["']\.\/transport_net\.js["']/
   .test(fs.readFileSync(path.join(BP, "scripts", "brain", "transport.js"), "utf8"));
+
+// Beta modules must use the dynamic "beta" string, not a pinned number: pinned
+// -beta versions stop resolving when Minecraft updates, which silently kills
+// the script module while the rest of the pack still loads.
+const serverDep = (bpManifest.dependencies || []).find((d) => d.module_name === "@minecraft/server");
+if (!serverDep) {
+  fail("manifest does not depend on @minecraft/server");
+} else if (/-beta$/.test(serverDep.version)) {
+  fail(`@minecraft/server is pinned to "${serverDep.version}" - use "beta" so it survives updates`);
+} else {
+  ok(`@minecraft/server: ${serverDep.version}`);
+}
+for (const d of bpManifest.dependencies || []) {
+  if (d.module_name && /-beta$/.test(d.version || "")) {
+    fail(`${d.module_name} is pinned to "${d.version}" - use "beta"`);
+  }
+}
+
+// The dynamic "beta" string needs 1.21.120; declaring less makes the failure
+// silent instead of showing the pack as incompatible.
+const minEngine = bpManifest.header.min_engine_version;
+const usesDynamicBeta = serverDep && serverDep.version === "beta";
+const engineStr = minEngine.join(".");
+if (usesDynamicBeta && (minEngine[0] < 1 || minEngine[1] < 21 || (minEngine[1] === 21 && minEngine[2] < 120))) {
+  fail(`min_engine_version ${engineStr} is below 1.21.120, which the dynamic "beta" version needs`);
+} else {
+  ok(`min_engine_version ${engineStr} matches the modules declared`);
+}
 const hasNetDep = (bpManifest.dependencies || []).some((d) => d.module_name === "@minecraft/server-net");
 if (usesNet && !hasNetDep) fail("transport.js uses @minecraft/server-net but the manifest does not declare it");
 if (!usesNet && hasNetDep) warn("manifest declares @minecraft/server-net but transport.js does not use it");

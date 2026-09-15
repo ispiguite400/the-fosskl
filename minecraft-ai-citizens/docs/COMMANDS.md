@@ -3,10 +3,16 @@
 Two ways to talk to citizens: **speak to them** (they hear you), or **run a
 command** (you configure them).
 
+## Typing in chat
+
+This is the main way in. Speak near citizens and they hear you; name one and
+they act on it. It needs the **Beta APIs** world toggle, because reading chat is
+only possible through Minecraft's beta script API.
+
 ## Slash commands — always available
 
-These are real slash commands with autocomplete. They work on every build,
-including the safe one, and need no cheats.
+Real slash commands with autocomplete. They need no cheats, and they work even
+when chat does not — on the `--stable` build, or if Beta APIs is off.
 
 | Command | Does |
 |---|---|
@@ -18,16 +24,6 @@ including the safe one, and need no cheats.
 
 If custom commands are unavailable, `/scriptevent ai:cmd spawn 4` and
 `/scriptevent ai:tell @Ada follow me` do the same thing.
-
-## Typing in chat — chat build only
-
-Reading chat needs a pre-release API, so it is only in `AI_Citizens_chat.mcaddon`
-(which needs **Beta APIs** on). With it, `!ai` commands are swallowed so they
-never appear in chat, and everything else you type is overheard by citizens
-nearby.
-
-Without it, everything below still works — put it after `/ai:tell` or
-`/ai:cmd`.
 
 ---
 

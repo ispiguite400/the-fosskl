@@ -31,15 +31,13 @@ precisely because most people cannot use the other one.
 ### 1. Build with the transport enabled
 
 ```bash
-./tools/build.sh --claude --chat
+./tools/build.sh --claude
 ```
 
 This points `scripts/brain/transport.js` at `transport_net.js` and adds
-`@minecraft/server-net` to the behaviour pack manifest. `--chat` is worth adding
-here too: a dedicated server running the Claude bridge already needs Beta APIs
-for `server-net`, so chat listening costs nothing extra and is how players
-actually talk to citizens. Running `./tools/build.sh` with no flags puts both
-back.
+`@minecraft/server-net` to the behaviour pack manifest. Both it and chat
+listening are on the beta script track, so the Beta APIs toggle you already need
+covers both. Running `./tools/build.sh` with no flags puts it back.
 
 ### 2. Install the packs on the server
 

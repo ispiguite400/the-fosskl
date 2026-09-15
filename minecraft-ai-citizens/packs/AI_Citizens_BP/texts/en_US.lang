@@ -1,4 +1,4 @@
-pack.name=AI Citizens — Behavior
-pack.description=Player-like AI villagers that think, talk, build and settle. Behavior pack.
+pack.name=AI Citizens
+pack.description=Player-like AI settlers that build, talk and settle. REQUIRES the Beta APIs world toggle. Use /ai:spawn 4 or just talk to them in chat.
 entity.ai:citizen.name=Citizen
 item.spawn_egg.entity.ai:citizen.name=Spawn Citizen
