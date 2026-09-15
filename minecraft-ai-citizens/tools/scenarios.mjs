@@ -562,16 +562,24 @@ await scenario("The chat bridge can drive citizens from outside the game", async
     chopping.length > 0, dbg.registry.all.map((c) => c.task?.kind).join(","));
 
   // And Claude's actual words, spoken by whoever is nearest.
+  //
+  // Look for the specific line rather than for "somebody is speaking": citizens
+  // hold their own conversations while they work, so at any moment one of them
+  // may legitimately have a caption up that has nothing to do with this.
   for (const c of dbg.registry.all) { c.speechQueue.length = 0; c.caption = null; }
+  const LINE = "oak just past the ridge";
   mock.sendScriptEvent("ai:voice", "Aye - there's oak just past the ridge.", player);
   mock.advance(20);
-  const speaking = dbg.registry.all.filter(
-    (c) => c.caption || c.speechQueue.length);
-  check(`exactly one citizen spoke the line (${speaking.length})`, speaking.length === 1,
-    `${speaking.length} spoke`);
-  const said = speaking[0] && (speaking[0].caption?.full || speaking[0].speechQueue[0]?.text);
-  check(`they said Claude's words ("${said}")`,
-    typeof said === "string" && said.includes("oak just past the ridge"), String(said));
+
+  const saidIt = (c) => [c.caption?.full, ...c.speechQueue.map((q) => q.text)]
+    .some((t) => typeof t === "string" && t.includes(LINE));
+  const speaking = dbg.registry.all.filter(saidIt);
+
+  check(`exactly one citizen spoke that line (${speaking.length})`, speaking.length === 1,
+    `${speaking.length} said it`);
+  check("they said the words the bridge sent, verbatim",
+    speaking.length === 1,
+    dbg.registry.all.map((c) => c.caption?.full).join(" | "));
 
   // The nearest one answers, not a random one.
   const nearest = dbg.registry.all
