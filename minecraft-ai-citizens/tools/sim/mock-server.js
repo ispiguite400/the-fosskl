@@ -354,6 +354,7 @@ export function sendScriptEvent(id, message, player) {
 const entityDieEv = signal();
 const entityHurtEv = signal();
 const interactEv = signal();
+const playerSpawnEv = signal();
 
 function fireEntityDie(entity, source) {
   entityDieEv.fire({ deadEntity: entity, damageSource: { damagingEntity: source } });
@@ -397,6 +398,7 @@ export const world = {
       entityDie: entityDieEv,
       entityHurt: entityHurtEv,
       playerInteractWithEntity: interactEv,
+      playerSpawn: playerSpawnEv,
     };
     if (chatApiAvailable) events.chatSend = chatSend;
     return events;
@@ -505,6 +507,11 @@ export function advance(ticks) {
 
 export function addPlayer(name, location) {
   return new Player(name, location, dimensions.get("minecraft:overworld"));
+}
+
+/** Fires the join event the way the game does when a player enters a world. */
+export function joinPlayer(player) {
+  playerSpawnEv.fire({ player, initialSpawn: true });
 }
 
 export function sendChat(player, message) {

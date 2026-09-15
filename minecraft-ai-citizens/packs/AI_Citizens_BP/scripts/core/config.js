@@ -28,6 +28,7 @@ export const CONFIG = {
   hearingRadius: 20,
   chatRadius: 32,                // how far a player's chat reaches citizens
   chatPrefix: "ai!",             // attention word: "ai! go mine some iron"
+  announceOnJoin: true,          // greet a joining player so they can see it works
 
   // --- speech -----------------------------------------------------------
   captionSeconds: 6,

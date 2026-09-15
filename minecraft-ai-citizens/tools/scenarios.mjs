@@ -345,6 +345,16 @@ await scenario("Everything works on a runtime with no chat API", async (sim) => 
   const report = mock.simStats.messages.join("\n");
   check("doctor reports the missing chat API", /chat listening/.test(report),
     report.slice(-200));
+  check("doctor reports the pack version", /pack version/.test(report));
+
+  // A player joining must be told the add-on is alive, without knowing any
+  // command first - otherwise "not working" and "not installed" look the same.
+  mock.simStats.messages.length = 0;
+  mock.joinPlayer(player);
+  mock.advance(80);
+  const greeting = mock.simStats.messages.join("\n");
+  check("a joining player is greeted with the version and a first command",
+    /AI Citizens/.test(greeting) && /ai:spawn/.test(greeting), greeting.slice(0, 160));
 });
 
 // --------------------------------------------------------------------------

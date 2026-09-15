@@ -10,8 +10,9 @@
  */
 import { world, system } from "@minecraft/server";
 import { CONFIG, loadConfigOverrides } from "./core/config.js";
-import { info, debug, warn, safe, reportError, broadcast } from "./core/log.js";
+import { info, debug, warn, safe, reportError, broadcast, tell } from "./core/log.js";
 import { RoundRobin } from "./core/scheduler.js";
+import { PACK_VERSION } from "./core/generated.js";
 import { dist, isNight as timeIsNight, prettyId, clamp } from "./core/util.js";
 
 import { Citizen, CitizenRegistry, STATE, jobBadge } from "./agent/citizen.js";
@@ -284,6 +285,34 @@ function registerEntityEvents() {
     if (!e || e.typeId !== "ai:citizen") return;
     if (registry.get(e.id)) return;
     safe("spawnEvent", () => registry.add(e, tick));
+  });
+
+  // A joining player is told the add-on is alive and how to start. Without
+  // this, "nothing happens" and "the scripts are not running" look identical
+  // from inside the game, and the player has to already know a command to find
+  // out which one they are looking at.
+  safe("boot.greet", () => {
+    const signal = world.afterEvents?.playerSpawn;
+    if (!signal || typeof signal.subscribe !== "function") return;
+    signal.subscribe((event) => {
+      if (!CONFIG.announceOnJoin) return;
+      if (!event.initialSpawn) return;
+      const player = event.player;
+      system.runTimeout(() => safe("greet", () => {
+        const chatOn = capabilities.chat !== "none";
+        tell(player, `§bAI Citizens §7v${PACK_VERSION}§r is running.`);
+        if (capabilities.slashCommands.length) {
+          tell(player, "  §7Start with §f/ai:spawn 4§7, then §f/ai:doctor§7 if anything looks wrong.§r");
+        } else {
+          tell(player, "  §cNo slash commands registered.§r §7Try §f/scriptevent ai:cmd doctor§7.§r");
+        }
+        if (chatOn) {
+          tell(player, "  §7Or just type §fai! spawn 4§7 in chat.§r");
+        } else {
+          tell(player, "  §7Talk to them with §f/ai:tell go mine some iron§7.§r");
+        }
+      }), 60);
+    });
   });
 
   world.afterEvents.entityDie.subscribe((event) => {
