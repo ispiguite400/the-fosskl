@@ -1,84 +1,244 @@
 {
   "format_version": "1.10.0",
   "animation_controllers": {
-
     "controller.animation.ai_citizen.general": {
       "initial_state": "default",
       "states": {
         "default": {
-          "animations": ["base", "look_at_target"]
+          "animations": [
+            "base",
+            "look_at_target"
+          ]
         }
       }
     },
-
     "controller.animation.ai_citizen.move": {
       "initial_state": "idle",
       "states": {
         "idle": {
-          "animations": ["idle"],
+          "animations": [
+            "idle"
+          ],
           "blend_transition": 0.2,
           "transitions": [
-            { "swim": "query.is_in_water_or_rain && query.is_in_water" },
-            { "walk": "query.ground_speed > 0.08" }
+            {
+              "swim": "query.is_in_water"
+            },
+            {
+              "walk": "query.ground_speed > 0.1"
+            }
           ]
         },
         "walk": {
-          "animations": ["walk"],
+          "animations": [
+            "walk"
+          ],
           "blend_transition": 0.2,
           "transitions": [
-            { "swim": "query.is_in_water" },
-            { "idle": "query.ground_speed <= 0.08" },
-            { "sprint": "query.ground_speed > 0.28" }
+            {
+              "swim": "query.is_in_water"
+            },
+            {
+              "idle": "query.ground_speed <= 0.1"
+            },
+            {
+              "sprint": "query.property('ai:state') == 2"
+            }
           ]
         },
         "sprint": {
-          "animations": ["walk", "sprint"],
+          "animations": [
+            "walk",
+            "sprint"
+          ],
           "blend_transition": 0.2,
           "transitions": [
-            { "swim": "query.is_in_water" },
-            { "walk": "query.ground_speed <= 0.28" }
+            {
+              "swim": "query.is_in_water"
+            },
+            {
+              "idle": "query.ground_speed <= 0.1"
+            },
+            {
+              "walk": "query.property('ai:state') != 2"
+            }
           ]
         },
         "swim": {
-          "animations": ["swim"],
+          "animations": [
+            "swim"
+          ],
           "blend_transition": 0.3,
           "transitions": [
-            { "idle": "!query.is_in_water" }
+            {
+              "idle": "!query.is_in_water"
+            }
           ]
         }
       }
     },
-
     "controller.animation.ai_citizen.action": {
       "initial_state": "none",
       "states": {
         "none": {
           "blend_transition": 0.2,
           "transitions": [
-            { "mine":   "query.property('ai:state') == 3" },
-            { "build":  "query.property('ai:state') == 4" },
-            { "attack": "query.property('ai:state') == 5" },
-            { "talk":   "query.property('ai:state') == 6" },
-            { "sit":    "query.property('ai:state') == 7" },
-            { "sleep":  "query.property('ai:state') == 8" },
-            { "craft":  "query.property('ai:state') == 9" },
-            { "farm":   "query.property('ai:state') == 10" },
-            { "carry":  "query.property('ai:state') == 11" },
-            { "cheer":  "query.property('ai:state') == 12" },
-            { "point":  "query.property('ai:state') == 13" }
+            {
+              "mine": "query.property('ai:state') == 3"
+            },
+            {
+              "build": "query.property('ai:state') == 4"
+            },
+            {
+              "attack": "query.property('ai:state') == 5"
+            },
+            {
+              "talk": "query.property('ai:state') == 6"
+            },
+            {
+              "sit": "query.property('ai:state') == 7"
+            },
+            {
+              "sleep": "query.property('ai:state') == 8"
+            },
+            {
+              "craft": "query.property('ai:state') == 9"
+            },
+            {
+              "farm": "query.property('ai:state') == 10"
+            },
+            {
+              "carry": "query.property('ai:state') == 11"
+            },
+            {
+              "cheer": "query.property('ai:state') == 12"
+            },
+            {
+              "point": "query.property('ai:state') == 13"
+            }
           ]
         },
-        "mine":   { "animations": ["swing"], "blend_transition": 0.15, "transitions": [{ "none": "query.property('ai:state') != 3" }] },
-        "build":  { "animations": ["place"], "blend_transition": 0.15, "transitions": [{ "none": "query.property('ai:state') != 4" }] },
-        "attack": { "animations": ["swing"], "blend_transition": 0.1,  "transitions": [{ "none": "query.property('ai:state') != 5" }] },
-        "talk":   { "animations": ["talk"],  "blend_transition": 0.3,  "transitions": [{ "none": "query.property('ai:state') != 6" }] },
-        "sit":    { "animations": ["sit"],   "blend_transition": 0.4,  "transitions": [{ "none": "query.property('ai:state') != 7" }] },
-        "sleep":  { "animations": ["sleep"], "blend_transition": 0.5,  "transitions": [{ "none": "query.property('ai:state') != 8" }] },
-        "craft":  { "animations": ["craft"], "blend_transition": 0.25, "transitions": [{ "none": "query.property('ai:state') != 9" }] },
-        "farm":   { "animations": ["farm"],  "blend_transition": 0.25, "transitions": [{ "none": "query.property('ai:state') != 10" }] },
-        "carry":  { "animations": ["carry"], "blend_transition": 0.25, "transitions": [{ "none": "query.property('ai:state') != 11" }] },
-        "cheer":  { "animations": ["cheer"], "blend_transition": 0.2,  "transitions": [{ "none": "query.property('ai:state') != 12" }] },
-        "point":  { "animations": ["point"], "blend_transition": 0.2,  "transitions": [{ "none": "query.property('ai:state') != 13" }] }
+        "mine": {
+          "animations": [
+            "swing"
+          ],
+          "blend_transition": 0.15,
+          "transitions": [
+            {
+              "none": "query.property('ai:state') != 3"
+            }
+          ]
+        },
+        "build": {
+          "animations": [
+            "place"
+          ],
+          "blend_transition": 0.15,
+          "transitions": [
+            {
+              "none": "query.property('ai:state') != 4"
+            }
+          ]
+        },
+        "attack": {
+          "animations": [
+            "swing"
+          ],
+          "blend_transition": 0.1,
+          "transitions": [
+            {
+              "none": "query.property('ai:state') != 5"
+            }
+          ]
+        },
+        "talk": {
+          "animations": [
+            "talk"
+          ],
+          "blend_transition": 0.3,
+          "transitions": [
+            {
+              "none": "query.property('ai:state') != 6"
+            }
+          ]
+        },
+        "sit": {
+          "animations": [
+            "sit"
+          ],
+          "blend_transition": 0.4,
+          "transitions": [
+            {
+              "none": "query.property('ai:state') != 7"
+            }
+          ]
+        },
+        "sleep": {
+          "animations": [
+            "sleep"
+          ],
+          "blend_transition": 0.5,
+          "transitions": [
+            {
+              "none": "query.property('ai:state') != 8"
+            }
+          ]
+        },
+        "craft": {
+          "animations": [
+            "craft"
+          ],
+          "blend_transition": 0.25,
+          "transitions": [
+            {
+              "none": "query.property('ai:state') != 9"
+            }
+          ]
+        },
+        "farm": {
+          "animations": [
+            "farm"
+          ],
+          "blend_transition": 0.25,
+          "transitions": [
+            {
+              "none": "query.property('ai:state') != 10"
+            }
+          ]
+        },
+        "carry": {
+          "animations": [
+            "carry"
+          ],
+          "blend_transition": 0.25,
+          "transitions": [
+            {
+              "none": "query.property('ai:state') != 11"
+            }
+          ]
+        },
+        "cheer": {
+          "animations": [
+            "cheer"
+          ],
+          "blend_transition": 0.2,
+          "transitions": [
+            {
+              "none": "query.property('ai:state') != 12"
+            }
+          ]
+        },
+        "point": {
+          "animations": [
+            "point"
+          ],
+          "blend_transition": 0.2,
+          "transitions": [
+            {
+              "none": "query.property('ai:state') != 13"
+            }
+          ]
+        }
       }
     }
   }

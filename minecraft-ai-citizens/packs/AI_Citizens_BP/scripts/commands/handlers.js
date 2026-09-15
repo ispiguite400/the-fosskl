@@ -58,11 +58,16 @@ const COMMANDS = {
       ["status", "brain and bridge health"],
       ["config <key> [value]", "read or change a setting"],
       ["debug", "toggle verbose logging"],
+      ["doctor", "what works on this world, and what does not"],
     ];
     for (const [cmd, help] of lines) {
       tell(player, `  §e!ai ${cmd}§r §8- ${help}§r`);
     }
     tell(player, "§7Talk to them by name: §f@Ada go mine some iron§7, or just speak near them.§r");
+    if (app.capabilities && app.capabilities.chat === "none") {
+      tell(player, "§7Chat listening is off in this build — use §f/ai:tell @Ada go mine some iron§7.§r");
+      tell(player, "§7Run §f!ai doctor§7 for the details.§r");
+    }
   },
 
   spawn(app, player, parsed) {
@@ -312,6 +317,57 @@ const COMMANDS = {
   debug(app, player) {
     saveConfigOverride(world, "debug", !CONFIG.debug);
     tell(player, `Debug logging §e${CONFIG.debug ? "on" : "off"}§r.`);
+  },
+
+  /**
+   * What this runtime can and cannot do. Several Script API features are
+   * pre-release and simply absent depending on how the pack was built, so this
+   * turns "nothing happens" into a specific, fixable answer.
+   */
+  doctor(app, player) {
+    const c = app.capabilities || {};
+    const ok = (v) => (v ? "§a✔§r" : "§c✘§r");
+
+    tell(player, "§bAI Citizens — diagnostics§r");
+    tell(player, `  ${ok(true)} script module loaded`);
+    tell(player, `  ${ok(c.slashCommands && c.slashCommands.length)} slash commands: §f${(c.slashCommands || []).join(" ") || "none"}§r`);
+    if (c.slashError) tell(player, `      §c${c.slashError}§r`);
+    tell(player, `  ${ok(c.scriptEvents)} /scriptevent ai:cmd …`);
+
+    if (c.chat === "before") {
+      tell(player, `  ${ok(true)} chat listening (commands hidden from chat)`);
+    } else if (c.chat === "after") {
+      tell(player, `  ${ok(true)} chat listening §7(after-event: !ai text also shows in chat)§r`);
+    } else {
+      tell(player, `  ${ok(false)} chat listening — §7${c.chatError || "unavailable"}§r`);
+      tell(player, "      §7Typing to citizens needs the pre-release chat API.§r");
+      tell(player, "      §7Use §f/ai:tell @Ada go mine iron§7, or rebuild with §f./tools/build.sh --chat§7.§r");
+    }
+
+    tell(player, `  ${ok(c.interaction)} right-click / sneak-click on a citizen`);
+    tell(player, `  ${ok(c.entityEvents)} death, damage and spawn events`);
+    tell(player, `  ${ok(c.settlementsLoaded)} settlement save data`);
+
+    // Can the entity actually be spawned? This is the question that matters.
+    let spawnOk = false;
+    let spawnErr = "";
+    try {
+      const probe = player.dimension.spawnEntity("ai:citizen", {
+        x: player.location.x, y: player.location.y - 200, z: player.location.z,
+      });
+      spawnOk = Boolean(probe);
+      if (probe) probe.remove();
+    } catch (e) {
+      spawnErr = String(e && e.message ? e.message : e).slice(0, 90);
+    }
+    tell(player, `  ${ok(spawnOk)} entity §fai:citizen§r can be spawned`);
+    if (!spawnOk) {
+      tell(player, `      §c${spawnErr || "the behaviour pack entity failed to load"}§r`);
+      tell(player, "      §7Check both packs are active and Beta APIs is on.§r");
+    }
+
+    tell(player, `  §7brain: ${describeBrainStatus()}§r`);
+    tell(player, `  §7citizens ${app.registry.count}/${CONFIG.maxCitizens} · settlements ${app.settlements.list.length}§r`);
   },
 
   say(app, player, parsed) {

@@ -4,18 +4,32 @@
     "name": "pack.name",
     "description": "pack.description",
     "uuid": "dcf21b9b-8b0d-4a53-81ec-d3598a95703b",
-    "version": [1, 0, 0],
-    "min_engine_version": [1, 21, 90]
+    "version": [
+      1,
+      0,
+      0
+    ],
+    "min_engine_version": [
+      1,
+      21,
+      80
+    ]
   },
   "modules": [
     {
       "type": "resources",
       "uuid": "ce7ef1ee-d554-4bf4-96ba-8b5000583234",
-      "version": [1, 0, 0]
+      "version": [
+        1,
+        0,
+        0
+      ]
     }
   ],
   "metadata": {
-    "authors": ["AI Citizens"],
+    "authors": [
+      "AI Citizens"
+    ],
     "license": "MIT"
   }
 }

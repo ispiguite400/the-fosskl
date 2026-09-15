@@ -5,33 +5,49 @@
       "arrays": {
         "textures": {
           "Array.skins": [
-            "Texture.skin_00", "Texture.skin_01", "Texture.skin_02", "Texture.skin_03",
-            "Texture.skin_04", "Texture.skin_05", "Texture.skin_06", "Texture.skin_07",
-            "Texture.skin_08", "Texture.skin_09", "Texture.skin_10", "Texture.skin_11",
-            "Texture.skin_12", "Texture.skin_13", "Texture.skin_14", "Texture.skin_15",
-            "Texture.skin_16", "Texture.skin_17", "Texture.skin_18", "Texture.skin_19"
+            "Texture.skin_00",
+            "Texture.skin_01",
+            "Texture.skin_02",
+            "Texture.skin_03",
+            "Texture.skin_04",
+            "Texture.skin_05",
+            "Texture.skin_06",
+            "Texture.skin_07",
+            "Texture.skin_08",
+            "Texture.skin_09",
+            "Texture.skin_10",
+            "Texture.skin_11",
+            "Texture.skin_12",
+            "Texture.skin_13",
+            "Texture.skin_14",
+            "Texture.skin_15",
+            "Texture.skin_16",
+            "Texture.skin_17",
+            "Texture.skin_18",
+            "Texture.skin_19"
           ]
         }
       },
       "geometry": "Geometry.default",
-      "materials": [ { "*": "Material.default" } ],
-      "textures": [ "Array.skins[query.property('ai:skin')]" ],
-      "part_visibility": [
-        { "*": true }
+      "materials": [
+        {
+          "*": "Material.default"
+        }
       ],
-      "overlay_color": {
-        "r": 1.0, "g": 1.0, "b": 1.0,
-        "a": "query.is_invisible ? 0.0 : 0.0"
-      },
-      "is_hurt_color": {
-        "r": 1.0, "g": 0.5, "b": 0.5, "a": "query.is_hurt ? 0.45 : 0.0"
-      }
+      "textures": [
+        "Array.skins[query.property('ai:skin')]"
+      ]
     },
-
     "controller.render.ai_nav_point": {
       "geometry": "Geometry.default",
-      "materials": [ { "*": "Material.default" } ],
-      "textures": [ "Texture.default" ]
+      "materials": [
+        {
+          "*": "Material.default"
+        }
+      ],
+      "textures": [
+        "Texture.default"
+      ]
     }
   }
 }

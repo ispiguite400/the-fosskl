@@ -40,7 +40,10 @@ import { tickConversations } from "./social/conversation.js";
 import { record } from "./social/relationships.js";
 import { completionLine } from "./social/dialogue.js";
 
-import { registerChat, registerInteraction } from "./commands/index.js";
+import {
+  registerChat, registerInteraction, handleCommandText, handleSpeech,
+} from "./commands/index.js";
+import { registerSlashCommands, registerScriptEvents } from "./commands/slash.js";
 
 // --------------------------------------------------------------------------
 const registry = new CitizenRegistry();
@@ -50,6 +53,23 @@ const thinkRobin = new RoundRobin(1);
 let tick = 0;
 let booted = false;
 let bootAttempts = 0;
+
+/**
+ * What this runtime actually supports. Filled in during boot and reported by
+ * `!ai doctor`, so a missing API is a line of text rather than a silent
+ * add-on that does nothing.
+ */
+const capabilities = {
+  chat: "none",
+  chatError: "",
+  slashCommands: [],
+  slashError: "",
+  scriptEvents: false,
+  interaction: false,
+  entityEvents: false,
+  settlementsLoaded: false,
+  bootError: "",
+};
 const shortageCache = new Map();     // settlementId -> array
 
 const DIMENSIONS = ["overworld", "nether", "the_end"];
@@ -123,6 +143,20 @@ const app = {
   buildCtx(citizen) {
     return makeContext(citizen);
   },
+
+  capabilities,
+
+  /** `!ai ...` text from chat, a slash command or a scriptevent. */
+  handleCommandText(player, text) {
+    if (!booted) boot();
+    handleCommandText(app, player, text);
+  },
+
+  /** Plain speech from any source, routed exactly as overheard chat is. */
+  handleSpeech(player, text) {
+    if (!booted) boot();
+    handleSpeech(app, player, text);
+  },
 };
 
 // --------------------------------------------------------------------------
@@ -181,29 +215,48 @@ function makeContext(citizen) {
 // --------------------------------------------------------------------------
 // Boot
 // --------------------------------------------------------------------------
+/**
+ * Boot, one isolated step at a time.
+ *
+ * Every step is wrapped on its own. An API this runtime does not have - and
+ * there are several that are pre-release - must cost exactly the feature that
+ * needs it, never the whole add-on. The previous version registered chat inside
+ * one big try block, so a missing `chatSend` stopped the world loop from ever
+ * starting and `!ai spawn` did nothing at all.
+ */
 function boot() {
   if (booted) return;
   bootAttempts += 1;
+  booted = true;                 // never re-enter, even if a step throws
 
-  const ok = safe("boot", () => {
-    loadConfigOverrides(world);
+  safe("boot.config", () => loadConfigOverrides(world));
+  capabilities.settlementsLoaded = safe("boot.settlements", () => {
     settlements.load();
-    registerChat(app);
-    registerInteraction(app);
-    registerEntityEvents();
-    adoptExistingCitizens();
-    const swept = sweepOrphanMarkers(loadedDimensions(), registry.all);
-    if (swept) debug(`swept ${swept} stray waypoints`);
     return true;
   }, false);
 
-  if (!ok) {
-    if (bootAttempts < 20) system.runTimeout(boot, 40);
-    return;
-  }
+  const chat = safe("boot.chat", () => registerChat(app), { mode: "none", error: "threw" });
+  capabilities.chat = chat.mode;
+  capabilities.chatError = chat.error || "";
 
-  booted = true;
+  capabilities.interaction = safe("boot.interaction", () => registerInteraction(app), false);
+  capabilities.entityEvents = safe("boot.entityEvents", () => {
+    registerEntityEvents();
+    return true;
+  }, false);
+
+  safe("boot.adopt", () => adoptExistingCitizens());
+  safe("boot.sweep", () => {
+    const swept = sweepOrphanMarkers(loadedDimensions(), registry.all);
+    if (swept) debug(`swept ${swept} stray waypoints`);
+  });
+
   info(`AI Citizens ready — ${registry.count} citizens, ${settlements.list.length} settlements`);
+  info(`  commands: ${capabilities.slashCommands.join(" ") || "(none registered)"}`);
+  info(`  chat listening: ${capabilities.chat}${capabilities.chatError ? ` (${capabilities.chatError})` : ""}`);
+  if (capabilities.chat === "none") {
+    info("  chat is a pre-release API in this build - use /ai:tell and /ai:cmd instead");
+  }
 }
 
 function loadedDimensions() {
@@ -570,6 +623,14 @@ export function debugState() {
   return { registry, settlements, tick, claudeBrain };
 }
 globalThis.aiCitizensDebug = debugState;
+
+// Custom commands can only be registered during `system.beforeEvents.startup`,
+// which fires before the world exists - so this has to run at module load, not
+// inside boot().
+const slash = registerSlashCommands(app);
+capabilities.slashCommands = slash.registered;
+capabilities.slashError = slash.error;
+capabilities.scriptEvents = registerScriptEvents(app);
 
 system.run(boot);
 system.runInterval(() => {

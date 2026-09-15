@@ -2,16 +2,23 @@
 #
 # Packages the add-on for Minecraft Bedrock.
 #
-#   ./tools/build.sh              offline build - local brain only, works on
-#                                 phones, consoles, Realms and single-player
-#   ./tools/build.sh --claude     adds @minecraft/server-net so citizens can
-#                                 think through the Claude bridge. Bedrock
-#                                 Dedicated Server only - see docs/CLAUDE_SETUP.md
+#   ./tools/build.sh              the safe build. Stable Script API only, so the
+#                                 pack loads on any 1.21.80+ world. Control is
+#                                 via /ai:spawn, /ai:cmd and /ai:tell.
 #
-# Output lands in dist/:
-#   AI_Citizens.mcaddon           both packs - double-click to install
-#   AI_Citizens_BP.mcpack         behaviour pack on its own
-#   AI_Citizens_RP.mcpack         resource pack on its own
+#   ./tools/build.sh --chat       adds chat listening, so you can just type to
+#                                 citizens. Needs the pre-release chat API:
+#                                 turn on Beta APIs in the world.
+#
+#   ./tools/build.sh --claude     adds @minecraft/server-net so citizens think
+#                                 through the Claude bridge. Bedrock Dedicated
+#                                 Server only - see docs/CLAUDE_SETUP.md.
+#
+#   ./tools/build.sh --all        builds the safe one and the chat one, so you
+#                                 can try chat and fall back if your game is
+#                                 older than the beta module it needs.
+#
+# Flags combine. Output lands in dist/.
 #
 set -euo pipefail
 
@@ -19,11 +26,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 WITH_CLAUDE=0
+WITH_CHAT=0
+BUILD_ALL=0
 for arg in "$@"; do
   case "$arg" in
     --claude) WITH_CLAUDE=1 ;;
+    --chat) WITH_CHAT=1 ;;
+    --all) BUILD_ALL=1 ;;
     --offline) WITH_CLAUDE=0 ;;
-    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $arg" >&2; exit 1 ;;
   esac
 done
@@ -33,15 +44,20 @@ RP="packs/AI_Citizens_RP"
 TRANSPORT="$BP/scripts/brain/transport.js"
 MANIFEST="$BP/manifest.json"
 
-# --- regenerate the parts that are generated ------------------------------
+# Stable Script API. Pre-release chat lives on the beta line of the same module.
+SERVER_STABLE="2.0.0"
+SERVER_BETA="2.1.0-beta"
+
 echo "==> generating entities and textures"
 python3 tools/generate_entities.py
 [ -f "$RP/textures/entity/ai_citizen/citizen_00.png" ] || python3 tools/generate_skins.py
 
-# --- select the transport -------------------------------------------------
-if [ "$WITH_CLAUDE" -eq 1 ]; then
-  echo "==> enabling the Claude bridge (@minecraft/server-net)"
-  cat > "$TRANSPORT" <<'EOF'
+# --------------------------------------------------------------------------
+configure() {
+  local with_claude="$1" with_chat="$2"
+
+  if [ "$with_claude" -eq 1 ]; then
+    cat > "$TRANSPORT" <<'EOF'
 /**
  * Transport selector - CLAUDE BUILD.
  *
@@ -51,19 +67,8 @@ if [ "$WITH_CLAUDE" -eq 1 ]; then
  */
 export { NET_AVAILABLE, postJson, transportName } from "./transport_net.js";
 EOF
-  python3 - "$MANIFEST" <<'EOF'
-import json, sys
-path = sys.argv[1]
-m = json.load(open(path))
-deps = m.setdefault("dependencies", [])
-if not any(d.get("module_name") == "@minecraft/server-net" for d in deps):
-    deps.append({"module_name": "@minecraft/server-net", "version": "1.0.0-beta"})
-json.dump(m, open(path, "w"), indent=2)
-open(path, "a").write("\n")
-EOF
-else
-  echo "==> offline build (local brain)"
-  cat > "$TRANSPORT" <<'EOF'
+  else
+    cat > "$TRANSPORT" <<'EOF'
 /**
  * Transport selector.
  *
@@ -72,28 +77,37 @@ else
  */
 export { NET_AVAILABLE, postJson, transportName } from "./transport_none.js";
 EOF
+  fi
+
+  SERVER_VERSION="$SERVER_STABLE"
+  [ "$with_chat" -eq 1 ] && SERVER_VERSION="$SERVER_BETA"
+
+  WITH_CLAUDE="$with_claude" SERVER_VERSION="$SERVER_VERSION" \
   python3 - "$MANIFEST" <<'EOF'
-import json, sys
+import json, os, sys
 path = sys.argv[1]
 m = json.load(open(path))
-m["dependencies"] = [d for d in m.get("dependencies", [])
-                     if d.get("module_name") != "@minecraft/server-net"]
+deps = [d for d in m.get("dependencies", [])
+        if d.get("module_name") not in ("@minecraft/server", "@minecraft/server-net")]
+
+# The module list decides whether the pack loads at all, so it is rebuilt from
+# scratch each time rather than patched.
+server_dep = {"module_name": "@minecraft/server", "version": os.environ["SERVER_VERSION"]}
+insert_at = next((i for i, d in enumerate(deps) if d.get("module_name")), len(deps))
+deps.insert(insert_at, server_dep)
+if os.environ["WITH_CLAUDE"] == "1":
+    deps.append({"module_name": "@minecraft/server-net", "version": "1.0.0-beta"})
+m["dependencies"] = deps
 json.dump(m, open(path, "w"), indent=2)
 open(path, "a").write("\n")
 EOF
-fi
+}
 
-# --- check before packaging ----------------------------------------------
-echo "==> validating"
-node tools/validate.mjs
-
-# --- package --------------------------------------------------------------
-echo "==> packaging"
-rm -rf dist
-mkdir -p dist
-
-python3 - <<'EOF'
-import os, zipfile
+package() {
+  local suffix="$1"
+  python3 - "$suffix" <<'EOF'
+import os, sys, zipfile
+suffix = sys.argv[1]
 
 def add_tree(zf, src, prefix):
     for root, dirs, files in os.walk(src):
@@ -109,24 +123,53 @@ def pack(out, entries):
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
         for src, prefix in entries:
             add_tree(zf, src, prefix)
-    print("   %-34s %6.1f KB" % (out, os.path.getsize(out) / 1024))
+    print("   %-38s %6.1f KB" % (out, os.path.getsize(out) / 1024))
 
-pack("dist/AI_Citizens_BP.mcpack", [("packs/AI_Citizens_BP", "")])
-pack("dist/AI_Citizens_RP.mcpack", [("packs/AI_Citizens_RP", "")])
-pack("dist/AI_Citizens.mcaddon", [
+os.makedirs("dist", exist_ok=True)
+pack(f"dist/AI_Citizens{suffix}_BP.mcpack", [("packs/AI_Citizens_BP", "")])
+pack(f"dist/AI_Citizens{suffix}_RP.mcpack", [("packs/AI_Citizens_RP", "")])
+pack(f"dist/AI_Citizens{suffix}.mcaddon", [
     ("packs/AI_Citizens_BP", "AI_Citizens_BP"),
     ("packs/AI_Citizens_RP", "AI_Citizens_RP"),
 ])
 EOF
+}
+
+rm -rf dist
+mkdir -p dist
+
+if [ "$BUILD_ALL" -eq 1 ]; then
+  echo "==> building the safe variant (stable Script API)"
+  configure "$WITH_CLAUDE" 0
+  node tools/validate.mjs > /dev/null
+  package ""
+
+  echo "==> building the chat variant (pre-release chat API)"
+  configure "$WITH_CLAUDE" 1
+  node tools/validate.mjs > /dev/null
+  package "_chat"
+
+  # Leave the tree in the safe configuration.
+  configure "$WITH_CLAUDE" 0
+else
+  configure "$WITH_CLAUDE" "$WITH_CHAT"
+  echo "==> validating"
+  node tools/validate.mjs
+  echo "==> packaging"
+  SUFFIX=""
+  [ "$WITH_CHAT" -eq 1 ] && SUFFIX="_chat"
+  package "$SUFFIX"
+fi
 
 echo
+echo "Script API: $( [ "$WITH_CHAT" -eq 1 ] && echo "$SERVER_BETA (chat listening on - needs Beta APIs)" || echo "$SERVER_STABLE (stable)" )"
 if [ "$WITH_CLAUDE" -eq 1 ]; then
-  echo "Built with the Claude bridge enabled."
-  echo "  Next: start the bridge (cd bridge && npm install && npm start)"
-  echo "        and read docs/CLAUDE_SETUP.md for the server permission step."
+  echo "Claude bridge: enabled. Start it with  cd bridge && npm install && npm start"
+  echo "  and read docs/CLAUDE_SETUP.md for the server permission step."
 else
-  echo "Built for offline play (local brain)."
-  echo "  Citizens think, talk, build and take orders with no network at all."
-  echo "  For Claude-powered minds: ./tools/build.sh --claude"
+  echo "Claude bridge: off. Citizens use the local brain (works everywhere)."
 fi
-echo "  Install: open dist/AI_Citizens.mcaddon with Minecraft."
+echo
+echo "Install: open the .mcaddon with Minecraft, activate both packs on your world."
+echo "Commands: /ai:spawn 4   ·   /ai:cmd found Rivermeet   ·   /ai:doctor"
+[ "$WITH_CHAT" -eq 1 ] && echo "Chat: type  @Ada go mine iron  directly in chat."

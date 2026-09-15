@@ -707,25 +707,6 @@
       "minecraft:equipment": {
         "table": "loot_tables/empty.json"
       },
-      "minecraft:equippable": {
-        "slots": [
-          {
-            "slot": 0
-          },
-          {
-            "slot": 1
-          },
-          {
-            "slot": 2
-          },
-          {
-            "slot": 3
-          },
-          {
-            "slot": 4
-          }
-        ]
-      },
       "minecraft:behavior.pickup_items": {
         "priority": 6,
         "max_dist": 5,

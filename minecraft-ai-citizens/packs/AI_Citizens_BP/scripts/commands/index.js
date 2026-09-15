@@ -10,7 +10,7 @@ import { world, system } from "@minecraft/server";
 import { CONFIG } from "../core/config.js";
 import { tell, safe, debug } from "../core/log.js";
 import { dist, trimTo } from "../core/util.js";
-import { classify, looksLikeQuestion } from "./parser.js";
+import { classify, looksLikeQuestion, PREFIX } from "./parser.js";
 import { runCommand } from "./handlers.js";
 import { say, TONE, interrupt } from "../ui/caption.js";
 import { openPanel, openCitizen } from "../ui/panel.js";
@@ -25,21 +25,82 @@ import { cellsFromBlueprint, findBuildSite } from "../actions/build.js";
 import { buildTask, storeTask } from "../actions/registry.js";
 import { nearestStockpile } from "../civ/settlement.js";
 
+/**
+ * Hook chat, if this runtime has it.
+ *
+ * `chatSend` is a pre-release API on both the before and after signals. A pack
+ * built against the stable `@minecraft/server` does not have it at all, and
+ * `.subscribe` on an undefined signal throws - which, before this was wrapped,
+ * took the whole add-on down with it and left `!ai spawn` doing nothing.
+ *
+ * So chat is treated as an enhancement. Slash commands (commands/slash.js) are
+ * the path that always works.
+ *
+ * @returns {{mode: "before"|"after"|"none", error: string}}
+ */
 export function registerChat(app) {
-  world.beforeEvents.chatSend.subscribe((event) => {
-    const player = event.sender;
-    const message = event.message;
-    const parsed = classify(message);
+  const result = { mode: "none", error: "" };
 
-    if (parsed.type === "command") {
-      event.cancel = true;                       // never echo add-on commands
-      system.run(() => runCommand(app, player, parsed));
-      return;
-    }
+  // Preferred: the before-event, because it can swallow `!ai` commands so they
+  // never appear in chat.
+  const before = safe("chat.before", () => world.beforeEvents?.chatSend, null);
+  if (before && typeof before.subscribe === "function") {
+    const ok = safe("chat.subscribeBefore", () => {
+      before.subscribe((event) => {
+        const player = event.sender;
+        const parsed = classify(event.message);
+        if (parsed.type === "command") {
+          event.cancel = true;                   // never echo add-on commands
+          system.run(() => runCommand(app, player, parsed));
+          return;
+        }
+        // Everything else stays visible in chat; citizens react next tick.
+        system.run(() => routeSpeech(app, player, parsed));
+      });
+      return true;
+    }, false);
+    if (ok) { result.mode = "before"; return result; }
+  }
 
-    // Everything else stays visible in chat; citizens react on the next tick.
-    system.run(() => routeSpeech(app, player, parsed));
-  });
+  // Fallback: the after-event still lets citizens hear you. It cannot cancel,
+  // so `!ai ...` will also show up in chat - a cosmetic cost, not a broken one.
+  const after = safe("chat.after", () => world.afterEvents?.chatSend, null);
+  if (after && typeof after.subscribe === "function") {
+    const ok = safe("chat.subscribeAfter", () => {
+      after.subscribe((event) => {
+        const player = event.sender;
+        const parsed = classify(event.message);
+        if (parsed.type === "command") {
+          system.run(() => runCommand(app, player, parsed));
+          return;
+        }
+        system.run(() => routeSpeech(app, player, parsed));
+      });
+      return true;
+    }, false);
+    if (ok) { result.mode = "after"; return result; }
+  }
+
+  result.error = "chatSend is a pre-release API and this build targets stable";
+  return result;
+}
+
+/** Runs `!ai`-style command text from any source (chat, /ai:cmd, scriptevent). */
+export function handleCommandText(app, player, text) {
+  const cleaned = String(text || "").trim();
+  if (!cleaned) { runCommand(app, player, { command: "help", args: [], rest: "" }); return; }
+  const parsed = classify(cleaned.startsWith(PREFIX) ? cleaned : `${PREFIX} ${cleaned}`);
+  if (parsed.type !== "command") { runCommand(app, player, { command: "help", args: [], rest: "" }); return; }
+  runCommand(app, player, parsed);
+}
+
+/** Routes plain speech from any source, exactly as overheard chat would be. */
+export function handleSpeech(app, player, text) {
+  const cleaned = String(text || "").trim();
+  if (!cleaned) return;
+  const parsed = classify(cleaned);
+  if (parsed.type === "command") { runCommand(app, player, parsed); return; }
+  routeSpeech(app, player, parsed);
 }
 
 function routeSpeech(app, player, parsed) {
@@ -184,7 +245,10 @@ function capitalise(s) {
 
 /** Sneak-interact with a citizen to open their page in the panel. */
 export function registerInteraction(app) {
-  world.afterEvents.playerInteractWithEntity.subscribe((event) => {
+  const signal = safe("interact.signal", () => world.afterEvents?.playerInteractWithEntity, null);
+  if (!signal || typeof signal.subscribe !== "function") return false;
+  return safe("interact.subscribe", () => {
+    signal.subscribe((event) => {
     const { player, target } = event;
     if (!target || target.typeId !== "ai:citizen") return;
     const citizen = app.registry.get(target.id);
@@ -199,7 +263,9 @@ export function registerInteraction(app) {
         say(citizen, greetingFor(citizen, player.name), { tone: TONE.friendly, to: player.name });
       }
     }
-  });
+    });
+    return true;
+  }, false);
 }
 
 function greetingFor(citizen, playerName) {

@@ -14,11 +14,13 @@ They can think with **Claude** (`claude-opus-5`) when you run the included
 bridge, and with a capable local brain when you don't.
 
 ```
-!ai spawn 6
-!ai found Rivermeet
-@Ada go find iron, we need it for the walls
-everyone, follow me
+/ai:spawn 6
+/ai:cmd found Rivermeet
+/ai:tell @Ada go find iron, we need it for the walls
+/ai:tell everyone, follow me
 ```
+
+Build the chat variant and you can drop the `/ai:tell` and just type at them.
 
 ---
 
@@ -80,23 +82,39 @@ and your standing orders — all of it survives a world reload.
 
 ## Install
 
-### The quick way
+### Which build to use
 
-1. Download or build `dist/AI_Citizens.mcaddon` (see [Development](#development)).
-2. Open it. Minecraft imports both packs.
-3. In your world settings, under **Behaviour Packs** and **Resource Packs**,
-   activate **AI Citizens**.
-4. Turn on **Beta APIs** in the world's experiment settings. (Script-driven
-   add-ons need it; this is the only experiment required.)
-5. Load the world and type `!ai spawn 4`.
+There are two, because one feature depends on an API Mojang has not finished.
 
-That is everything. No server, no account, no network — citizens think locally
-and everything above works.
+| | `AI_Citizens.mcaddon` | `AI_Citizens_chat.mcaddon` |
+|---|---|---|
+| Script API | stable | pre-release chat |
+| Loads on | any 1.21.80+ world | needs **Beta APIs** on |
+| Talk by typing in chat | ✘ | ✔ |
+| `/ai:tell @Ada go mine iron` | ✔ | ✔ |
+| Everything else | ✔ | ✔ |
+
+**Start with `AI_Citizens.mcaddon`.** It always loads. If it works, try the chat
+one — it is the nicer experience, and if your game is too old for the
+pre-release module it simply will not activate, which is easy to spot.
+
+### Install
+
+1. Build both with `./tools/build.sh --all`, or take them from `dist/`.
+2. Open the `.mcaddon`. Minecraft imports both packs.
+3. In your world settings, activate **AI Citizens** under **Behaviour Packs**
+   *and* **Resource Packs**.
+4. For the chat build only: turn on **Beta APIs** under **Experiments**.
+5. Load the world and type `/ai:spawn 4`.
+
+If nothing appears, type `/ai:doctor`. It reports exactly which parts of the
+Script API this world has and whether the citizen entity can be spawned — one
+command instead of guesswork.
 
 ### Requirements
 
-- Minecraft Bedrock **1.21.90** or newer
-- **Beta APIs** experiment enabled on the world
+- Minecraft Bedrock **1.21.80** or newer
+- **Beta APIs** only for the chat build (and for the Claude bridge)
 - Works in single-player, on Realms, on a dedicated server, on phones and on
   consoles that accept imported add-ons
 
@@ -104,7 +122,20 @@ and everything above works.
 
 ## Talking to them
 
-You talk to citizens by typing in chat. Three kinds of message:
+There are two ways in, and they do the same things.
+
+**Slash commands** work on every build:
+
+```
+/ai:spawn 6 miner
+/ai:tell @Ada go mine some iron
+/ai:tell everyone, follow me
+/ai:cmd found Rivermeet
+/ai:doctor
+```
+
+**Typing in chat** works on the chat build, and is what this was designed for.
+Three kinds of message:
 
 **Speak to one of them by name.** They answer, and do it.
 
@@ -135,20 +166,22 @@ iron, farm, build a house, guard, explore, attack, rest, store your goods. With
 the Claude bridge running they understand a great deal more than that, and they
 answer in their own voice.
 
-Commands to you-the-operator start with `!ai` and are never shown in chat:
+Operator commands start with `!ai` in chat, or `/ai:cmd` anywhere:
 
 ```
-!ai spawn 6 miner      spawn citizens
-!ai panel              open the control panel
-!ai found Rivermeet    found a settlement here
-!ai town               settlement report
-!ai list               who is alive and what they are doing
-!ai who Ada            one citizen in detail
-!ai build small_house  queue a building
-!ai job Ada builder    assign a trade
-!ai brain claude       choose the thinking engine
-!ai help               everything
+!ai spawn 6 miner      /ai:cmd spawn 6 miner
+!ai panel              /ai:panel
+!ai found Rivermeet    /ai:cmd found Rivermeet
+!ai town               /ai:cmd town
+!ai doctor             /ai:doctor          what works on this world
+!ai list               /ai:cmd list
+!ai build small_house  /ai:cmd build small_house
+!ai brain claude       /ai:cmd brain claude
+!ai help               /ai:cmd help
 ```
+
+There is also `/scriptevent ai:cmd spawn 4`, which needs no custom-command
+support at all — a last resort if the others are missing.
 
 The full list is in [docs/COMMANDS.md](docs/COMMANDS.md). Sneak-right-click a
 citizen to open their page in the control panel.
@@ -237,7 +270,7 @@ minecraft-ai-citizens/
 ├── packs/
 │   ├── AI_Citizens_BP/          behaviour pack: entities + all the scripts
 │   │   ├── entities/            citizen and waypoint definitions (generated)
-│   │   └── scripts/             ~8,600 lines across 44 ES modules
+│   │   └── scripts/             ~9,000 lines across 45 ES modules
 │   │       ├── core/            config, persistence, block and recipe knowledge
 │   │       ├── agent/           the citizen: personality, needs, memory, senses
 │   │       ├── actions/         the verbs: move, mine, build, craft, farm, fight
@@ -257,8 +290,10 @@ minecraft-ai-citizens/
 ## Development
 
 ```bash
-./tools/build.sh                 # build dist/AI_Citizens.mcaddon
-./tools/build.sh --claude        # same, with the Claude bridge enabled
+./tools/build.sh                 # safe build (stable Script API)
+./tools/build.sh --chat          # adds chat listening (needs Beta APIs)
+./tools/build.sh --all           # both, side by side in dist/
+./tools/build.sh --claude        # adds the Claude bridge (dedicated server)
 
 node tools/validate.mjs          # static checks: imports, JSON, pack references
 node tools/scenarios.mjs         # behaviour tests against a mock engine
@@ -287,18 +322,24 @@ Being straight about this, because it matters for what you should check first.
 
 **Verified here, automatically:**
 
-- Every module imports cleanly and every named import resolves (44 modules,
-  276 imports).
-- All pack JSON parses; every texture, animation, geometry, render controller
-  and component group referenced by the entity definitions exists.
-- 34 behaviour checks pass against the mock engine: a stocked builder finishes a
+- Every module imports cleanly and every named import resolves (45 modules,
+  280 imports).
+- All pack JSON parses; every texture, animation, geometry, render controller,
+  bone and component group referenced by the entity definitions exists.
+- Every Molang query used is one Mojang documents, every entity property Molang
+  reads is declared and `client_sync`, and no pre-release Script API is
+  subscribed to without a guard. These checks exist because each of them was a
+  real bug that stopped the add-on working.
+- 56 behaviour checks pass against the mock engine: a stocked builder finishes a
   cottage and its walls stand in the world; a miner cuts down twenty blocks to a
   buried seam and comes back with emeralds; commands are swallowed while normal
   chat is not; orders become tasks and replace each other; replies appear as
   captions and never in chat; citizens hold conversations and remember them; a
   settlement founds, divides up roles and plans buildings; a citizen fights back
   when attacked; names, jobs, memory, personality and settlement membership all
-  survive a reload.
+  survive a reload; and — the regression that made the first version spawn
+  nothing — the whole add-on boots, registers commands, spawns, takes orders and
+  reports itself correctly on a runtime with no chat API at all.
 - A 12,000-tick town runs with no runtime errors.
 - The bridge serves a real add-on context packet end to end in dry-run.
 

@@ -194,9 +194,12 @@ def citizen():
                     "restrict_to_owner": False,
                 },
                 "minecraft:equipment": {"table": "loot_tables/empty.json"},
-                "minecraft:equippable": {
-                    "slots": [{"slot": 0}, {"slot": 1}, {"slot": 2}, {"slot": 3}, {"slot": 4}]
-                },
+                # NOTE: no "minecraft:equippable". Its schema requires an `item`
+                # on every slot, which would restrict what a citizen may hold;
+                # a slot entry without one is invalid and makes the entire
+                # entity definition fail to load. The script layer asks for the
+                # Equippable component and degrades to inventory-only when it is
+                # not there, so held items are a visual nicety, not a dependency.
                 "minecraft:behavior.pickup_items": {
                     "priority": 6, "max_dist": 5, "goal_radius": 1.5,
                     "speed_multiplier": 1.0, "can_pickup_any_item": True,
@@ -249,7 +252,7 @@ def nav_point():
                 "minecraft:knockback_resistance": {"value": 1.0},
                 "minecraft:fire_immune": {},
                 "minecraft:damage_sensor": {
-                    "triggers": [{"on_damage": {}, "deals_damage": False}]
+                    "triggers": [{"cause": "all", "deals_damage": False}]
                 },
                 "minecraft:persistent": {},
                 "minecraft:is_hidden_when_invisible": {},

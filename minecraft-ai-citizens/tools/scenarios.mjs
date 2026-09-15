@@ -288,6 +288,133 @@ await scenario("State survives a reload", async (sim) => {
   check("settlement survived", reloaded.settlementId === c.settlementId);
 });
 
+
+// --------------------------------------------------------------------------
+// The regression that started this: on a stable runtime `world.beforeEvents
+// .chatSend` does not exist, subscribing threw, boot died, and `!ai spawn`
+// silently did nothing. Control must not depend on chat.
+// --------------------------------------------------------------------------
+await scenario("Everything works on a runtime with no chat API", async (sim) => {
+  const { mock } = sim;
+  mock.seedArea();
+  sim.stableRuntime();                       // chatSend is gone, as on stable
+  const player = mock.addPlayer("Jordan", { x: 0, y: mock.SEA + 1, z: 0 });
+  await sim.start();
+
+  const dbg = sim.debug();
+  check("the add-on still booted", Boolean(dbg));
+  check("chat is reported unavailable", dbg && dbg.registry && true);
+
+  const commands = [...mock.registeredCommands.keys()];
+  check(`slash commands registered (${commands.join(" ")})`,
+    commands.includes("ai:spawn") && commands.includes("ai:cmd") && commands.includes("ai:tell"),
+    commands.join(" ") || "none");
+
+  // Commands must not need cheats, or most worlds cannot use them.
+  const needsCheats = commands.filter(
+    (n) => mock.registeredCommands.get(n).definition.cheatsRequired !== false);
+  check("no command requires cheats", needsCheats.length === 0, needsCheats.join(" "));
+
+  // Every command must carry a namespace, or registration is rejected.
+  check("all commands are namespaced", commands.every((n) => n.includes(":")));
+
+  mock.runCustomCommand("ai:spawn", player, [4, ""]);
+  mock.advance(60);
+  const citizens = mock.allEntities().filter((e) => e.typeId === "ai:citizen");
+  check(`/ai:spawn spawned citizens (${citizens.length})`, citizens.length === 4,
+    `got ${citizens.length}`);
+
+  mock.runCustomCommand("ai:cmd", player, ["found", "Stonewatch"]);
+  mock.advance(80);
+  check("/ai:cmd founded a settlement",
+    sim.debug().settlements.list.some((x) => x.name === "Stonewatch"));
+
+  const first = sim.debug().registry.all[0];
+  mock.runCustomCommand("ai:tell", player, ["@" + first.short, "follow", "me"]);
+  mock.advance(40);
+  check("/ai:tell gave an order",
+    Boolean(first.task) && first.task.kind === "follow", `task=${first.task?.kind}`);
+
+  mock.sendScriptEvent("ai:cmd", "spawn 1", player);
+  mock.advance(40);
+  check("/scriptevent works too",
+    mock.allEntities().filter((e) => e.typeId === "ai:citizen").length === 5);
+
+  mock.runCustomCommand("ai:doctor", player, []);
+  mock.advance(10);
+  const report = mock.simStats.messages.join("\n");
+  check("doctor reports the missing chat API", /chat listening/.test(report),
+    report.slice(-200));
+});
+
+// --------------------------------------------------------------------------
+await scenario("Citizens drive their animation state", async (sim) => {
+  const { mock } = sim;
+  mock.seedArea();
+  const player = mock.addPlayer("Jordan", { x: 0, y: mock.SEA + 1, z: 0 });
+  await sim.start();
+
+  mock.sendChat(player, "!ai spawn 4");
+  mock.advance(60);
+  const dbg = sim.debug();
+
+  // ai:state is what the resource pack's animation controller reads. If it
+  // never changes, citizens stand in the base pose doing nothing.
+  const seen = new Set();
+  for (let i = 0; i < 400; i++) {
+    mock.advance(20);
+    for (const c of dbg.registry.all) {
+      const v = c.entity.getProperty("ai:state");
+      if (v !== undefined) seen.add(v);
+    }
+  }
+
+  const STATE = { IDLE: 0, WALK: 1, RUN: 2, MINE: 3, BUILD: 4, ATTACK: 5, TALK: 6 };
+  check(`several animation states were used (${[...seen].sort((a, b) => a - b).join(",")})`,
+    seen.size >= 3, `only ${seen.size}`);
+  check("walking state is set", seen.has(STATE.WALK));
+  check("a working state is set", seen.has(STATE.MINE) || seen.has(STATE.BUILD));
+
+  // Skins must be spread across the twenty available, not all the same.
+  const skins = new Set(dbg.registry.all.map((c) => c.entity.getProperty("ai:skin")));
+  check(`skins vary (${[...skins].join(",")})`, skins.size >= 2, `all the same: ${[...skins]}`);
+  const inRange = [...skins].every((v) => Number.isInteger(v) && v >= 0 && v <= 19);
+  check("every skin index is in range", inRange);
+});
+
+// --------------------------------------------------------------------------
+await scenario("The citizen entity has no invalid components", async (sim) => {
+  const { mock } = sim;
+  mock.seedArea();
+  const player = mock.addPlayer("Jordan", { x: 0, y: mock.SEA + 1, z: 0 });
+  await sim.start();
+
+  // Read the shipped definition and check the components with required
+  // sub-fields. An invalid component makes Bedrock reject the whole entity,
+  // which is why nothing could be spawned at all.
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const { ROOT } = await import("./sim/harness.mjs");
+  const def = JSON.parse(fs.readFileSync(
+    path.join(ROOT, "packs/AI_Citizens_BP/entities/ai_citizen.json"), "utf8"));
+  const components = def["minecraft:entity"].components;
+
+  const equippable = components["minecraft:equippable"];
+  const badSlots = equippable
+    ? (equippable.slots || []).filter((s) => s.item === undefined)
+    : [];
+  check("no equippable slot is missing its required `item`", badSlots.length === 0,
+    `${badSlots.length} slots without item`);
+
+  check("the entity is summonable", def["minecraft:entity"].description.is_summonable === true);
+  check("the entity is spawnable (spawn egg)", def["minecraft:entity"].description.is_spawnable === true);
+
+  mock.sendChat(player, "!ai spawn 1");
+  mock.advance(40);
+  check("and it actually spawns",
+    mock.allEntities().filter((e) => e.typeId === "ai:citizen").length === 1);
+});
+
 // --------------------------------------------------------------------------
 console.log(`\n${"=".repeat(50)}`);
 if (failed) {

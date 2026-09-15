@@ -1,8 +1,33 @@
 # Commands
 
 Two ways to talk to citizens: **speak to them** (they hear you), or **run a
-command** (you configure them). Commands start with `!ai` and never appear in
-chat; everything else you type stays in chat as normal.
+command** (you configure them).
+
+## Slash commands — always available
+
+These are real slash commands with autocomplete. They work on every build,
+including the safe one, and need no cheats.
+
+| Command | Does |
+|---|---|
+| `/ai:spawn <count> <role>` | Spawn citizens where you stand |
+| `/ai:tell <message>` | Say something to them — `/ai:tell @Ada go mine iron` |
+| `/ai:cmd <command>` | Anything from the `!ai` list — `/ai:cmd found Rivermeet` |
+| `/ai:panel` | Open the control panel |
+| `/ai:doctor` | What works on this world, and what does not |
+
+If custom commands are unavailable, `/scriptevent ai:cmd spawn 4` and
+`/scriptevent ai:tell @Ada follow me` do the same thing.
+
+## Typing in chat — chat build only
+
+Reading chat needs a pre-release API, so it is only in `AI_Citizens_chat.mcaddon`
+(which needs **Beta APIs** on). With it, `!ai` commands are swallowed so they
+never appear in chat, and everything else you type is overheard by citizens
+nearby.
+
+Without it, everything below still works — put it after `/ai:tell` or
+`/ai:cmd`.
 
 ---
 
@@ -87,6 +112,7 @@ always the fallback, by design.
 | `!ai config <key>` | Read one |
 | `!ai config <key> <value>` | Change one (persists with the world) |
 | `!ai debug` | Toggle verbose logging |
+| `!ai doctor` | What this world supports; whether the entity can spawn |
 | `!ai panel` | Open the control panel |
 | `!ai help` | Everything above, in game |
 

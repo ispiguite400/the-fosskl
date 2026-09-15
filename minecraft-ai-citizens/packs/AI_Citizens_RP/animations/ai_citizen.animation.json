@@ -4,186 +4,704 @@
     "animation.ai_citizen.base": {
       "loop": true,
       "bones": {
-        "body":     { "rotation": [0, 0, 0] },
-        "rightArm": { "rotation": [0, 0, 0] },
-        "leftArm":  { "rotation": [0, 0, 0] },
-        "rightLeg": { "rotation": [0, 0, 0] },
-        "leftLeg":  { "rotation": [0, 0, 0] }
-      }
-    },
-
-    "animation.ai_citizen.look_at_target": {
-      "loop": true,
-      "bones": {
-        "head": {
-          "rotation": ["query.target_x_rotation", "query.target_y_rotation", 0]
-        }
-      }
-    },
-
-    "animation.ai_citizen.idle": {
-      "loop": true,
-      "anim_time_update": "query.life_time",
-      "bones": {
+        "body": {
+          "rotation": [
+            0,
+            0,
+            0
+          ]
+        },
         "rightArm": {
           "rotation": [
-            "math.cos(query.life_time * 47) * 1.2",
             0,
-            "-(2.0 + math.cos(query.life_time * 61) * 1.6)"
+            0,
+            0
           ]
         },
         "leftArm": {
           "rotation": [
-            "math.cos(query.life_time * 47 + 180) * 1.2",
             0,
-            "2.0 + math.cos(query.life_time * 61 + 180) * 1.6"
+            0,
+            0
           ]
         },
-        "body": { "rotation": [0, 0, 0], "position": [0, "math.cos(query.life_time * 81) * 0.06", 0] }
+        "rightLeg": {
+          "rotation": [
+            0,
+            0,
+            0
+          ]
+        },
+        "leftLeg": {
+          "rotation": [
+            0,
+            0,
+            0
+          ]
+        }
       }
     },
-
+    "animation.ai_citizen.look_at_target": {
+      "loop": true,
+      "bones": {
+        "head": {
+          "rotation": [
+            "query.target_x_rotation",
+            "query.target_y_rotation",
+            0
+          ]
+        }
+      }
+    },
+    "animation.ai_citizen.idle": {
+      "loop": true,
+      "bones": {
+        "rightArm": {
+          "rotation": [
+            "math.cos(query.life_time * 60) * 1.5",
+            0,
+            "-(2.5 + math.cos(query.life_time * 40) * 1.5)"
+          ]
+        },
+        "leftArm": {
+          "rotation": [
+            "math.cos(query.life_time * 60 + 180) * 1.5",
+            0,
+            "2.5 + math.cos(query.life_time * 40 + 180) * 1.5"
+          ]
+        },
+        "body": {
+          "position": [
+            0,
+            "math.cos(query.life_time * 80) * 0.05",
+            0
+          ]
+        }
+      }
+    },
     "animation.ai_citizen.walk": {
       "loop": true,
       "bones": {
-        "rightLeg": { "rotation": ["math.cos(query.modified_distance_moved * 38.17) * 42.0 * query.modified_move_speed", 0, 0] },
-        "leftLeg":  { "rotation": ["math.cos(query.modified_distance_moved * 38.17 + 180) * 42.0 * query.modified_move_speed", 0, 0] },
-        "rightArm": { "rotation": ["math.cos(query.modified_distance_moved * 38.17 + 180) * 36.0 * query.modified_move_speed", 0, "-3.0"] },
-        "leftArm":  { "rotation": ["math.cos(query.modified_distance_moved * 38.17) * 36.0 * query.modified_move_speed", 0, "3.0"] },
-        "body":     { "rotation": [0, 0, "math.cos(query.modified_distance_moved * 38.17) * 1.8 * query.modified_move_speed"] }
+        "rightLeg": {
+          "rotation": [
+            "math.cos(query.modified_distance_moved * 38.17) * 57.3 * query.modified_move_speed",
+            0,
+            0
+          ]
+        },
+        "leftLeg": {
+          "rotation": [
+            "math.cos(query.modified_distance_moved * 38.17 + 180) * 57.3 * query.modified_move_speed",
+            0,
+            0
+          ]
+        },
+        "rightArm": {
+          "rotation": [
+            "math.cos(query.modified_distance_moved * 38.17 + 180) * 38.0 * query.modified_move_speed",
+            0,
+            "-3.0"
+          ]
+        },
+        "leftArm": {
+          "rotation": [
+            "math.cos(query.modified_distance_moved * 38.17) * 38.0 * query.modified_move_speed",
+            0,
+            "3.0"
+          ]
+        }
       }
     },
-
     "animation.ai_citizen.sprint": {
       "loop": true,
       "bones": {
-        "body":     { "rotation": [-9, 0, 0] },
-        "rightArm": { "rotation": ["math.cos(query.modified_distance_moved * 38.17 + 180) * 58.0", 0, "-6.0"] },
-        "leftArm":  { "rotation": ["math.cos(query.modified_distance_moved * 38.17) * 58.0", 0, "6.0"] }
+        "body": {
+          "rotation": [
+            -10,
+            0,
+            0
+          ]
+        },
+        "head": {
+          "rotation": [
+            10,
+            0,
+            0
+          ]
+        }
       }
     },
-
     "animation.ai_citizen.swing": {
       "loop": true,
       "animation_length": 0.6,
       "bones": {
         "rightArm": {
           "rotation": {
-            "0.0":  [-30, -12, 0],
-            "0.15": [-150, -10, 0],
-            "0.35": [-8, 0, 0],
-            "0.6":  [-30, -12, 0]
+            "0.0": [
+              -30,
+              -12,
+              0
+            ],
+            "0.15": [
+              -150,
+              -10,
+              0
+            ],
+            "0.35": [
+              -8,
+              0,
+              0
+            ],
+            "0.6": [
+              -30,
+              -12,
+              0
+            ]
           }
         },
-        "body": { "rotation": { "0.0": [0, -6, 0], "0.3": [4, 6, 0], "0.6": [0, -6, 0] } }
+        "body": {
+          "rotation": {
+            "0.0": [
+              0,
+              -6,
+              0
+            ],
+            "0.3": [
+              4,
+              6,
+              0
+            ],
+            "0.6": [
+              0,
+              -6,
+              0
+            ]
+          }
+        }
       }
     },
-
     "animation.ai_citizen.place": {
       "loop": true,
       "animation_length": 0.8,
       "bones": {
         "rightArm": {
-          "rotation": { "0.0": [-20, 0, 0], "0.3": [-98, -14, 0], "0.55": [-78, -14, 0], "0.8": [-20, 0, 0] }
+          "rotation": {
+            "0.0": [
+              -20,
+              0,
+              0
+            ],
+            "0.3": [
+              -98,
+              -14,
+              0
+            ],
+            "0.55": [
+              -78,
+              -14,
+              0
+            ],
+            "0.8": [
+              -20,
+              0,
+              0
+            ]
+          }
         },
         "leftArm": {
-          "rotation": { "0.0": [-10, 0, 0], "0.4": [-56, 16, 0], "0.8": [-10, 0, 0] }
+          "rotation": {
+            "0.0": [
+              -10,
+              0,
+              0
+            ],
+            "0.4": [
+              -56,
+              16,
+              0
+            ],
+            "0.8": [
+              -10,
+              0,
+              0
+            ]
+          }
         }
       }
     },
-
     "animation.ai_citizen.craft": {
       "loop": true,
       "animation_length": 1.0,
       "bones": {
-        "rightArm": { "rotation": { "0.0": [-74, -18, 0], "0.25": [-92, -26, 0], "0.5": [-74, -18, 0], "0.75": [-92, -10, 0], "1.0": [-74, -18, 0] } },
-        "leftArm":  { "rotation": { "0.0": [-74, 18, 0], "0.25": [-88, 10, 0], "0.5": [-74, 18, 0], "0.75": [-88, 26, 0], "1.0": [-74, 18, 0] } },
-        "body":     { "rotation": { "0.0": [6, 0, 0], "0.5": [10, 0, 0], "1.0": [6, 0, 0] } }
+        "rightArm": {
+          "rotation": {
+            "0.0": [
+              -74,
+              -18,
+              0
+            ],
+            "0.25": [
+              -92,
+              -26,
+              0
+            ],
+            "0.5": [
+              -74,
+              -18,
+              0
+            ],
+            "0.75": [
+              -92,
+              -10,
+              0
+            ],
+            "1.0": [
+              -74,
+              -18,
+              0
+            ]
+          }
+        },
+        "leftArm": {
+          "rotation": {
+            "0.0": [
+              -74,
+              18,
+              0
+            ],
+            "0.25": [
+              -88,
+              10,
+              0
+            ],
+            "0.5": [
+              -74,
+              18,
+              0
+            ],
+            "0.75": [
+              -88,
+              26,
+              0
+            ],
+            "1.0": [
+              -74,
+              18,
+              0
+            ]
+          }
+        },
+        "body": {
+          "rotation": {
+            "0.0": [
+              6,
+              0,
+              0
+            ],
+            "0.5": [
+              10,
+              0,
+              0
+            ],
+            "1.0": [
+              6,
+              0,
+              0
+            ]
+          }
+        }
       }
     },
-
     "animation.ai_citizen.farm": {
       "loop": true,
       "animation_length": 1.2,
       "bones": {
-        "body":     { "rotation": { "0.0": [22, 0, 0], "0.6": [38, 0, 0], "1.2": [22, 0, 0] } },
-        "rightArm": { "rotation": { "0.0": [-46, -10, 0], "0.6": [-16, -10, 0], "1.2": [-46, -10, 0] } },
-        "leftArm":  { "rotation": { "0.0": [-40, 10, 0], "0.6": [-14, 10, 0], "1.2": [-40, 10, 0] } }
+        "body": {
+          "rotation": {
+            "0.0": [
+              22,
+              0,
+              0
+            ],
+            "0.6": [
+              38,
+              0,
+              0
+            ],
+            "1.2": [
+              22,
+              0,
+              0
+            ]
+          }
+        },
+        "rightArm": {
+          "rotation": {
+            "0.0": [
+              -46,
+              -10,
+              0
+            ],
+            "0.6": [
+              -16,
+              -10,
+              0
+            ],
+            "1.2": [
+              -46,
+              -10,
+              0
+            ]
+          }
+        },
+        "leftArm": {
+          "rotation": {
+            "0.0": [
+              -40,
+              10,
+              0
+            ],
+            "0.6": [
+              -14,
+              10,
+              0
+            ],
+            "1.2": [
+              -40,
+              10,
+              0
+            ]
+          }
+        }
       }
     },
-
     "animation.ai_citizen.talk": {
       "loop": true,
       "animation_length": 1.4,
       "bones": {
-        "rightArm": { "rotation": { "0.0": [-14, -8, -4], "0.35": [-52, -22, -12], "0.7": [-22, -8, -4], "1.05": [-44, -18, -10], "1.4": [-14, -8, -4] } },
-        "leftArm":  { "rotation": { "0.0": [-10, 8, 4], "0.5": [-38, 20, 10], "1.0": [-16, 8, 4], "1.4": [-10, 8, 4] } },
-        "head":     { "rotation": { "0.0": [0, 0, 0], "0.5": [-4, 6, 2], "1.0": [3, -5, -2], "1.4": [0, 0, 0] } }
+        "rightArm": {
+          "rotation": {
+            "0.0": [
+              -14,
+              -8,
+              -4
+            ],
+            "0.35": [
+              -52,
+              -22,
+              -12
+            ],
+            "0.7": [
+              -22,
+              -8,
+              -4
+            ],
+            "1.05": [
+              -44,
+              -18,
+              -10
+            ],
+            "1.4": [
+              -14,
+              -8,
+              -4
+            ]
+          }
+        },
+        "leftArm": {
+          "rotation": {
+            "0.0": [
+              -10,
+              8,
+              4
+            ],
+            "0.5": [
+              -38,
+              20,
+              10
+            ],
+            "1.0": [
+              -16,
+              8,
+              4
+            ],
+            "1.4": [
+              -10,
+              8,
+              4
+            ]
+          }
+        },
+        "head": {
+          "rotation": {
+            "0.0": [
+              0,
+              0,
+              0
+            ],
+            "0.5": [
+              -4,
+              6,
+              2
+            ],
+            "1.0": [
+              3,
+              -5,
+              -2
+            ],
+            "1.4": [
+              0,
+              0,
+              0
+            ]
+          }
+        }
       }
     },
-
     "animation.ai_citizen.carry": {
       "loop": true,
       "bones": {
-        "rightArm": { "rotation": [-72, -14, 0] },
-        "leftArm":  { "rotation": [-72, 14, 0] },
-        "body":     { "rotation": [4, 0, 0] }
+        "rightArm": {
+          "rotation": [
+            -72,
+            -14,
+            0
+          ]
+        },
+        "leftArm": {
+          "rotation": [
+            -72,
+            14,
+            0
+          ]
+        },
+        "body": {
+          "rotation": [
+            4,
+            0,
+            0
+          ]
+        }
       }
     },
-
     "animation.ai_citizen.cheer": {
       "loop": true,
       "animation_length": 0.9,
       "bones": {
-        "rightArm": { "rotation": { "0.0": [-160, -10, -12], "0.45": [-178, -10, -22], "0.9": [-160, -10, -12] } },
-        "leftArm":  { "rotation": { "0.0": [-160, 10, 12], "0.45": [-178, 10, 22], "0.9": [-160, 10, 12] } },
-        "body":     { "position": { "0.0": [0, 0, 0], "0.45": [0, 0.6, 0], "0.9": [0, 0, 0] } }
+        "rightArm": {
+          "rotation": {
+            "0.0": [
+              -160,
+              -10,
+              -12
+            ],
+            "0.45": [
+              -178,
+              -10,
+              -22
+            ],
+            "0.9": [
+              -160,
+              -10,
+              -12
+            ]
+          }
+        },
+        "leftArm": {
+          "rotation": {
+            "0.0": [
+              -160,
+              10,
+              12
+            ],
+            "0.45": [
+              -178,
+              10,
+              22
+            ],
+            "0.9": [
+              -160,
+              10,
+              12
+            ]
+          }
+        },
+        "body": {
+          "position": {
+            "0.0": [
+              0,
+              0,
+              0
+            ],
+            "0.45": [
+              0,
+              0.6,
+              0
+            ],
+            "0.9": [
+              0,
+              0,
+              0
+            ]
+          }
+        }
       }
     },
-
     "animation.ai_citizen.point": {
       "loop": true,
       "bones": {
-        "rightArm": { "rotation": [-96, -6, 0] }
+        "rightArm": {
+          "rotation": [
+            -96,
+            -6,
+            0
+          ]
+        }
       }
     },
-
     "animation.ai_citizen.sit": {
       "loop": true,
       "bones": {
-        "root":     { "position": [0, -7, 0] },
-        "rightLeg": { "rotation": [-90, 0, 0], "position": [0, 0, -1] },
-        "leftLeg":  { "rotation": [-90, 0, 0], "position": [0, 0, -1] },
-        "rightArm": { "rotation": [-16, 0, -6] },
-        "leftArm":  { "rotation": [-16, 0, 6] }
+        "root": {
+          "position": [
+            0,
+            -7,
+            0
+          ]
+        },
+        "rightLeg": {
+          "rotation": [
+            -90,
+            0,
+            0
+          ],
+          "position": [
+            0,
+            0,
+            -1
+          ]
+        },
+        "leftLeg": {
+          "rotation": [
+            -90,
+            0,
+            0
+          ],
+          "position": [
+            0,
+            0,
+            -1
+          ]
+        },
+        "rightArm": {
+          "rotation": [
+            -16,
+            0,
+            -6
+          ]
+        },
+        "leftArm": {
+          "rotation": [
+            -16,
+            0,
+            6
+          ]
+        }
       }
     },
-
     "animation.ai_citizen.sleep": {
       "loop": true,
       "bones": {
-        "root":     { "rotation": [-90, 0, 0], "position": [0, -14, 6] },
-        "rightArm": { "rotation": [0, 0, -8] },
-        "leftArm":  { "rotation": [0, 0, 8] },
-        "head":     { "rotation": [0, 0, "math.cos(query.life_time * 40) * 2"] }
+        "root": {
+          "rotation": [
+            -90,
+            0,
+            0
+          ],
+          "position": [
+            0,
+            -14,
+            6
+          ]
+        },
+        "rightArm": {
+          "rotation": [
+            0,
+            0,
+            -8
+          ]
+        },
+        "leftArm": {
+          "rotation": [
+            0,
+            0,
+            8
+          ]
+        },
+        "head": {
+          "rotation": [
+            0,
+            0,
+            "math.cos(query.life_time * 40) * 2"
+          ]
+        }
       }
     },
-
     "animation.ai_citizen.swim": {
       "loop": true,
       "bones": {
-        "root":     { "rotation": [-72, 0, 0], "position": [0, -6, 0] },
-        "rightArm": { "rotation": ["math.cos(query.life_time * 240) * 60 - 90", 0, 0] },
-        "leftArm":  { "rotation": ["math.cos(query.life_time * 240 + 180) * 60 - 90", 0, 0] },
-        "rightLeg": { "rotation": ["math.cos(query.life_time * 240) * 20", 0, 0] },
-        "leftLeg":  { "rotation": ["math.cos(query.life_time * 240 + 180) * 20", 0, 0] }
+        "root": {
+          "rotation": [
+            -72,
+            0,
+            0
+          ],
+          "position": [
+            0,
+            -6,
+            0
+          ]
+        },
+        "rightArm": {
+          "rotation": [
+            "math.cos(query.life_time * 240) * 60 - 90",
+            0,
+            0
+          ]
+        },
+        "leftArm": {
+          "rotation": [
+            "math.cos(query.life_time * 240 + 180) * 60 - 90",
+            0,
+            0
+          ]
+        },
+        "rightLeg": {
+          "rotation": [
+            "math.cos(query.life_time * 240) * 20",
+            0,
+            0
+          ]
+        },
+        "leftLeg": {
+          "rotation": [
+            "math.cos(query.life_time * 240 + 180) * 20",
+            0,
+            0
+          ]
+        }
       }
     },
-
     "animation.ai_citizen.hurt": {
       "loop": true,
       "bones": {
-        "body": { "rotation": [0, 0, "math.sin(query.life_time * 900) * 4"] }
+        "body": {
+          "rotation": [
+            0,
+            0,
+            "math.sin(query.life_time * 900) * 4"
+          ]
+        }
       }
     }
   }

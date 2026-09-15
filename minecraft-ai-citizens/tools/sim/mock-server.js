@@ -302,7 +302,55 @@ function signal() {
 }
 
 const chatSend = signal();
+const scriptEventEv = signal();
+const startupEv = signal();
 const entitySpawnEv = signal();
+
+/**
+ * Stable @minecraft/server does not expose chatSend at all. Setting this before
+ * the pack is imported reproduces exactly what a player on a stable build sees,
+ * which is how the "nothing happens when I spawn them" regression is caught.
+ */
+export let chatApiAvailable = true;
+export function setChatApiAvailable(v) { chatApiAvailable = v; }
+
+// --- custom command registry ------------------------------------------------
+export const registeredCommands = new Map();
+
+const customCommandRegistry = {
+  registerCommand(definition, callback) {
+    if (!definition || typeof definition.name !== "string") {
+      throw new Error("custom command needs a name");
+    }
+    if (!definition.name.includes(":")) {
+      throw new Error(`custom command "${definition.name}" needs a namespace`);
+    }
+    if (typeof definition.description !== "string") {
+      throw new Error(`custom command "${definition.name}" needs a description`);
+    }
+    if (definition.permissionLevel === undefined) {
+      throw new Error(`custom command "${definition.name}" needs a permissionLevel`);
+    }
+    for (const p of [...(definition.mandatoryParameters || []), ...(definition.optionalParameters || [])]) {
+      if (!p.name || !p.type) throw new Error("command parameter needs name and type");
+    }
+    registeredCommands.set(definition.name, { definition, callback });
+  },
+  registerEnum(name, values) {
+    if (!Array.isArray(values)) throw new Error("enum needs values");
+  },
+};
+
+/** Runs a registered custom command the way the game would. */
+export function runCustomCommand(name, player, args = []) {
+  const entry = registeredCommands.get(name);
+  if (!entry) throw new Error(`no such command /${name}`);
+  return entry.callback({ sourceEntity: player, sourceType: "Entity" }, args);
+}
+
+export function sendScriptEvent(id, message, player) {
+  scriptEventEv.fire({ id, message, sourceEntity: player });
+}
 const entityDieEv = signal();
 const entityHurtEv = signal();
 const interactEv = signal();
@@ -339,12 +387,19 @@ export const world = {
     }
   },
   getDynamicProperty: (k) => worldDynamic.get(k),
-  beforeEvents: { chatSend },
-  afterEvents: {
-    entitySpawn: entitySpawnEv,
-    entityDie: entityDieEv,
-    entityHurt: entityHurtEv,
-    playerInteractWithEntity: interactEv,
+  get beforeEvents() {
+    // A stable runtime has the signal object but no chatSend property at all.
+    return chatApiAvailable ? { chatSend } : {};
+  },
+  get afterEvents() {
+    const events = {
+      entitySpawn: entitySpawnEv,
+      entityDie: entityDieEv,
+      entityHurt: entityHurtEv,
+      playerInteractWithEntity: interactEv,
+    };
+    if (chatApiAvailable) events.chatSend = chatSend;
+    return events;
   },
 };
 
@@ -359,9 +414,14 @@ export const system = {
   runInterval: (fn, ticks) => { intervals.push({ every: Math.max(1, ticks), fn, last: -999 }); return intervals.length; },
   clearRun: () => {},
   runJob: (gen) => { for (const _ of gen) { /* drain */ } return 0; },
-  beforeEvents: { shutdown: signal() },
-  afterEvents: {},
+  beforeEvents: { shutdown: signal(), startup: startupEv },
+  afterEvents: { scriptEventReceive: scriptEventEv },
 };
+
+/** Fires the startup event, as the game does before the world loads. */
+export function fireStartup() {
+  startupEv.fire({ customCommandRegistry });
+}
 
 // --------------------------------------------------------------------------
 // Harness controls
@@ -448,6 +508,9 @@ export function addPlayer(name, location) {
 }
 
 export function sendChat(player, message) {
+  if (!chatApiAvailable) {
+    throw new Error("chatSend is not available on this runtime - use runCustomCommand");
+  }
   const event = { sender: player, message, cancel: false };
   chatSend.fire(event);
   return event;

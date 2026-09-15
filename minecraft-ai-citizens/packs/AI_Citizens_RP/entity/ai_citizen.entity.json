@@ -3,7 +3,6 @@
   "minecraft:client_entity": {
     "description": {
       "identifier": "ai:citizen",
-      "min_engine_version": "1.21.90",
       "materials": {
         "default": "entity_alphatest"
       },

@@ -209,12 +209,87 @@ for (const id of Object.values(desc.geometry)) {
 }
 ok(`${geoIds.size} geometries defined`);
 
+const boneNames = new Set();
+for (const g of geo["minecraft:geometry"]) {
+  for (const b of g.bones || []) boneNames.add(b.name);
+}
+let boneRefs = 0;
+for (const anim of Object.values(animFile.animations)) {
+  for (const bone of Object.keys(anim.bones || {})) {
+    boneRefs++;
+    if (!boneNames.has(bone)) fail(`animation targets bone "${bone}" which the model does not have`);
+  }
+}
+ok(`${boneRefs} animation bone references resolve`);
+
 const renderFile = JSON.parse(fs.readFileSync(path.join(RP, "render_controllers", "ai_citizen.render_controllers.json"), "utf8"));
 for (const rc of desc.render_controllers) {
   const id = typeof rc === "string" ? rc : Object.keys(rc)[0];
   if (!renderFile.render_controllers[id]) fail(`render controller "${id}" is not defined`);
 }
 ok("render controllers resolve");
+
+// --------------------------------------------------------------------------
+// Molang. An unresolved query is a silent runtime error that can stop an entity
+// animating or rendering, and nothing in the pack pipeline catches it - so the
+// queries used here are checked against the documented set.
+// --------------------------------------------------------------------------
+const KNOWN_QUERIES = new Set([
+  "property", "life_time", "anim_time", "ground_speed", "vertical_speed",
+  "modified_distance_moved", "modified_move_speed", "walk_distance",
+  "target_x_rotation", "target_y_rotation", "head_x_rotation", "head_y_rotation",
+  "body_x_rotation", "body_y_rotation", "is_in_water", "is_in_water_or_rain",
+  "is_on_ground", "is_sneaking", "is_sprinting", "is_swimming", "is_riding",
+  "is_sleeping", "is_alive", "is_baby", "is_invisible", "is_on_fire",
+  "is_using_item", "is_item_equipped", "hurt_time", "health", "max_health",
+  "variant", "mark_variant", "skin_id", "has_target", "time_of_day",
+  "delta_time", "frame_alpha", "cardinal_facing", "yaw_speed", "distance_from_camera",
+  "block_face", "equipment_count", "armor_texture_slot", "actor_count",
+  "is_moving", "is_jumping", "is_eating", "is_angry", "is_charged",
+]);
+
+const MOLANG_FILES = [
+  ["animations/ai_citizen.animation.json", animFile],
+  ["animation_controllers/ai_citizen.animation_controllers.json", ctrlFile],
+  ["render_controllers/ai_citizen.render_controllers.json", renderFile],
+  ["entity/ai_citizen.entity.json", clientEntity],
+];
+
+const declaredProps = new Set(
+  Object.keys(JSON.parse(fs.readFileSync(path.join(BP, "entities", "ai_citizen.json"), "utf8"))
+    ["minecraft:entity"].description.properties || {}),
+);
+
+let queryCount = 0;
+for (const [label, doc] of MOLANG_FILES) {
+  const text = JSON.stringify(doc);
+  for (const m of text.matchAll(/\b(?:query|q)\.([a-z_][a-z0-9_]*)/gi)) {
+    queryCount++;
+    if (!KNOWN_QUERIES.has(m[1])) {
+      fail(`${label}: unknown Molang query "query.${m[1]}"`);
+    }
+  }
+  // Every property a Molang expression reads must actually be declared.
+  for (const m of text.matchAll(/(?:query|q)\.property\(\s*\\?['"]([^'"\\]+)\\?['"]\s*\)/g)) {
+    if (!declaredProps.has(m[1])) {
+      fail(`${label}: reads undeclared entity property "${m[1]}"`);
+    }
+  }
+}
+ok(`${queryCount} Molang queries are all documented`);
+
+// Client-synced properties are the only ones Molang can see.
+for (const [name, def] of Object.entries(
+  JSON.parse(fs.readFileSync(path.join(BP, "entities", "ai_citizen.json"), "utf8"))
+    ["minecraft:entity"].description.properties || {},
+)) {
+  const readByMolang = MOLANG_FILES.some(([, doc]) => JSON.stringify(doc).includes(name));
+  if (readByMolang && !def.client_sync) {
+    fail(`entity property "${name}" is read by Molang but is not client_sync`);
+  }
+}
+ok("client_sync set on every property the resource pack reads");
+
 
 // --------------------------------------------------------------------------
 // 5. Behaviour pack entity
@@ -256,6 +331,35 @@ if (navGroups !== travelGroups) fail(`waypoint entity has ${navGroups} channels,
 else ok("waypoint entity channels match");
 
 // --------------------------------------------------------------------------
+// Pre-release Script APIs
+// --------------------------------------------------------------------------
+console.log("\nScript API safety");
+
+// These are documented as pre-release: on a pack that declares the stable
+// @minecraft/server they are simply absent, and `.subscribe` on undefined
+// throws. Touching one outside a guard is what previously killed boot.
+const PRERELEASE = ["chatSend", "playerPlaceBlock", "entityTamed", "messageReceive",
+  "playerCraftRecipe", "soundCompleted", "watchdogTerminate"];
+
+for (const file of files) {
+  const src = fs.readFileSync(file, "utf8");
+  const rel = path.relative(root, file);
+  for (const api of PRERELEASE) {
+    const re = new RegExp(`(?:beforeEvents|afterEvents)\\.${api}\\s*\\.subscribe`, "g");
+    if (re.test(src)) {
+      fail(`${rel}: subscribes to pre-release "${api}" without an optional-chaining guard`);
+    }
+  }
+}
+ok(`${PRERELEASE.length} pre-release APIs are only reached through guards`);
+
+const mainSrc = fs.readFileSync(path.join(scriptDir, "main.js"), "utf8");
+if (!/registerSlashCommands/.test(mainSrc)) {
+  fail("main.js does not register slash commands - there would be no control path without chat");
+} else {
+  ok("a chat-independent command path is registered");
+}
+
 console.log("");
 if (errors) {
   console.error(`\x1b[31m${errors} error(s)\x1b[0m, ${warnings} warning(s)`);

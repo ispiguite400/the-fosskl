@@ -1,14 +1,57 @@
 # Troubleshooting
 
+## Start here
+
+```
+/ai:doctor
+```
+
+It reports, line by line, whether the script module loaded, which commands
+registered, whether chat listening is available, whether interaction and entity
+events are hooked, and — the important one — whether `ai:citizen` can actually
+be spawned. Almost every "nothing happens" has a specific answer in that list.
+
+If `/ai:doctor` itself does not exist, try `/scriptevent ai:cmd doctor`. If that
+does nothing either, the behaviour pack is not active or the script module never
+loaded; check Settings → Creator → Content Log.
+
+---
+
+## Citizens do not spawn at all
+
+This is the one that bit the first release, twice over, so it is worth knowing
+the shapes it takes.
+
+**The command does nothing and there is no message.** The script module failed
+to boot. Historically this was caused by subscribing to `world.beforeEvents
+.chatSend`, which is a pre-release API that does not exist on a pack built
+against the stable Script API — the subscribe threw and took everything with it.
+Boot is now isolated step by step, so a missing API costs only the feature that
+needs it. If you are on an old build, update.
+
+**The command reports success but nobody appears.** The entity definition failed
+to load, so `ai:citizen` does not exist. Bedrock rejects the whole definition
+over a single invalid component — for example `minecraft:equippable` with a slot
+that has no `item`. `/ai:doctor` tries to spawn one and tells you.
+
+**The pack is greyed out in the world settings.** Your game is older than the
+pack's `min_engine_version` (1.21.80). Update Minecraft.
+
+**The chat build will not activate.** It depends on the pre-release
+`@minecraft/server` beta line, which your version may not have. Use
+`AI_Citizens.mcaddon` instead and control them with `/ai:tell`.
+
+---
+
 ## Nothing happens at all
 
-**`!ai` commands do nothing.** The behaviour pack is not active, or the script
-module failed to load. Check the world's behaviour pack list, then the content
-log (Settings → Creator → Content Log). A script error appears there, naming the
-module.
+**`!ai` commands do nothing, but `/ai:cmd` works.** You are on the safe build,
+which cannot read chat. That is expected — use the slash commands, or install
+the chat build with Beta APIs on.
 
-**`!ai spawn` says nothing and nobody appears.** Beta APIs is off. World
-settings → Experiments → Beta APIs. Scripted add-ons cannot run without it.
+**Neither works.** The behaviour pack is not active, or the script module failed
+to load. Check the world's behaviour pack list, then the content log (Settings →
+Creator → Content Log). A script error appears there, naming the module.
 
 **Citizens spawn but have no faces, or are invisible.** The resource pack is not
 active. It should come in with the behaviour pack, but check both lists.
@@ -53,6 +96,12 @@ furniture, not the building.
 ---
 
 ## They will not talk
+
+**They stand in a T-pose or never animate.** The resource pack is active but its
+entity definition was rejected. That happens if the client entity declares a
+`min_engine_version` newer than your game (it no longer does), or if an
+animation references a bone the model lacks or a Molang query that does not
+exist. `node tools/validate.mjs` checks all three.
 
 **No captions.** `!ai config showNamesAlways true` first — if the name tag is not
 showing, captions cannot either. Then check you are within 28 blocks

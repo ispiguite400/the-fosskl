@@ -33,7 +33,18 @@ export async function bootSim() {
     ui,
     stage,
     load,
-    async start() { await load("main.js"); mock.advance(60); },
+    /**
+     * Loads the pack the way the game does: the script module is imported,
+     * which is when it subscribes to startup, then startup fires, then ticks
+     * begin.
+     */
+    async start() {
+      await load("main.js");
+      mock.fireStartup();
+      mock.advance(60);
+    },
+    /** Reproduce a stable runtime, where chatSend does not exist. */
+    stableRuntime() { mock.setChatApiAvailable(false); },
     debug: () => (globalThis.aiCitizensDebug ? globalThis.aiCitizensDebug() : null),
     cleanup() { fs.rmSync(stage, { recursive: true, force: true }); },
   };
