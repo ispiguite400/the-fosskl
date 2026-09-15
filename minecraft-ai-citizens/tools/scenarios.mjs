@@ -533,6 +533,57 @@ await scenario("Slash commands accept the same grammar", async (sim) => {
     dbg.registry.count === 5, `${dbg.registry.count}`);
 });
 
+
+// --------------------------------------------------------------------------
+// The chat bridge delivers Claude's reply with /scriptevent ai:voice, and the
+// player's instruction with /scriptevent ai:tell. Both must land.
+// --------------------------------------------------------------------------
+await scenario("The chat bridge can drive citizens from outside the game", async (sim) => {
+  const { mock } = sim;
+  mock.seedArea();
+  sim.stableRuntime();                     // no in-game chat API at all
+  const player = mock.addPlayer("Jordan", { x: 0, y: mock.SEA + 1, z: 0 });
+  await sim.start();
+
+  mock.sendScriptEvent("ai:cmd", "spawn 3", player);
+  mock.advance(60);
+  const dbg = sim.debug();
+  check(`bridge spawned citizens (${dbg.registry.count})`, dbg.registry.count === 3);
+
+  // What the bridge sends after Claude turns "we need timber" into an order.
+  for (const c of dbg.registry.all) {
+    c.task = null; c.plan.length = 0; c.speechQueue.length = 0; c.caption = null;
+  }
+  mock.sendScriptEvent("ai:tell", "chop wood", player);
+  mock.advance(20);
+  const chopping = dbg.registry.all.filter(
+    (c) => c.task && /gather|chop/.test(`${c.task.kind}${c.task.label}`));
+  check(`"chop wood" from the bridge put them to work (${chopping.length})`,
+    chopping.length > 0, dbg.registry.all.map((c) => c.task?.kind).join(","));
+
+  // And Claude's actual words, spoken by whoever is nearest.
+  for (const c of dbg.registry.all) { c.speechQueue.length = 0; c.caption = null; }
+  mock.sendScriptEvent("ai:voice", "Aye - there's oak just past the ridge.", player);
+  mock.advance(20);
+  const speaking = dbg.registry.all.filter(
+    (c) => c.caption || c.speechQueue.length);
+  check(`exactly one citizen spoke the line (${speaking.length})`, speaking.length === 1,
+    `${speaking.length} spoke`);
+  const said = speaking[0] && (speaking[0].caption?.full || speaking[0].speechQueue[0]?.text);
+  check(`they said Claude's words ("${said}")`,
+    typeof said === "string" && said.includes("oak just past the ridge"), String(said));
+
+  // The nearest one answers, not a random one.
+  const nearest = dbg.registry.all
+    .slice()
+    .sort((a, b) => {
+      const d = (c) => Math.hypot(c.location.x - player.location.x, c.location.z - player.location.z);
+      return d(a) - d(b);
+    })[0];
+  check("the nearest citizen is the one who answered",
+    speaking[0] === nearest, `${speaking[0]?.short} vs ${nearest?.short}`);
+});
+
 // --------------------------------------------------------------------------
 console.log(`\n${"=".repeat(50)}`);
 if (failed) {

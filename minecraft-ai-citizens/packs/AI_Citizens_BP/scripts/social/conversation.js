@@ -72,7 +72,7 @@ export function tickConversations(registry, ctx) {
   if (tick % 40 !== 0) return;
 
   const idle = registry.all.filter((c) => c.valid && canConverse(c, tick) && !busy(c));
-  for (const a of shuffled(idle).slice(0, 4)) {
+  for (const a of shuffled(idle).slice(0, 6)) {
     if (a.conversation) continue;
     const partner = idle.find((b) => b !== a && !b.conversation
       && b.dimension.id === a.dimension.id
@@ -91,9 +91,17 @@ export function tickConversations(registry, ctx) {
   }
 }
 
+/**
+ * Only things that genuinely cannot be interrupted stop a citizen talking.
+ *
+ * This used to exclude building and any work, which sounded reasonable and was
+ * wrong: jobs scatter citizens to trees, ore and build sites, so "idle and
+ * within eight blocks of each other" almost never happened and players simply
+ * never saw them speak. People talk while they work.
+ */
 function busy(citizen) {
   const k = citizen.task?.kind;
-  return k === "fight" || k === "flee" || k === "sleep" || k === "build";
+  return k === "fight" || k === "flee" || k === "sleep";
 }
 
 function speakTurn(citizen, partner, ctx) {

@@ -20,6 +20,7 @@ import { perceive } from "./agent/perception.js";
 import { decayNeeds, moodOf, scare, reassure, socialise } from "./agent/needs.js";
 import {
   remember, learnFact, activeOrder, completeOrder, pushOrder, rememberPlace,
+  pushDialogue,
 } from "./agent/memory.js";
 
 import { tickCaptions, say, interrupt, TONE } from "./ui/caption.js";
@@ -157,6 +158,26 @@ const app = {
   handleSpeech(player, text) {
     if (!booted) boot();
     handleSpeech(app, player, text);
+  },
+
+  /**
+   * Put a line in the mouth of the citizen nearest `player`.
+   *
+   * The chat bridge uses this to deliver a reply written outside the game, so
+   * a citizen can answer in Claude's words rather than from the local writer.
+   */
+  voice(player, text) {
+    if (!booted) boot();
+    const line = String(text || "").trim();
+    if (!line) return;
+    const near = registry.near(player.location, 32)
+      .filter((c) => c.dimension.id === player.dimension.id);
+    if (!near.length) return;
+    near.sort((a, b) => dist(a.location, player.location) - dist(b.location, player.location));
+    const speaker = near[0];
+    interrupt(speaker, line, { tone: TONE.normal, to: player.name });
+    pushDialogue(speaker.memory, "me", line);
+    safe("voice.look", () => speaker.entity.lookAt(player.getHeadLocation()));
   },
 };
 

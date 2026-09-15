@@ -40,8 +40,8 @@ export const CONFIG = {
   speechSound: true,
   captionsToChat: false,   // mirror captions into chat (off: captions only)
   captionRange: 28,        // players further than this do not need the update
-  conversationRadius: 8,
-  conversationChance: 0.06,      // per social tick, per idle pair
+  conversationRadius: 14,
+  conversationChance: 0.22,      // per social tick, per nearby pair
   conversationMaxTurns: 6,
 
   // --- needs ------------------------------------------------------------

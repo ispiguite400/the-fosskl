@@ -165,6 +165,10 @@ function speakText(app, origin, text) {
  *
  *     /scriptevent ai:cmd spawn 6
  *     /scriptevent ai:tell @Ada follow me
+ *     /scriptevent ai:voice Aye, there is iron east of here.
+ *
+ * `ai:voice` puts a line in the mouth of whoever is nearest - it is how the
+ * chat bridge (bridge/minecraft-ws.js) delivers a reply Claude wrote.
  */
 export function registerScriptEvents(app) {
   const signal = safe("scriptevent.signal", () => system.afterEvents?.scriptEventReceive, null);
@@ -181,6 +185,7 @@ export function registerScriptEvents(app) {
       const message = String(event.message || "");
       system.run(() => {
         if (id === "ai:tell") app.handleSpeech(player, message);
+        else if (id === "ai:voice") app.voice(player, message);
         else app.handleCommandText(player, message);
       });
     }, { namespaces: ["ai"] });

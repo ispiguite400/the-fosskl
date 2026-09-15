@@ -10,8 +10,10 @@ they can actually see and what the town actually needs. Tell them what to do by
 typing in chat. Give them ground and enough of them, and they will turn it into
 a village and then a town, on their own.
 
-They can think with **Claude** (`claude-opus-5`) when you run the included
-bridge, and with a capable local brain when you don't.
+They run a scripted brain on their own, and are driven by **Claude**
+(`claude-opus-5`) when you run one of the included bridges — see
+[Are they actually AI?](#are-they-actually-ai-read-this-first) before you decide
+which you want.
 
 ```
 ai! spawn 6
@@ -27,6 +29,7 @@ ai! @Ada follow me
 - [What they can do](#what-they-can-do)
 - [Install](#install)
 - [Talking to them](#talking-to-them)
+- [Are they actually AI?](#are-they-actually-ai-read-this-first)
 - [Giving them a Claude brain](#giving-them-a-claude-brain)
 - [Building a civilisation](#building-a-civilisation)
 - [What is in the box](#what-is-in-the-box)
@@ -34,6 +37,43 @@ ai! @Ada follow me
 - [What has and hasn't been tested](#what-has-and-hasnt-been-tested)
 
 ---
+
+---
+
+## Are they actually AI? Read this first
+
+Straight answer, because the wrong impression here is easy to give and annoying
+to discover later.
+
+**Out of the box, they are not Claude.** They run a scripted brain that ships
+inside the add-on: a utility planner that scores goals against needs, and a
+dialogue writer that fills templates from personality, mood and what the citizen
+can actually see. It is a decent piece of game AI and it is *not* a language
+model. Citizens will repeat themselves, and they cannot understand a sentence
+nobody wrote a rule for.
+
+**Claude can drive them, in two ways, and both need something outside the game:**
+
+| | What Claude does | What it needs |
+|---|---|---|
+| **Chat bridge** ([docs](docs/CHAT_BRIDGE.md)) | Understands anything you type and writes what citizens say back | Node.js on your PC, cheats on, `/connect` available on your platform |
+| **Full bridge** ([docs](docs/CLAUDE_SETUP.md)) | Decides what every citizen says *and does*, from what they can see | A Bedrock Dedicated Server |
+
+This is not a design preference. A Bedrock add-on's scripts cannot reach the
+network at all — `@minecraft/server-net` exists only on a dedicated server — and
+cannot read chat without a pre-release API tied to specific game versions. There
+is no version of this add-on, by me or anyone, that is Claude-powered on a plain
+Minecraft client with nothing else running.
+
+**What you get with nothing else running:** citizens that mine, chop, farm,
+craft, build twelve structures, fight, sleep, form settlements, take orders
+through `/ai:tell`, and talk to each other and to you from a template bank.
+Good game AI. Not a language model.
+
+**What the chat bridge adds,** which is the setup most people actually want:
+you type whatever you like in chat, Claude works out what you meant and what
+they should say back. Fifteen minutes to set up if you have a PC.
+
 
 ## What they can do
 

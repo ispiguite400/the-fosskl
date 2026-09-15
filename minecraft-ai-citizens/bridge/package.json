@@ -5,13 +5,18 @@
   "type": "module",
   "description": "Gives Minecraft Bedrock AI Citizens a Claude brain.",
   "main": "server.js",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "check": "node --check server.js && node -e \"import('./src/schema.js').then(m => console.log('schema ok:', Object.keys(m.DECISION_SCHEMA.properties).join(', ')))\""
+    "check": "node --check server.js && node -e \"import('./src/schema.js').then(m => console.log('schema ok:', Object.keys(m.DECISION_SCHEMA.properties).join(', ')))\"",
+    "ws": "node minecraft-ws.js",
+    "test-ws": "node test-ws.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": ">=0.70.0"
+    "@anthropic-ai/sdk": ">=0.70.0",
+    "ws": ">=8.18.0"
   }
 }
