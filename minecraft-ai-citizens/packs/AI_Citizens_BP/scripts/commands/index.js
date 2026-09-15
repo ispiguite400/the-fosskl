@@ -18,7 +18,7 @@ import { pushOrder, pushDialogue, personRecord, remember } from "../agent/memory
 import { acknowledge, confusedLine } from "../social/dialogue.js";
 import { record } from "../social/relationships.js";
 import { thinkAboutChat, claudeBrain } from "../brain/index.js";
-import { parseOrderLocally, matchStructure } from "../brain/local.js";
+import { parseOrderLocally } from "../brain/local.js";
 import { chattiness } from "../agent/personality.js";
 import { blueprintById } from "../civ/blueprints.js";
 import { cellsFromBlueprint, findBuildSite } from "../actions/build.js";
@@ -177,6 +177,11 @@ function instruct(app, player, citizen, text, direct, quiet) {
 
   const local = parseOrderLocally(citizen, text, ctx);
 
+  // They said "build" but not what. Asking is better than guessing or going
+  // quiet - and it is what a person would do.
+  if (local && local.wantsBuild === null && !quiet) {
+    say(citizen, "Build what? A house, a store, a well?", { tone: TONE.order, to: player.name });
+  }
   if (local && local.wantsBuild) {
     const bp = blueprintById(local.wantsBuild);
     const site = bp ? findBuildSite(citizen.dimension, citizen.location, bp.width, bp.depth, 24) : null;

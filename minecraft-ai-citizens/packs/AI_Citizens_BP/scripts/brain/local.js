@@ -24,6 +24,7 @@ import {
   waitTask, gotoTask, followTask,
 } from "../actions/registry.js";
 import { chooseTopic, contextFor, lineFor } from "../social/dialogue.js";
+import { understand, RESOURCE_BLOCKS, STRUCTURE_IDS } from "./nlu.js";
 
 export const localBrain = {
   id: "local",
@@ -168,88 +169,88 @@ function chooseGoal(citizen, ctx) {
 }
 
 /**
- * Turns a player's plain-English instruction into a task, without a model.
- * Handles the common cases; anything else falls through to the remote brain
- * (or an honest "say that again?").
+ * Turns what a player said into a task.
+ *
+ * The understanding is done by brain/nlu.js - tokenising, stemming, spelling
+ * correction, negation scoping and intent scoring - so this function only has
+ * to map a recognised intent onto the action layer. It used to be a chain of
+ * regular expressions, which could not read a sentence it had not been written
+ * for and, worse, turned "don't follow me" into an order to follow.
+ *
+ * @returns {{label, task, confidence, understood}|null}
  */
 export function parseOrderLocally(citizen, text, ctx) {
-  const t = String(text || "").toLowerCase();
-  const num = (def) => {
-    const m = /(\d+)/.exec(t);
-    return m ? clamp(Number(m[1]), 1, 64) : def;
-  };
+  const reading = understand(text);
+  if (!reading.intent || reading.intent === "question") return null;
 
-  if (/\b(follow|come with|stay with|stick with)\b/.test(t)) {
-    return { label: "following you", task: followTask(ctx.speakerId, { ticks: 0 }) };
-  }
-  if (/\b(stop|halt|wait here|hold on|stand down)\b/.test(t)) {
-    return { label: "standing by", task: waitTask(20, "standing by") };
-  }
-  if (/\b(come here|over here|to me|follow me)\b/.test(t)) {
-    return { label: "coming over", task: gotoTask(ctx.speakerLocation, { arrive: 2.5, label: "coming over" }) };
-  }
-  if (/\b(chop|cut|fell|log|timber|wood)\b/.test(t)) {
-    const { chopTask } = ctx.tasks;
-    return { label: "cutting wood", task: chopTask(num(16)) };
-  }
-  if (/\b(mine|dig|ore|iron|coal|diamond|gold|copper)\b/.test(t)) {
-    const { mineOreTask, gatherTask } = ctx.tasks;
-    const specific = /\b(iron|coal|diamond|gold|copper|redstone|lapis|emerald)\b/.exec(t);
-    if (specific) {
-      const want = `minecraft:${specific[1]}_ore`;
-      const deep = `minecraft:deepslate_${specific[1]}_ore`;
+  const T = ctx.tasks || {};
+  const qty = (fallback) => clamp(reading.quantity ?? fallback, 1, 64);
+  const done = (label, task) => ({
+    label, task, confidence: reading.confidence, understood: reading,
+  });
+
+  switch (reading.intent) {
+    case "stop":
+      return done("standing by", waitTask(20, "standing by"));
+
+    case "follow":
+      return done("following you", followTask(ctx.speakerId, { ticks: 0 }));
+
+    case "come":
+      return done("coming over",
+        gotoTask(ctx.speakerLocation, { arrive: 2.5, label: "coming over" }));
+
+    case "chop":
+      return done("cutting wood", T.chopTask ? T.chopTask(qty(16)) : null);
+
+    case "mine": {
+      const blocks = RESOURCE_BLOCKS[reading.resource];
+      if (blocks && T.gatherTask) {
+        const pretty = String(reading.resource || "ore").toLowerCase();
+        return done(`mining ${pretty}`,
+          T.gatherTask((b) => blocks.includes(b), 24, qty(8), `mining ${pretty}`));
+      }
+      return done("mining", T.mineOreTask ? T.mineOreTask(qty(12)) : null);
+    }
+
+    case "farm":
+      return done("working the fields",
+        T.farmTask ? T.farmTask(citizen.location, 12) : null);
+
+    case "build":
       return {
-        label: `mining ${specific[1]}`,
-        task: gatherTask((b) => b === want || b === deep, 24, num(8), `mining ${specific[1]}`),
+        label: "building", task: null, confidence: reading.confidence,
+        understood: reading,
+        wantsBuild: STRUCTURE_IDS[reading.structure] || null,
       };
-    }
-    return { label: "mining", task: mineOreTask(num(12)) };
-  }
-  if (/\b(farm|plant|harvest|sow|crops?|wheat)\b/.test(t)) {
-    const { farmTask } = ctx.tasks;
-    return { label: "working the fields", task: farmTask(citizen.location, 12) };
-  }
-  if (/\b(build|construct|raise|put up)\b/.test(t)) {
-    return { label: "building", task: null, wantsBuild: matchStructure(t) };
-  }
-  if (/\b(guard|patrol|defend|watch)\b/.test(t)) {
-    const { patrolTask } = ctx.tasks;
-    const center = ctx.settlement ? ctx.settlement.origin : citizen.location;
-    return { label: "on guard", task: patrolTask(center, 18, 4) };
-  }
-  if (/\b(attack|kill|fight)\b/.test(t)) {
-    const threat = citizen.snapshot?.threats?.[0];
-    if (threat) {
-      return { label: `fighting a ${threat.kind}`, task: fightTask(threat.id) };
-    }
-  }
-  if (/\b(explore|scout|look around|map)\b/.test(t)) {
-    return { label: "scouting", task: exploreTask(80, { legs: 4 }) };
-  }
-  if (/\b(rest|sleep|sit)\b/.test(t)) {
-    return { label: "resting", task: restTask(20) };
-  }
-  if (/\b(store|deposit|put.*(chest|stores))\b/.test(t)) {
-    return { label: "storing goods", task: null, wantsStore: true };
-  }
-  return null;
-}
 
-function matchStructure(text) {
-  const map = {
-    house: "small_house", home: "small_house", cottage: "small_house",
-    store: "storehouse", storehouse: "storehouse", warehouse: "storehouse",
-    workshop: "workshop", forge: "workshop",
-    well: "well", farm: "farm_plot", field: "farm_plot",
-    tower: "watchtower", watchtower: "watchtower",
-    wall: "wall_segment", road: "road_segment", lamp: "lamp_post",
-    hall: "town_hall", "town hall": "town_hall", shrine: "shrine",
-    camp: "campfire", campfire: "campfire",
-  };
-  for (const [word, id] of Object.entries(map)) {
-    if (text.includes(word)) return id;
-  }
-  return null;
-}
+    case "guard": {
+      const centre = ctx.settlement ? ctx.settlement.origin : citizen.location;
+      return done("on guard", T.patrolTask ? T.patrolTask(centre, 18, 4) : null);
+    }
 
-export { matchStructure };
+    case "attack": {
+      const threat = citizen.snapshot?.threats?.[0];
+      if (!threat) return done("looking for trouble", exploreTask(24, { legs: 1 }));
+      return done(`fighting a ${threat.kind}`, fightTask(threat.id));
+    }
+
+    case "explore":
+      return done("scouting", exploreTask(80, { legs: 4 }));
+
+    case "rest":
+      return done("resting", restTask(20));
+
+    case "eat":
+      return done("finding something to eat", eatTask());
+
+    case "store":
+      return {
+        label: "storing goods", task: null, confidence: reading.confidence,
+        understood: reading, wantsStore: true,
+      };
+
+    default:
+      return null;
+  }
+}

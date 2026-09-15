@@ -593,6 +593,112 @@ await scenario("The chat bridge can drive citizens from outside the game", async
 });
 
 // --------------------------------------------------------------------------
+// Understanding, not pattern matching. The old parser was a chain of regexes:
+// it read "dont follow me" as "follow", could not count, and had no idea what
+// a typo was. These are the cases that used to be wrong.
+// --------------------------------------------------------------------------
+await scenario("They understand what you actually typed", async (sim) => {
+  const { understand, editDistance, lexiconSize, C } = await sim.load("brain/nlu.js");
+
+  // Wood is chopped and everything else is mined, so the material picks the
+  // verb even when the player says "mine wood".
+  const cases = [
+    ["go mine wood", "chop", { resource: C.WOOD }],
+    ["chop 20 oak logs", "chop", { resource: C.WOOD, quantity: 20 }],
+    ["mine some iron", "mine", { resource: C.IRON }],
+    ["can you get me a stack of stone", "mine", { resource: C.STONE, quantity: 64 }],
+    ["follow me", "follow", {}],
+    ["dont follow me", "stop", {}],                 // negation used to be ignored
+    ["stop following me", "stop", {}],
+    ["build a house", "build", { structure: C.HOUSE }],
+    ["go mien for wodo", "chop", { resource: C.WOOD }],     // two typos in a row
+    ["find me some irno", "mine", { resource: C.IRON }],
+    ["have a rest", "rest", {}],                    // must NOT be heard as "axe"
+    ["come here", "come", {}],
+    ["wait there", "stop", {}],
+  ];
+
+  let right = 0;
+  const wrong = [];
+  for (const [text, intent, slots] of cases) {
+    const r = understand(text);
+    let ok = r && r.intent === intent;
+    for (const [k, v] of Object.entries(slots)) if (ok && r[k] !== v) ok = false;
+    if (ok) right++;
+    else wrong.push(`"${text}" -> ${r ? r.intent : "nothing"}${r && r.resource ? `/${r.resource}` : ""}`);
+  }
+  check(`understood ${right}/${cases.length} phrases`, right === cases.length, wrong.join("; "));
+
+  // A typo is one edit away, including two letters swapped - the case plain
+  // Levenshtein scores as two and so refuses to correct.
+  check("a swapped pair counts as one typo (wodo/wood)", editDistance("wodo", "wood") === 1);
+  check("mien/mine too", editDistance("mien", "mine") === 1);
+
+  // And correction must not reach so far that ordinary words get rewritten.
+  check("have/axe stays too far apart to correct", editDistance("have", "axe") > 1);
+
+  check(`the lexicon is real (${lexiconSize()} entries)`, lexiconSize() > 150);
+
+  // Nonsense should be admitted as nonsense rather than guessed at.
+  const junk = understand("qwertyuiop zxcvbnm");
+  check("nonsense is not confidently misread",
+    !junk || junk.confidence < 0.4, junk && `${junk.intent} @ ${junk.confidence}`);
+});
+
+// --------------------------------------------------------------------------
+// Speech is composed from a grammar, not drawn from a list. The symptom of a
+// list is hearing the same sentence twice in an evening.
+// --------------------------------------------------------------------------
+await scenario("They do not say the same thing twice", async (sim) => {
+  const { lineFor } = await sim.load("social/dialogue.js");
+  const { variety, frames } = await sim.load("social/language.js");
+
+  const total = frames().reduce((n, f) => n + variety(f), 0);
+  check(`the grammar spans ${total} sentences across ${frames().length} frames`,
+    total > 600, String(total));
+
+  // One speaker, many lines, each topic.
+  const speaker = {
+    id: "t1", seed: 9182, short: "Bram", name: "Bram Holt", job: "miner",
+    personality: { voice: "wry", quirk: "hums while working", traits: { bravery: 0.6 } },
+    needs: { hunger: 70, energy: 70, social: 70, safety: 80, morale: 60 },
+    memory: { people: {} }, task: null, snapshot: null, recentLines: [],
+  };
+
+  const said = [];
+  for (let i = 0; i < 30; i++) said.push(lineFor(speaker, "greeting", { other: "Mira" }));
+  const distinct = new Set(said).size;
+  check(`30 greetings produced ${distinct} different sentences`, distinct >= 15, said.slice(0, 4).join(" | "));
+
+  // Whatever it composes has to read like a sentence.
+  const topics = ["greeting", "greeting_warm", "greeting_cold", "work", "smalltalk",
+                  "observation_ore", "threat", "threat_brave", "plan", "order_ack",
+                  "done", "farewell", "confused"];
+  const malformed = [];
+  for (const topic of topics) {
+    for (let i = 0; i < 40; i++) {
+      const line = lineFor(speaker, topic, {});      // deliberately no facts supplied
+      if (/\{\w+\}/.test(line)) malformed.push(`${topic}: unfilled slot "${line}"`);
+      else if (/^[\s,.\u2014-]/.test(line)) malformed.push(`${topic}: ragged start "${line}"`);
+      else if (/ {2}/.test(line)) malformed.push(`${topic}: double space "${line}"`);
+      // A new sentence starts with a capital. An ellipsis is not a new
+      // sentence, so "Hm-hm-hmm... oh" is fine.
+      else if (/(?<!\.)\. +[a-z]|[!?] +[a-z]/.test(line)) {
+        malformed.push(`${topic}: lowercase sentence "${line}"`);
+      }
+      else if (line.length < 2) malformed.push(`${topic}: empty`);
+    }
+  }
+  check("every composed line is well formed", malformed.length === 0, malformed[0]);
+
+  // A topic the grammar has no frame for must still produce speech, from the
+  // old template bank.
+  const fallback = lineFor(speaker, "hungry", {});
+  check("topics with no frame still fall back to the line bank",
+    typeof fallback === "string" && fallback.length > 3, fallback);
+});
+
+// --------------------------------------------------------------------------
 console.log(`\n${"=".repeat(50)}`);
 if (failed) {
   console.log(`\x1b[31m${failed} failed\x1b[0m, ${passed} passed`);

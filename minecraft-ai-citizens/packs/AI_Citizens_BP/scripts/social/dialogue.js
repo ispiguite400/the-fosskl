@@ -1,10 +1,18 @@
 /**
  * The local voice.
  *
- * When Claude is driving, this module still handles conversation *plumbing*
- * (who talks to whom, whose turn it is). When it is not, this is where every
- * line comes from: templates filled from the citizen's personality, mood,
- * memory, job, what they can actually see, and how the town is doing.
+ * This module handles conversation *plumbing* (who talks to whom, whose turn
+ * it is) and is where every line a citizen speaks comes from.
+ *
+ * Two layers, tried in order:
+ *
+ *   1. `social/language.js` - a generative grammar. It composes the sentence
+ *      word class by word class, weighted by the speaker's voice and mood, and
+ *      rejects anything they have said in their last twelve lines. Hundreds of
+ *      distinct sentences per topic, so they stop sounding like a sign post.
+ *   2. The `LINES` bank below - fixed templates. Used for the topics the
+ *      grammar has no frame for, and whenever the grammar cannot find a
+ *      sentence the citizen has not just used.
  */
 import { CONFIG } from "../core/config.js";
 import { pick, weightedPick, prettyId, compass, titleCase, mulberry32, hashString } from "../core/util.js";
@@ -14,6 +22,7 @@ import { highlight } from "../agent/perception.js";
 import { relationshipWord, personRecord, pushDialogue } from "../agent/memory.js";
 import { blueprintById } from "../civ/blueprints.js";
 import { recomputeStats, nextStructureFor, TIERS } from "../civ/settlement.js";
+import { compose, polish } from "./language.js";
 
 // --------------------------------------------------------------------------
 // Line banks. {slots} are filled from the context object.
@@ -153,17 +162,62 @@ const VOICE_TWEAKS = {
 // --------------------------------------------------------------------------
 
 /**
+ * Which grammar frame covers a topic, and which register the situation asks
+ * for. A topic with no entry here has no frame, and falls through to LINES.
+ */
+const FRAME_FOR = {
+  greeting: ["greet", []],
+  greeting_warm: ["greet", ["warm", "!gruff"]],
+  greeting_cold: ["greet", ["gruff", "!warm"]],
+  work: ["work", []],
+  observation_ore: ["observe_ore", []],
+  threat: ["observe_threat", ["anxious", "!brave"]],
+  threat_brave: ["observe_threat", ["brave", "!anxious"]],
+  plan: ["plan", []],
+  smalltalk: ["smalltalk", []],
+  order_ack: ["acknowledge", []],
+  done: ["done", []],
+  farewell: ["farewell", []],
+  confused: ["confused", []],
+};
+
+/**
+ * The grammar names some facts differently from the line bank, because it
+ * talks about them differently ("a seam of {material}" vs "{block}").
+ */
+function grammarContext(ctx) {
+  const out = { ...ctx };
+  if (out.material === undefined && ctx.block !== undefined) out.material = ctx.block;
+  // Never hand the grammar an empty string: it would leave a hole in the
+  // sentence where a fallback word belongs.
+  for (const key of Object.keys(out)) {
+    if (out[key] === "" || out[key] === null) delete out[key];
+  }
+  return out;
+}
+
+/**
  * Produce one line of speech.
  * @param {Citizen} citizen
- * @param {string} topic key into LINES (a `_` variant is chosen automatically)
+ * @param {string} topic key into FRAME_FOR / LINES (a `_` variant is chosen
+ *                       automatically by the caller)
  * @param {object} ctx  slot values and world context
  */
 export function lineFor(citizen, topic, ctx = {}) {
+  const tweak = VOICE_TWEAKS[citizen.personality.voice];
+
+  const frame = FRAME_FOR[topic];
+  if (frame) {
+    let mood = "steady";
+    try { mood = moodOf(citizen); } catch { /* needs not initialised yet */ }
+    const composed = compose(citizen, frame[0], grammarContext(ctx), mood, frame[1]);
+    if (composed) return tweak ? tweak(composed) : composed;
+  }
+
   const rnd = mulberry32(hashString(citizen.seed + topic + (ctx.salt || "") + Math.floor(Math.random() * 1e6)));
   const bank = LINES[topic] || LINES.smalltalk;
   const raw = pick(bank, rnd);
-  const filled = fillSlots(raw, citizen, ctx);
-  const tweak = VOICE_TWEAKS[citizen.personality.voice];
+  const filled = polish(fillSlots(raw, citizen, ctx));
   return tweak ? tweak(filled) : filled;
 }
 
