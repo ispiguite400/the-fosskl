@@ -415,6 +415,114 @@ await scenario("The citizen entity has no invalid components", async (sim) => {
     mock.allEntities().filter((e) => e.typeId === "ai:citizen").length === 1);
 });
 
+
+// --------------------------------------------------------------------------
+await scenario('"ai!" is the only thing you have to remember', async (sim) => {
+  const { mock } = sim;
+  mock.seedArea();
+  const player = mock.addPlayer("Jordan", { x: 0, y: mock.SEA + 1, z: 0 });
+  await sim.start();
+
+  // A command after the attention word.
+  mock.sendChat(player, "ai! spawn 4");
+  mock.advance(60);
+  const dbg = sim.debug();
+  check(`"ai! spawn 4" spawned citizens (${dbg.registry.count})`, dbg.registry.count === 4,
+    `got ${dbg.registry.count}`);
+
+  // An instruction after the attention word - no command word, no name.
+  // Clear the greetings they said on spawning, or those get counted below.
+  for (const c of dbg.registry.all) {
+    c.task = null; c.plan.length = 0; c.speechQueue.length = 0; c.caption = null;
+  }
+  mock.sendChat(player, "ai! go chop some wood");
+  mock.advance(10);
+  const working = dbg.registry.all.filter((c) => c.task && /gather|chop/.test(c.task.kind + c.task.label));
+  check(`"ai! go chop some wood" put them to work (${working.length})`, working.length > 0,
+    dbg.registry.all.map((c) => c.task?.kind).join(","));
+
+  // One of them answers - not all eight, and not none.
+  const speaking = dbg.registry.all.filter((c) => c.speechQueue.length || c.caption);
+  check(`exactly one answered for the group (${speaking.length})`, speaking.length === 1,
+    `${speaking.length} spoke`);
+
+  // Naming one of them still works.
+  const first = dbg.registry.all[0];
+  for (const c of dbg.registry.all) { c.task = null; c.plan.length = 0; }
+  mock.sendChat(player, `ai! @${first.short} follow me`);
+  mock.advance(40);
+  check("naming a citizen targets just them",
+    first.task && first.task.kind === "follow", `task=${first.task?.kind}`);
+
+  // "follow me" with nobody named should pick the nearest, not error.
+  for (const c of dbg.registry.all) { c.task = null; c.plan.length = 0; }
+  mock.sendChat(player, "ai! follow me");
+  mock.advance(40);
+  check("\"follow me\" follows without naming anyone",
+    dbg.registry.all.some((c) => c.task && c.task.kind === "follow"),
+    dbg.registry.all.map((c) => c.task?.kind).join(","));
+
+  // Commands are swallowed; instructions stay visible.
+  const cmd = mock.sendChat(player, "ai! list");
+  check("a command is hidden from chat", cmd.cancel === true);
+  const speech = mock.sendChat(player, "ai! go mine some iron");
+  check("an instruction stays in chat", speech.cancel === false);
+  mock.advance(40);
+
+  // The old prefix still works, so nobody's muscle memory breaks.
+  const before = dbg.registry.count;
+  mock.sendChat(player, "!ai spawn 1");
+  mock.advance(40);
+  check("the old !ai prefix still works", dbg.registry.count === before + 1);
+
+  // And ordinary speech must not be swallowed by a bare "ai".
+  for (const c of dbg.registry.all) { c.task = null; c.plan.length = 0; }
+  const ordinary = mock.sendChat(player, "aim for the ridge, it is faster");
+  check("\"aim for...\" is not treated as an instruction", ordinary.cancel === false);
+  mock.advance(20);
+
+  const { stripTrigger, interpret } = await sim.load("commands/parser.js");
+  check("stripTrigger ignores a word merely starting with ai",
+    stripTrigger("aim for the ridge") === null, JSON.stringify(stripTrigger("aim for the ridge")));
+  check("stripTrigger accepts ai!", stripTrigger("ai! hello") === "hello");
+  check("stripTrigger accepts hey ai", stripTrigger("hey ai, hello") === "hello");
+  check("interpret spots a command", interpret("spawn 4").kind === "command");
+  check("interpret spots speech", interpret("go mine iron").kind === "speech");
+});
+
+// --------------------------------------------------------------------------
+await scenario("Slash commands accept the same grammar", async (sim) => {
+  const { mock } = sim;
+  mock.seedArea();
+  sim.stableRuntime();                       // no chat at all, as on stable
+  const player = mock.addPlayer("Jordan", { x: 0, y: mock.SEA + 1, z: 0 });
+  await sim.start();
+
+  mock.runCustomCommand("ai:cmd", player, ["spawn", "3"]);
+  mock.advance(60);
+  const dbg = sim.debug();
+  check(`/ai:cmd spawn 3 worked (${dbg.registry.count})`, dbg.registry.count === 3);
+
+  // /ai:tell given a command should still run it - the router decides, not the
+  // player's choice of slash command.
+  mock.runCustomCommand("ai:tell", player, ["spawn", "1"]);
+  mock.advance(40);
+  check("/ai:tell also accepts a command", dbg.registry.count === 4, `${dbg.registry.count}`);
+
+  // ...and /ai:cmd given an instruction should treat it as speech.
+  for (const c of dbg.registry.all) { c.task = null; c.plan.length = 0; }
+  mock.runCustomCommand("ai:cmd", player, ["go", "chop", "some", "wood"]);
+  mock.advance(40);
+  check("/ai:cmd also accepts an instruction",
+    dbg.registry.all.some((c) => c.task), dbg.registry.all.map((c) => c.task?.kind).join(","));
+
+  // The attention word is accepted there too, so muscle memory transfers.
+  mock.runCustomCommand("ai:tell", player, ["ai!", "spawn", "1"]);
+  mock.advance(40);
+  check("a stray \"ai!\" inside a slash command is ignored, not passed on",
+    dbg.registry.count === 5, `${dbg.registry.count}`);
+});
+
 // --------------------------------------------------------------------------
 console.log(`\n${"=".repeat(50)}`);
 if (failed) {

@@ -39,19 +39,31 @@ export function runCommand(app, player, parsed) {
 
 const COMMANDS = {
   help(app, player) {
-    tell(player, "§bAI Citizens§r — commands");
+    const chatOn = app.capabilities && app.capabilities.chat !== "none";
+    const say = chatOn ? "ai!" : "/ai:tell";
+
+    tell(player, "§bAI Citizens§r");
+    tell(player, `§7Say §f${say}§7 and then whatever you want. That is the whole thing.§r`);
+    tell(player, `  §f${say} go mine some iron§r §8- tells everyone nearby§r`);
+    tell(player, `  §f${say} @Ada follow me§r §8- tells one of them§r`);
+    tell(player, `  §f${say} spawn 4§r §8- runs a command§r`);
+    if (!chatOn) {
+      tell(player, "§7Typing §fai!§7 straight into chat needs the chat build - §f!ai doctor§7.§r");
+    }
+    tell(player, "§7Commands:§r");
     const lines = [
       ["spawn [n] [job]", "spawn citizens where you stand"],
       ["list", "who is alive, and what they are doing"],
+      ["who <name>", "one citizen in detail"],
       ["panel", "open the control panel"],
-      ["come / here", "call everyone nearby to you"],
-      ["follow <name>", "that citizen follows you"],
+      ["come", "call everyone nearby to you"],
+      ["follow [name]", "that citizen follows you"],
       ["stop [name|all]", "cancel orders"],
       ["job <name> <job>", `set a role (${jobList().join(", ")})`],
       ["found [name]", "found a settlement where you stand"],
       ["town", "settlement report"],
       ["build <structure>", "queue a build"],
-      ["structures", "list what they know how to build"],
+      ["structures", "what they know how to build"],
       ["tp <name>", "teleport a citizen to you"],
       ["remove <name|all>", "despawn citizens"],
       ["brain [auto|claude|local]", "choose the thinking engine"],
@@ -62,12 +74,7 @@ const COMMANDS = {
       ["doctor", "what works on this world, and what does not"],
     ];
     for (const [cmd, help] of lines) {
-      tell(player, `  §e!ai ${cmd}§r §8- ${help}§r`);
-    }
-    tell(player, "§7Talk to them by name: §f@Ada go mine some iron§7, or just speak near them.§r");
-    if (app.capabilities && app.capabilities.chat === "none") {
-      tell(player, "§7Chat listening is off in this build — use §f/ai:tell @Ada go mine some iron§7.§r");
-      tell(player, "§7Run §f!ai doctor§7 for the details.§r");
+      tell(player, `  §e${say} ${cmd}§r §8- ${help}§r`);
     }
   },
 
@@ -119,9 +126,13 @@ const COMMANDS = {
   },
 
   follow(app, player, parsed) {
+    // "ai! follow me" names nobody, so fall back to whoever is closest.
     const { name } = takeName(parsed.args);
-    const c = name ? app.registry.byName(name) : app.registry.near(player.location, 16)[0];
-    if (!c) { tell(player, "§cNo such citizen.§r"); return; }
+    const c = name ? app.registry.byName(name) : app.registry.near(player.location, 24)[0];
+    if (!c) {
+      tell(player, name ? `§cNo citizen called ${name}.§r` : "§cNobody close enough to hear you.§r");
+      return;
+    }
     app.assignOrder(c, player, `follow ${player.name}`, {
       label: `following ${player.name}`,
       task: followTask(player.id, { ticks: 0, label: `following ${player.name}` }),
@@ -345,8 +356,8 @@ const COMMANDS = {
       tell(player, `  ${ok(true)} chat listening §7(after-event: !ai text also shows in chat)§r`);
     } else {
       tell(player, `  ${ok(false)} chat listening — §7${c.chatError || "unavailable"}§r`);
-      tell(player, "      §7Typing to citizens needs the pre-release chat API.§r");
-      tell(player, "      §7Use §f/ai:tell @Ada go mine iron§7, or rebuild with §f./tools/build.sh --chat§7.§r");
+      tell(player, "      §7Typing §fai!§7 in chat needs the pre-release chat API.§r");
+      tell(player, "      §7Use §f/ai:tell go mine some iron§7 - it does exactly the same thing.§r");
     }
 
     tell(player, `  ${ok(c.interaction)} right-click / sneak-click on a citizen`);

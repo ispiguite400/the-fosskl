@@ -10,7 +10,7 @@ import { world, system } from "@minecraft/server";
 import { CONFIG } from "../core/config.js";
 import { tell, safe, debug } from "../core/log.js";
 import { dist, trimTo } from "../core/util.js";
-import { classify, looksLikeQuestion, PREFIX } from "./parser.js";
+import { classify, interpret, looksLikeQuestion, PREFIX } from "./parser.js";
 import { runCommand } from "./handlers.js";
 import { say, TONE, interrupt } from "../ui/caption.js";
 import { openPanel, openCitizen } from "../ui/panel.js";
@@ -49,12 +49,13 @@ export function registerChat(app) {
       before.subscribe((event) => {
         const player = event.sender;
         const parsed = classify(event.message);
-        if (parsed.type === "command") {
-          event.cancel = true;                   // never echo add-on commands
-          system.run(() => runCommand(app, player, parsed));
+        if (parsed.type === "trigger") {
+          // "ai! spawn 4" is housekeeping and is swallowed; "ai! go mine iron"
+          // is you talking, so it stays in chat for everyone to see.
+          if (interpret(parsed.text).kind === "command") event.cancel = true;
+          system.run(() => routeTrigger(app, player, parsed.text));
           return;
         }
-        // Everything else stays visible in chat; citizens react next tick.
         system.run(() => routeSpeech(app, player, parsed));
       });
       return true;
@@ -70,8 +71,8 @@ export function registerChat(app) {
       after.subscribe((event) => {
         const player = event.sender;
         const parsed = classify(event.message);
-        if (parsed.type === "command") {
-          system.run(() => runCommand(app, player, parsed));
+        if (parsed.type === "trigger") {
+          system.run(() => routeTrigger(app, player, parsed.text));
           return;
         }
         system.run(() => routeSpeech(app, player, parsed));
@@ -85,22 +86,43 @@ export function registerChat(app) {
   return result;
 }
 
-/** Runs `!ai`-style command text from any source (chat, /ai:cmd, scriptevent). */
-export function handleCommandText(app, player, text) {
-  const cleaned = String(text || "").trim();
-  if (!cleaned) { runCommand(app, player, { command: "help", args: [], rest: "" }); return; }
-  const parsed = classify(cleaned.startsWith(PREFIX) ? cleaned : `${PREFIX} ${cleaned}`);
-  if (parsed.type !== "command") { runCommand(app, player, { command: "help", args: [], rest: "" }); return; }
-  runCommand(app, player, parsed);
+/**
+ * Everything the player says to the citizens arrives here - from chat after the
+ * attention word, from /ai:cmd and /ai:tell, or from /scriptevent. The first
+ * word decides whether it is a command or something to say, so the player never
+ * has to pick the right entry point.
+ */
+export function routeTrigger(app, player, text) {
+  const plan = interpret(text);
+  if (plan.kind === "command") {
+    runCommand(app, player, plan);
+    return "command";
+  }
+
+  // Addressed to the citizens, so it is an instruction rather than something
+  // merely overheard - even without a name attached.
+  const inner = classify(plan.text);
+  if (inner.type === "direct" || inner.type === "maybeDirect") {
+    routeSpeech(app, player, inner);
+  } else {
+    routeSpeech(app, player, { type: "group", text: plan.text, raw: plan.text });
+  }
+  return "speech";
 }
 
-/** Routes plain speech from any source, exactly as overheard chat would be. */
+/** `/ai:cmd ...` and `/scriptevent ai:cmd ...`. */
+export function handleCommandText(app, player, text) {
+  const cleaned = String(text || "").trim();
+  const stripped = classify(cleaned);
+  routeTrigger(app, player, stripped.type === "trigger" ? stripped.text : cleaned);
+}
+
+/** `/ai:tell ...` - same router, so either command works for either purpose. */
 export function handleSpeech(app, player, text) {
   const cleaned = String(text || "").trim();
   if (!cleaned) return;
-  const parsed = classify(cleaned);
-  if (parsed.type === "command") { runCommand(app, player, parsed); return; }
-  routeSpeech(app, player, parsed);
+  const stripped = classify(cleaned);
+  routeTrigger(app, player, stripped.type === "trigger" ? stripped.text : cleaned);
 }
 
 function routeSpeech(app, player, parsed) {
@@ -126,7 +148,10 @@ function routeSpeech(app, player, parsed) {
       return;
     }
     case "group": {
-      for (const c of listeners) instruct(app, player, c, parsed.text, true, true);
+      // One of them answers for the group; a chorus of eight is unreadable.
+      const sorted = listeners.slice().sort(
+        (a, b) => dist(a.location, player.location) - dist(b.location, player.location));
+      sorted.forEach((c, i) => instruct(app, player, c, parsed.text, true, i > 0));
       return;
     }
     default:

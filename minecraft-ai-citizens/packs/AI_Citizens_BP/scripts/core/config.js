@@ -27,6 +27,7 @@ export const CONFIG = {
   blockScanRadius: 10,
   hearingRadius: 20,
   chatRadius: 32,                // how far a player's chat reaches citizens
+  chatPrefix: "ai!",             // attention word: "ai! go mine some iron"
 
   // --- speech -----------------------------------------------------------
   captionSeconds: 6,

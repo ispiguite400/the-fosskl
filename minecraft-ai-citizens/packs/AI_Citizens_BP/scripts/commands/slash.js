@@ -60,7 +60,7 @@ export function registerSlashCommands(app) {
 
       register(registry, status, {
         name: "ai:cmd",
-        description: "Run an AI Citizens command, e.g. /ai:cmd spawn 6",
+        description: "AI Citizens: run a command, e.g. /ai:cmd spawn 6",
         permissionLevel: PERMISSION_ANY,
         cheatsRequired: false,
         mandatoryParameters: [{ name: "command", type: PARAM_STRING }],
@@ -69,7 +69,7 @@ export function registerSlashCommands(app) {
 
       register(registry, status, {
         name: "ai:tell",
-        description: "Say something to the citizens, e.g. /ai:tell @Ada go mine iron",
+        description: "Tell the citizens something, e.g. /ai:tell go mine some iron",
         permissionLevel: PERMISSION_ANY,
         cheatsRequired: false,
         mandatoryParameters: [{ name: "message", type: PARAM_STRING }],

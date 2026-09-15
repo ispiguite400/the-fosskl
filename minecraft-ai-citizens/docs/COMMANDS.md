@@ -1,76 +1,95 @@
 # Commands
 
-Two ways to talk to citizens: **speak to them** (they hear you), or **run a
-command** (you configure them).
+Say **`ai!`** and then whatever you want. That is the entire grammar.
 
-## Typing in chat
+```
+ai! spawn 4                    runs a command
+ai! go mine some iron          tells everyone nearby
+ai! @Ada follow me             tells one of them
+ai! what are you working on?   asks a question
+```
 
-This is the main way in. Speak near citizens and they hear you; name one and
-they act on it. It needs the **Beta APIs** world toggle, because reading chat is
-only possible through Minecraft's beta script API.
+You never have to decide which kind of thing you are typing. The first word
+after `ai!` settles it: if it names a command it runs one, otherwise the
+citizens take it as something you said to them.
+
+`!ai`, `hey ai` and `ai,` are accepted too, and `ai! config chatPrefix hey`
+changes it to whatever you like. A word that merely *starts* with "ai" — "aim
+for the ridge" — is left alone.
+
+Commands are hidden from chat; instructions stay visible, because you are
+talking.
+
+## Where `ai!` works
+
+Reading chat needs a pre-release Minecraft API, so it is only in a chat-enabled
+build. On the default build, put `/ai:tell` in front of the same sentence:
+
+| chat build | default build |
+|---|---|
+| `ai! go mine some iron` | `/ai:tell go mine some iron` |
+| `ai! spawn 4` | `/ai:spawn 4` or `/ai:cmd spawn 4` |
+| `ai! @Ada follow me` | `/ai:tell @Ada follow me` |
+
+`/ai:doctor` tells you which you have.
 
 ## Slash commands — always available
 
-Real slash commands with autocomplete. They need no cheats, and they work even
-when chat does not — on the `--stable` build, or if Beta APIs is off.
+Real slash commands with autocomplete, no cheats needed, and they work
+regardless of chat.
 
 | Command | Does |
 |---|---|
-| `/ai:spawn <count> <role>` | Spawn citizens where you stand |
-| `/ai:tell <message>` | Say something to them — `/ai:tell @Ada go mine iron` |
-| `/ai:cmd <command>` | Anything from the `!ai` list — `/ai:cmd found Rivermeet` |
+| `/ai:tell <anything>` | The same grammar as `ai!` |
+| `/ai:cmd <anything>` | Identical — both go through one router |
+| `/ai:spawn <count> <role>` | The common case, with autocomplete |
 | `/ai:panel` | Open the control panel |
 | `/ai:doctor` | What works on this world, and what does not |
 
-If custom commands are unavailable, `/scriptevent ai:cmd spawn 4` and
-`/scriptevent ai:tell @Ada follow me` do the same thing.
+`/scriptevent ai:cmd spawn 4` works even where custom commands do not.
 
----
+## Without the attention word
 
-## Speaking to them
+Citizens still overhear ordinary chat within 32 blocks:
 
 | You type | What happens |
 |---|---|
-| `@Ada go mine some iron` | Ada takes the order and answers |
-| `Ada, follow me` | Same — the `@` is optional when you use a comma |
+| `@Ada go mine some iron` | Ada takes the order |
+| `Ada, follow me` | Same — the `@` is optional with a comma |
 | `everyone, stop` | Every citizen in earshot |
-| `all of you, follow me` | Same |
 | `anyone found iron?` | Overheard — sociable citizens answer |
-| `what are you working on?` | They answer from what they are actually doing |
 
-Earshot is 32 blocks by default (`!ai config chatRadius 48` to change it).
+### Instructions they understand without Claude
 
-### Instructions they understand locally
+`follow me` · `come here` · `stop` · `chop wood` · `mine iron` (or coal,
+diamond, gold, copper, redstone, lapis, emerald) · `farm` / `plant` / `harvest`
+· `build a house` (cottage, storehouse, workshop, well, farm, tower, wall, road,
+lamp, town hall, shrine) · `guard` / `patrol` · `attack` · `explore` · `rest` ·
+`store your goods`
 
-Without the Claude bridge, these phrasings are parsed directly:
-
-`follow me` · `come here` · `stop` / `wait here` · `chop wood` · `mine iron`
-(or coal, diamond, gold, copper, redstone, lapis, emerald) · `farm` /
-`plant` / `harvest` · `build a house` (cottage, storehouse, workshop, well,
-farm, tower, wall, road, lamp, town hall, shrine) · `guard` / `patrol` ·
-`attack` · `explore` / `scout` · `rest` · `store your goods`
-
-With the bridge running, anything reasonable works, and they answer in
+With the Claude bridge running, anything reasonable works, and they answer in
 character rather than from a template.
 
 ---
 
-## `!ai` commands
+## Command reference
+
+Use any of these after `ai!`, or after `/ai:cmd`.
 
 ### People
 
 | Command | Effect |
 |---|---|
-| `!ai spawn [n] [job]` | Spawn citizens where you stand. `!ai spawn 6 miner` |
-| `!ai list` | Everyone alive, their trade, distance and current job |
-| `!ai who [name]` | One citizen in detail — character, needs, inventory |
-| `!ai come` / `!ai here` | Everyone within 64 blocks walks to you |
-| `!ai follow <name>` | That citizen follows you until told otherwise |
-| `!ai stop [name\|all]` | Cancel standing orders |
-| `!ai job <name> <role>` | Assign a trade and lock it against re-allocation |
-| `!ai tp <name>` | Teleport a citizen to you |
-| `!ai say <name> <text>` | Put words in their mouth |
-| `!ai remove <name\|all>` | Despawn |
+| `spawn [n] [job]` | Spawn citizens where you stand. `ai! spawn 6 miner` |
+| `list` | Everyone alive, their trade, distance and current job |
+| `who [name]` | One citizen in detail — character, needs, inventory |
+| `come` / `here` | Everyone within 64 blocks walks to you |
+| `follow <name>` | That citizen follows you until told otherwise |
+| `stop [name\|all]` | Cancel standing orders |
+| `job <name> <role>` | Assign a trade and lock it against re-allocation |
+| `tp <name>` | Teleport a citizen to you |
+| `say <name> <text>` | Put words in their mouth |
+| `remove <name\|all>` | Despawn |
 
 Roles: `settler` `lumberjack` `miner` `builder` `farmer` `guard` `crafter`
 `hauler` `scout` `architect`
@@ -79,10 +98,10 @@ Roles: `settler` `lumberjack` `miner` `builder` `farmer` `guard` `crafter`
 
 | Command | Effect |
 |---|---|
-| `!ai found [name]` | Found a settlement where you stand |
-| `!ai town` | Report: tier, population, stats, what is being built, shortages |
-| `!ai build <structure>` | Queue a specific building nearby |
-| `!ai structures` | Everything they know how to build, with material costs |
+| `found [name]` | Found a settlement where you stand |
+| `town` | Report: tier, population, stats, what is being built, shortages |
+| `build <structure>` | Queue a specific building nearby |
+| `structures` | Everything they know how to build, with material costs |
 
 Structures: `campfire` `small_house` `storehouse` `workshop` `well`
 `farm_plot` `watchtower` `town_hall` `wall_segment` `lamp_post`
@@ -92,9 +111,9 @@ Structures: `campfire` `small_house` `storehouse` `workshop` `well`
 
 | Command | Effect |
 |---|---|
-| `!ai brain [auto\|claude\|local]` | Choose the thinking engine |
-| `!ai bridge <url>` | Point at the Claude bridge |
-| `!ai status` | Brain health, call counts, errors, population |
+| `brain [auto\|claude\|local]` | Choose the thinking engine |
+| `bridge <url>` | Point at the Claude bridge |
+| `status` | Brain health, call counts, errors, population |
 
 `auto` uses Claude when the bridge is reachable and the local brain otherwise.
 `local` never calls out. `claude` is the same as `auto` — the local brain is
@@ -104,13 +123,13 @@ always the fallback, by design.
 
 | Command | Effect |
 |---|---|
-| `!ai config` | List every setting |
-| `!ai config <key>` | Read one |
-| `!ai config <key> <value>` | Change one (persists with the world) |
-| `!ai debug` | Toggle verbose logging |
-| `!ai doctor` | What this world supports; whether the entity can spawn |
-| `!ai panel` | Open the control panel |
-| `!ai help` | Everything above, in game |
+| `config` | List every setting |
+| `config <key>` | Read one |
+| `config <key> <value>` | Change one (persists with the world) |
+| `debug` | Toggle verbose logging |
+| `doctor` | What this world supports; whether the entity can spawn |
+| `panel` | Open the control panel |
+| `help` | Everything above, in game |
 
 Settings worth knowing:
 
@@ -133,7 +152,7 @@ Settings worth knowing:
 
 ## The control panel
 
-`!ai panel`, or sneak-right-click a citizen.
+`ai! panel` (or `/ai:panel`), or sneak-right-click a citizen.
 
 - **Roster** — everyone, with distance and current job. Pick one for follow,
   come here, stand by, change role, bring to me, dismiss.

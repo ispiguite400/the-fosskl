@@ -14,10 +14,10 @@ They can think with **Claude** (`claude-opus-5`) when you run the included
 bridge, and with a capable local brain when you don't.
 
 ```
-/ai:spawn 6
-/ai:cmd found Rivermeet
-/ai:tell @Ada go find iron, we need it for the walls
-/ai:tell everyone, follow me
+ai! spawn 6
+ai! found Rivermeet
+ai! go find iron, we need it for the walls
+ai! @Ada follow me
 ```
 
 ---
@@ -107,14 +107,14 @@ build is live.
 
 ### Talking to them, and the one thing that is version-specific
 
-You talk to citizens with `/ai:tell`:
+On the default build you talk to citizens with `/ai:tell`:
 
 ```
-/ai:tell @Ada go mine some iron
-/ai:tell everyone, follow me
+/ai:tell go mine some iron
+/ai:tell @Ada follow me
 ```
 
-Reading what you type in **open chat** — so you can drop the `/ai:tell` — is
+Reading what you type in **open chat** — so you can say `ai!` instead — is
 only possible through Minecraft's *beta* script API, and every way of asking for
 it is tied to a particular range of releases:
 
@@ -141,7 +141,23 @@ you whether the result can actually be imported.
 
 ## Talking to them
 
-You talk to citizens by typing in chat. Three kinds of message:
+Say **`ai!`** and then whatever you want. That is the whole grammar.
+
+```
+ai! spawn 4                    a command
+ai! go mine some iron          an instruction to everyone nearby
+ai! @Ada follow me             an instruction to one of them
+ai! what are you working on?   a question
+```
+
+You never have to decide which of those it is — the first word settles it. If it
+names a command, it runs one; otherwise the citizens take it as something you
+said to them. `!ai`, `hey ai` and `ai,` work too.
+
+Commands after `ai!` are hidden from chat; instructions stay visible, because
+you are talking.
+
+Without the attention word, they still overhear you:
 
 **Speak to one of them by name.** They answer, and do it.
 
@@ -172,30 +188,32 @@ iron, farm, build a house, guard, explore, attack, rest, store your goods. With
 the Claude bridge running they understand a great deal more than that, and they
 answer in their own voice.
 
-Operator commands start with `!ai` in chat, or `/ai:cmd` anywhere:
+Commands, in chat or as slash commands:
 
 ```
-!ai spawn 6 miner      /ai:cmd spawn 6 miner
-!ai panel              /ai:panel
-!ai found Rivermeet    /ai:cmd found Rivermeet
-!ai town               /ai:cmd town
-!ai doctor             /ai:doctor          what works on this world
-!ai list               /ai:cmd list
-!ai build small_house  /ai:cmd build small_house
-!ai brain claude       /ai:cmd brain claude
-!ai help               /ai:cmd help
+ai! spawn 6 miner      /ai:spawn 6 miner
+ai! panel              /ai:panel
+ai! found Rivermeet    /ai:cmd found Rivermeet
+ai! town               /ai:cmd town
+ai! doctor             /ai:doctor          what works on this world
+ai! list               /ai:cmd list
+ai! build small_house  /ai:cmd build small_house
+ai! help               /ai:cmd help
 ```
 
-Every one of these is also a real slash command with autocomplete, which is what
-the stable build uses and what still works if chat is ever unavailable:
+`/ai:tell` and `/ai:cmd` take exactly the same grammar as `ai!`, and go through
+the same router — so whichever you reach for, it does the right thing:
 
 ```
-/ai:spawn 6 miner        /ai:tell @Ada go mine some iron
-/ai:cmd found Rivermeet  /ai:panel        /ai:doctor
+/ai:tell go mine some iron     /ai:cmd spawn 4
+/ai:cmd go mine some iron      /ai:tell spawn 4      (both work)
 ```
 
-And `/scriptevent ai:cmd spawn 4` works even where custom commands do not — a
-last resort, but it has never not worked.
+That matters because **typing `ai!` straight into chat needs the chat build**
+(see below). On the default build, `/ai:tell go mine some iron` is the same
+sentence with four characters in front of it. `/ai:doctor` tells you which you
+have. And `/scriptevent ai:cmd spawn 4` works even where custom commands do
+not.
 
 The full list is in [docs/COMMANDS.md](docs/COMMANDS.md). Sneak-right-click a
 citizen to open their page in the control panel.

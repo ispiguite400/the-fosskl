@@ -33,6 +33,8 @@ Load the world. No experiments needed.
 /ai:spawn 4
 ```
 
+or, on a chat-enabled build, just `ai! spawn 4`.
+
 Four citizens appear, each with a name, a face and a trade. They will start
 looking for work immediately.
 
@@ -49,12 +51,24 @@ starts planning what to build. Come back in a few Minecraft days.
 
 ## 6. Tell them what to do
 
+Say `ai!` and then whatever you want:
+
 ```
-/ai:tell @Ada go mine some iron
-/ai:tell everyone, follow me
-/ai:cmd build small_house
-/ai:cmd town
+ai! go mine some iron
+ai! @Ada follow me
+ai! build small_house
+ai! town
 ```
+
+On the default build, chat cannot be read, so put `/ai:tell` in front of the
+same sentence:
+
+```
+/ai:tell go mine some iron
+/ai:tell build small_house
+```
+
+`/ai:doctor` says which you have.
 
 Sneak-right-click a citizen to open their page. `/ai:panel` opens the control
 panel. `/ai:cmd help` lists everything.
