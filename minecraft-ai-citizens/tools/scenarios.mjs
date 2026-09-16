@@ -699,6 +699,140 @@ await scenario("They do not say the same thing twice", async (sim) => {
 });
 
 // --------------------------------------------------------------------------
+// The complaint that drove this: "it isn't AI if there are only 5 things I can
+// tell them". Every phrase below has to produce a real task, a real effect or
+// a real answer - not an acknowledgement of something that never happens.
+// --------------------------------------------------------------------------
+await scenario("There is a lot you can tell them", async (sim) => {
+  const { mock } = sim;
+  mock.seedArea();
+  const player = mock.addPlayer("Jordan", { x: 0, y: mock.SEA + 1, z: 0 });
+  await sim.start();
+  mock.sendScriptEvent("ai:cmd", "spawn 1", player);
+  mock.advance(20);
+
+  const citizen = sim.debug().registry.all[0];
+  const { parseOrderLocally } = await sim.load("brain/local.js");
+  const { SUPPORTED_INTENTS } = await sim.load("brain/orders.js");
+  const registry = await sim.load("actions/registry.js");
+  const ctx = {
+    tasks: registry, speakerId: player.id, speakerLocation: player.location,
+    settlement: null,
+  };
+
+  // One phrase per thing they can be told, spread across every category.
+  const phrases = [
+    "mine some iron", "chop 20 oak logs", "dig down 15", "tunnel east 30 blocks",
+    "clear this area", "build a house", "build a watchtower", "light up the place",
+    "plant a field", "bridge north 12",
+    "follow me", "come here", "go to 120 70 -30", "go north 40 blocks",
+    "stay here", "stop", "spread out", "regroup",
+    "kill that creeper", "hunt a cow", "defend me", "guard the town", "run away",
+    "craft a pickaxe", "smelt iron", "give me coal", "drop the dirt",
+    "store this", "fetch 8 planks", "draw your sword", "what are you carrying",
+    "eat something", "get some sleep", "have a rest", "go explore", "wake up",
+    "become a miner", "your name is Ada", "found a town", "join the town",
+    "be quiet", "say hello everyone", "dance", "what are you doing", "help",
+    '"dig deep" means mine iron', "forget dig deep", "do that again",
+  ];
+
+  const intents = new Set();
+  const nothing = [];
+  for (const phrase of phrases) {
+    const local = parseOrderLocally(citizen, phrase, ctx);
+    const acted = Boolean(local && (local.tasks.length || local.effect
+      || local.reply || local.wantsBuild !== undefined));
+    if (acted) for (const r of local.readings) intents.add(r.intent);
+    else nothing.push(phrase);
+  }
+  check(`${phrases.length - nothing.length}/${phrases.length} phrases do something`,
+    nothing.length === 0, nothing.join(" | "));
+  check(`${intents.size} different things understood`, intents.size >= 40, [...intents].join(","));
+  check(`the catalogue lists ${SUPPORTED_INTENTS.length} intents`,
+    SUPPORTED_INTENTS.length >= 45, String(SUPPORTED_INTENTS.length));
+
+  // Nonsense must still be refused rather than guessed at.
+  for (const junk of ["qwertyuiop", "blorp the flurb", "asdf asdf"]) {
+    check(`"${junk}" is refused, not guessed`,
+      parseOrderLocally(citizen, junk, ctx) === null);
+  }
+
+  // Two orders in one sentence, queued in the order they were spoken.
+  const chained = parseOrderLocally(citizen, "mine 20 iron then build a house", ctx);
+  check("a chained order becomes two tasks",
+    Boolean(chained) && chained.tasks.length === 2,
+    chained ? chained.tasks.map((t) => t.kind).join("+") : "null");
+  check("and they queue in the order they were said",
+    Boolean(chained) && chained.tasks[0].kind === "gather" && chained.tasks[1].kind === "build",
+    chained ? chained.tasks.map((t) => t.kind).join(" then ") : "null");
+
+  // A word the player invents has to survive into the next order.
+  const { teach, understand } = await sim.load("brain/nlu.js");
+  teach("faff about", "go explore");
+  check("a taught phrase is understood afterwards",
+    understand("faff about").intent === "explore",
+    understand("faff about").intent);
+});
+
+// --------------------------------------------------------------------------
+// Parsing is not the same as doing. This drives the real tick loop.
+// --------------------------------------------------------------------------
+await scenario("Orders survive the round trip into the world", async (sim) => {
+  const { mock } = sim;
+  mock.seedArea();
+  const player = mock.addPlayer("Jordan", { x: 0, y: mock.SEA + 1, z: 0 });
+  await sim.start();
+  mock.sendScriptEvent("ai:cmd", "spawn 3", player);
+  mock.advance(20);
+  const all = sim.debug().registry.all;
+
+  const reset = () => {
+    for (const c of all) {
+      c.speechQueue.length = 0; c.caption = null;
+      c.task = null; c.plan.length = 0; c.muted = false;
+    }
+  };
+
+  const drove = (order, kinds) => {
+    reset();
+    mock.sendScriptEvent("ai:tell", order, player);
+    mock.advance(3);
+    const got = all.filter((c) => c.task && kinds.includes(c.task.kind));
+    check(`"${order}" put someone to work (${kinds.join("/")})`, got.length > 0,
+      all.map((c) => c.task?.kind || "-").join(","));
+  };
+
+  drove("go mine some iron", ["gather", "mine", "goto"]);
+  drove("follow me", ["follow"]);
+  drove("dig down 12", ["mine"]);
+  drove("tunnel north 20 blocks", ["mine"]);
+  drove("go north 30 blocks", ["goto"]);
+  drove("have a rest", ["rest"]);
+
+  // Telling them to be quiet has to actually silence the captions.
+  reset();
+  mock.sendScriptEvent("ai:tell", "be quiet", player);
+  mock.advance(3);
+  check("\"be quiet\" mutes them", all.every((c) => c.muted),
+    all.map((c) => c.muted).join(","));
+  for (const c of all) { c.speechQueue.length = 0; c.caption = null; }
+  mock.sendScriptEvent("ai:tell", "go mine iron", player);
+  mock.advance(3);
+  const spoke = all.filter((c) => c.speechQueue.length || c.caption);
+  check("a muted citizen still takes the order but says nothing",
+    spoke.length === 0 && all.some((c) => c.task),
+    `${spoke.length} spoke`);
+
+  // And a new name has to stick.
+  reset();
+  for (const c of all) c.muted = false;
+  mock.sendScriptEvent("ai:tell", "your name is Bramble", player);
+  mock.advance(3);
+  check("a citizen answers to a new name",
+    all.some((c) => c.name === "Bramble"), all.map((c) => c.name).join(","));
+});
+
+// --------------------------------------------------------------------------
 console.log(`\n${"=".repeat(50)}`);
 if (failed) {
   console.log(`\x1b[31m${failed} failed\x1b[0m, ${passed} passed`);

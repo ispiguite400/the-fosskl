@@ -30,7 +30,7 @@ export const PREFIX = "ai!";
 export const COMMAND_WORDS = new Set([
   "help", "spawn", "list", "panel", "come", "here", "follow", "stop", "job",
   "found", "town", "structures", "build", "tp", "remove", "brain", "bridge",
-  "status", "config", "debug", "doctor", "say", "who",
+  "status", "config", "debug", "doctor", "who", "skills",
 ]);
 
 export function triggers() {

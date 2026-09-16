@@ -45,6 +45,7 @@ import { completionLine } from "./social/dialogue.js";
 import {
   registerChat, registerInteraction, handleCommandText, handleSpeech,
 } from "./commands/index.js";
+import { loadVocabulary } from "./commands/effects.js";
 import { registerSlashCommands, registerScriptEvents } from "./commands/slash.js";
 
 // --------------------------------------------------------------------------
@@ -121,7 +122,11 @@ const app = {
     order.label = plan.label || "following orders";
     order.task = plan.task || null;
     citizen.plan.length = 0;
-    citizen.task = plan.task || null;
+    // A multi-clause order ("mine 20 iron then build a house") arrives as a
+    // list; the first becomes the task and the rest wait their turn.
+    const queued = (plan.tasks && plan.tasks.length ? plan.tasks : [plan.task]).filter(Boolean);
+    citizen.task = queued[0] || null;
+    for (const t of queued.slice(1)) citizen.plan.push(t);
     citizen.currentOrder = order;
     citizen.goal = order.label;
     citizen.dirty = true;
@@ -252,6 +257,7 @@ function boot() {
   booted = true;                 // never re-enter, even if a step throws
 
   safe("boot.config", () => loadConfigOverrides(world));
+  safe("boot.vocabulary", () => loadVocabulary());
   capabilities.settlementsLoaded = safe("boot.settlements", () => {
     settlements.load();
     return true;

@@ -24,7 +24,8 @@ import {
   waitTask, gotoTask, followTask,
 } from "../actions/registry.js";
 import { chooseTopic, contextFor, lineFor } from "../social/dialogue.js";
-import { understand, RESOURCE_BLOCKS, STRUCTURE_IDS } from "./nlu.js";
+import { parse, understand } from "./nlu.js";
+import { planOrder } from "./orders.js";
 
 export const localBrain = {
   id: "local",
@@ -169,88 +170,59 @@ function chooseGoal(citizen, ctx) {
 }
 
 /**
- * Turns what a player said into a task.
+ * What a citizen should do about something a player said.
  *
- * The understanding is done by brain/nlu.js - tokenising, stemming, spelling
- * correction, negation scoping and intent scoring - so this function only has
- * to map a recognised intent onto the action layer. It used to be a chain of
- * regular expressions, which could not read a sentence it had not been written
- * for and, worse, turned "don't follow me" into an order to follow.
+ * The message is split into clauses first, because "mine 20 iron then build a
+ * house" is two orders; each becomes a task and they are queued in the order
+ * they were spoken. Anything the command layer has to perform itself - a change
+ * of job, founding a town, learning a word - comes back as an `effect` rather
+ * than being done here.
  *
- * @returns {{label, task, confidence, understood}|null}
+ * @returns {null|{label,task,tasks,confidence,understood,reply,effect,wantsBuild,wantsStore}}
  */
 export function parseOrderLocally(citizen, text, ctx) {
-  const reading = understand(text);
-  if (!reading.intent || reading.intent === "question") return null;
+  const { readings, whole } = parse(text);
+  if (!readings.length) return null;
 
-  const T = ctx.tasks || {};
-  const qty = (fallback) => clamp(reading.quantity ?? fallback, 1, 64);
-  const done = (label, task) => ({
-    label, task, confidence: reading.confidence, understood: reading,
-  });
+  const tasks = [];
+  const effects = [];
+  const labels = [];
+  let reply = null;
+  let wantsBuild;
+  let wantsStore = false;
+  let best = 0;
 
-  switch (reading.intent) {
-    case "stop":
-      return done("standing by", waitTask(20, "standing by"));
+  for (const r of readings) {
+    if (r.intent === "question") continue;
+    const step = planOrder(citizen, r, ctx);
+    if (!step) continue;
 
-    case "follow":
-      return done("following you", followTask(ctx.speakerId, { ticks: 0 }));
-
-    case "come":
-      return done("coming over",
-        gotoTask(ctx.speakerLocation, { arrive: 2.5, label: "coming over" }));
-
-    case "chop":
-      return done("cutting wood", T.chopTask ? T.chopTask(qty(16)) : null);
-
-    case "mine": {
-      const blocks = RESOURCE_BLOCKS[reading.resource];
-      if (blocks && T.gatherTask) {
-        const pretty = String(reading.resource || "ore").toLowerCase();
-        return done(`mining ${pretty}`,
-          T.gatherTask((b) => blocks.includes(b), 24, qty(8), `mining ${pretty}`));
-      }
-      return done("mining", T.mineOreTask ? T.mineOreTask(qty(12)) : null);
-    }
-
-    case "farm":
-      return done("working the fields",
-        T.farmTask ? T.farmTask(citizen.location, 12) : null);
-
-    case "build":
-      return {
-        label: "building", task: null, confidence: reading.confidence,
-        understood: reading,
-        wantsBuild: STRUCTURE_IDS[reading.structure] || null,
-      };
-
-    case "guard": {
-      const centre = ctx.settlement ? ctx.settlement.origin : citizen.location;
-      return done("on guard", T.patrolTask ? T.patrolTask(centre, 18, 4) : null);
-    }
-
-    case "attack": {
-      const threat = citizen.snapshot?.threats?.[0];
-      if (!threat) return done("looking for trouble", exploreTask(24, { legs: 1 }));
-      return done(`fighting a ${threat.kind}`, fightTask(threat.id));
-    }
-
-    case "explore":
-      return done("scouting", exploreTask(80, { legs: 4 }));
-
-    case "rest":
-      return done("resting", restTask(20));
-
-    case "eat":
-      return done("finding something to eat", eatTask());
-
-    case "store":
-      return {
-        label: "storing goods", task: null, confidence: reading.confidence,
-        understood: reading, wantsStore: true,
-      };
-
-    default:
-      return null;
+    best = Math.max(best, r.confidence);
+    if (step.label) labels.push(step.label);
+    for (const t of step.tasks) tasks.push(t);
+    if (step.effect) effects.push(step.effect);
+    if (!reply && step.reply) reply = step.reply;
+    if (step.wantsBuild !== undefined) wantsBuild = step.wantsBuild;
+    if (step.wantsStore) wantsStore = true;
   }
+
+  // Nothing mapped onto an action: let the caller say so rather than pretending.
+  if (!tasks.length && !effects.length && !reply && wantsBuild === undefined) return null;
+
+  // A queue this long is a misreading, not an instruction.
+  const queued = tasks.slice(0, 8);
+
+  return {
+    label: labels.join(", then ") || "following orders",
+    task: queued[0] || null,
+    tasks: queued,
+    confidence: Number(best.toFixed(2)),
+    understood: whole,
+    readings,
+    reply,
+    effect: effects[0] || null,
+    effects,
+    wantsBuild,
+    wantsStore,
+  };
 }

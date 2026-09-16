@@ -20,10 +20,7 @@ import { record } from "../social/relationships.js";
 import { thinkAboutChat, claudeBrain } from "../brain/index.js";
 import { parseOrderLocally } from "../brain/local.js";
 import { chattiness } from "../agent/personality.js";
-import { blueprintById } from "../civ/blueprints.js";
-import { cellsFromBlueprint, findBuildSite } from "../actions/build.js";
-import { buildTask, storeTask } from "../actions/registry.js";
-import { nearestStockpile } from "../civ/settlement.js";
+import { applyEffect } from "./effects.js";
 
 /**
  * Hook chat, if this runtime has it.
@@ -164,7 +161,7 @@ function routeSpeech(app, player, parsed) {
  * Local parsing handles the common phrasings instantly; Claude (when present)
  * answers in its own words a moment later and can supersede the plan.
  */
-function instruct(app, player, citizen, text, direct, quiet) {
+function instruct(app, player, citizen, text, direct, quiet, depth = 0) {
   const ctx = app.buildCtx(citizen);
   ctx.speakerId = player.id;
   ctx.speakerLocation = player.location;
@@ -182,22 +179,35 @@ function instruct(app, player, citizen, text, direct, quiet) {
   if (local && local.wantsBuild === null && !quiet) {
     say(citizen, "Build what? A house, a store, a well?", { tone: TONE.order, to: player.name });
   }
-  if (local && local.wantsBuild) {
-    const bp = blueprintById(local.wantsBuild);
-    const site = bp ? findBuildSite(citizen.dimension, citizen.location, bp.width, bp.depth, 24) : null;
-    if (bp && site) {
-      local.task = buildTask(cellsFromBlueprint(bp, site, 0), { label: `building a ${bp.name}` });
-      local.label = `building a ${bp.name}`;
+  // Things only the app can do: change a trade, found a town, learn a word.
+  let handled = false;
+  for (const effect of (local?.effects || [])) {
+    const outcome = applyEffect(app, player, citizen, effect, text);
+    if (!outcome) continue;
+    handled = true;
+    if (outcome.say && !quiet) say(citizen, outcome.say, { tone: TONE.order, to: player.name });
+    if (outcome.tell) tell(player, outcome.tell);
+    if (outcome.task) { local.task = outcome.task; local.tasks = [outcome.task]; }
+    if (outcome.label) local.label = outcome.label;
+    // "do that again" replays the previous order. One hop only, so a pair of
+    // repeats cannot bounce off each other.
+    if (outcome.replay && depth === 0) {
+      instruct(app, player, citizen, outcome.replay, direct, quiet, depth + 1);
+      return;
     }
   }
-  if (local && local.wantsStore && ctx.settlement) {
-    const chest = nearestStockpile(ctx.settlement, citizen.location);
-    if (chest) { local.task = storeTask(chest, null); local.label = "storing goods"; }
+
+  // Something they can answer without moving - "what are you carrying?".
+  if (local && local.reply && !quiet) {
+    say(citizen, local.reply, { tone: TONE.normal, to: player.name });
+    handled = true;
   }
 
   if (local && local.task) {
     app.assignOrder(citizen, player, text, local);
     if (!quiet) say(citizen, acknowledge(citizen, local.label), { tone: TONE.order, to: player.name });
+  } else if (handled) {
+    citizen.dirty = true;
   } else {
     // Nothing we can act on locally - record the order so the brain sees it.
     pushOrder(citizen.memory, text, player.name, app.tick);

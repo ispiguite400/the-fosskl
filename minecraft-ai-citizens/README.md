@@ -51,7 +51,8 @@ parts:
 
 | Part | What it is | Where |
 |---|---|---|
-| **Understanding** | A natural-language understanding pipeline: normalise, tokenise, stem, look up a 214-entry lexicon of concepts, correct typos with Damerau-Levenshtein edit distance, scope negation, pull out quantities, then score every possible intent and take the best one — with a confidence, so it can admit it did not follow you. | `scripts/brain/nlu.js` |
+| **Understanding** | A natural-language understanding pipeline: normalise, tokenise, stem, look up a 669-entry lexicon of concepts, correct typos with Damerau-Levenshtein edit distance, scope negation, pull out quantities, distances, coordinates, directions, creatures and items, split the message into clauses, then score every possible intent and take the best one — with a confidence, so it can admit it did not follow you. | `scripts/brain/nlu.js` |
+| **Acting** | A catalogue of **50 things they can be told**, each mapped onto tasks the body already knows how to perform. | `scripts/brain/orders.js` |
 | **Deciding** | A utility planner. Every goal is scored against needs, job, personality, what the citizen can see and what the settlement is short of; the winner becomes a task. | `scripts/agent/` |
 | **Speaking** | A generative grammar. Each sentence is *composed* — a structure, then word classes weighted by the speaker's voice and mood, then rejected if they have said it in their last twelve lines. 1,168 distinct sentences across ten topics. | `scripts/social/language.js` |
 
@@ -60,13 +61,44 @@ script module. **It is not a language model.** It has no network access, no
 training, and no understanding of anything outside its lexicon. Say something
 genuinely novel to it and it will tell you it did not follow, rather than guess.
 
-What it does handle, which the old version did not:
+### Everything you can tell them
+
+Type `ai! skills` in game for this list. Every line here is a real task, not an
+acknowledgement of something that never happens.
+
+| | |
+|---|---|
+| **Work** | `mine some iron` · `chop 20 oak logs` · `dig down 15` · `tunnel east 30 blocks` · `clear this area` · `build a house` · `build a watchtower` · `light up the place` · `plant a field` · `bridge north 12` |
+| **Movement** | `follow me` · `come here` · `go to 120 64 -30` · `go north 40 blocks` · `go home` · `stay here` · `stop` · `spread out` · `regroup` |
+| **Fighting** | `kill that creeper` · `attack the zombies` · `hunt a cow` · `defend me` · `guard the town` · `run away` |
+| **Things** | `craft a pickaxe` · `smelt iron` · `give me coal` · `drop the dirt` · `store this` · `fetch 8 planks` · `draw your sword` · `what are you carrying` |
+| **Life** | `eat something` · `get some sleep` · `have a rest` · `go explore` · `wake up` |
+| **Identity** | `become a miner` · `your name is Ada` · `found a town` · `join the town` |
+| **Talking** | `say hello everyone` · `be quiet` · `dance` · `what are you doing` · `help` |
+| **Teaching** | `"dig deep" means mine iron` · `forget dig deep` · `do that again` |
+
+**Two orders in one sentence** work, and queue in the order you said them:
+
+```
+ai! mine 20 iron then build a house
+ai! chop wood then go home and have a rest
+```
+
+**Teach it your own words.** They are saved with the world:
+
+```
+ai! "faff about" means go explore
+ai! faff about                    →  goes exploring
+```
+
+And the parsing holds up:
 
 ```
 ai! go mien for wodo          →  chop wood        (two typos, corrected)
 ai! dont follow me            →  stop             (negation, not "follow")
 ai! get me a stack of stone   →  mine 64 stone    (quantity from a word)
 ai! have a rest               →  rest             (not "axe" - "have" is a real word)
+ai! go to 120 64 -30          →  walks to those coordinates
 ai! qwertyuiop                →  "I don't follow. Plainer, if you can."
 ```
 
@@ -88,10 +120,10 @@ is no version of this add-on, by me or anyone, that is Claude-powered on a plain
 Minecraft client with nothing else running.
 
 **What you get with nothing else running:** citizens that mine, chop, farm,
-craft, build twelve structures, fight, sleep, form settlements, take orders
-through `/ai:tell`, and hold conversations with each other and with you in
-sentences the pack composes on the spot. Good game AI, written from scratch.
-Not a language model.
+craft, build twelve structures, fight, sleep, form settlements, take any of the
+50 orders above through `/ai:tell`, learn words you invent, and hold
+conversations with each other and with you in sentences the pack composes on
+the spot. Good game AI, written from scratch. Not a language model.
 
 **What the chat bridge adds,** which is the setup most people actually want:
 you type whatever you like in chat, Claude works out what you meant and what

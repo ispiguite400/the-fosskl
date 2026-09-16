@@ -22,6 +22,8 @@ import { summariseInventory } from "../actions/inventory.js";
 import { followTask, waitTask, gotoTask, buildTask } from "../actions/registry.js";
 import { cellsFromBlueprint, findBuildSite } from "../actions/build.js";
 import { acknowledge } from "../social/dialogue.js";
+import { describeSkills } from "./effects.js";
+import { SUPPORTED_INTENTS } from "../brain/orders.js";
 
 export function runCommand(app, player, parsed) {
   const handler = COMMANDS[parsed.command];
@@ -50,6 +52,7 @@ const COMMANDS = {
     if (!chatOn) {
       tell(player, "§7Typing §fai!§7 straight into chat needs the chat build - §f!ai doctor§7.§r");
     }
+    tell(player, `§7Try §f${say} skills§7 for everything they understand.§r`);
     tell(player, "§7Commands:§r");
     const lines = [
       ["spawn [n] [job]", "spawn citizens where you stand"],
@@ -76,6 +79,20 @@ const COMMANDS = {
     for (const [cmd, help] of lines) {
       tell(player, `  §e${say} ${cmd}§r §8- ${help}§r`);
     }
+  },
+
+  /** Everything a citizen understands, grouped. The answer to "what can I say?" */
+  skills(app, player) {
+    const chatOn = app.capabilities && app.capabilities.chat !== "none";
+    const say = chatOn ? "ai!" : "/ai:tell";
+    const groups = describeSkills();
+    tell(player, `§bThings you can tell them§r §7(${SUPPORTED_INTENTS.length} in all)§r`);
+    for (const [group, examples] of Object.entries(groups)) {
+      tell(player, `§e${group}§r`);
+      for (const example of examples) tell(player, `  §f${say} ${example}§r`);
+    }
+    tell(player, "§7They take typos, and \"then\" chains two orders:§r");
+    tell(player, `  §f${say} mine 20 iron then build a house§r`);
   },
 
   spawn(app, player, parsed) {

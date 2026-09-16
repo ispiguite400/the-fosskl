@@ -31,6 +31,9 @@ export const TONE = {
 export function say(citizen, text, opts = {}) {
   const clean = trimTo(stripFormatting(String(text || "")).trim(), 200);
   if (!clean) return;
+  // Told to keep quiet. Orders still get carried out, they just stop
+  // narrating; an alarm goes through `interrupt`, which ignores this.
+  if (citizen.muted && !opts.force) return;
   citizen.speechQueue.push({
     text: clean,
     tone: opts.tone || TONE.normal,
