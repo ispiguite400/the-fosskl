@@ -93,6 +93,8 @@ const COMMANDS = {
     }
     tell(player, "§7They take typos, and \"then\" chains two orders:§r");
     tell(player, `  §f${say} mine 20 iron then build a house§r`);
+    tell(player, "§7Aim an order with a name, a trade or a number:§r");
+    tell(player, `  §f${say} all the miners dig down 20§r`);
   },
 
   spawn(app, player, parsed) {

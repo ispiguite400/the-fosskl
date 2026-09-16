@@ -25,7 +25,18 @@ export function fightTask(targetId, opts = {}) {
     cooldown: 0,
     engagedTicks: 0,
     guardSpot: opts.guardSpot || null,
+    // A spar is a contest, not a killing: blows are pulled and whoever drops
+    // below `yieldAt` gives best, so a tournament does not cost the town two
+    // citizens per round.
+    spar: Boolean(opts.spar),
+    yieldAt: opts.yieldAt ?? 0.55,
+    contest: Boolean(opts.spar),
   };
+}
+
+/** A friendly bout. Same fight, blunted. */
+export function sparTask(targetId, opts = {}) {
+  return fightTask(targetId, { ...opts, spar: true, label: opts.label || "sparring" });
 }
 
 export function fleeTask(fromLocation, opts = {}) {
@@ -48,8 +59,20 @@ export function stepFight(ctx, task) {
     return "done";
   }
 
-  // Wounded and not brave enough? Break off.
-  if (citizen.healthFraction < CONFIG.fleeHealthFraction && grit(citizen) < 0.75) {
+  // A sparring partner gives best rather than fleeing or dying.
+  if (task.spar) {
+    if (citizen.healthFraction <= task.yieldAt) {
+      citizen.yielded = true;
+      stopTravel(citizen);
+      citizen.setMode("idle");
+      citizen.setState(STATE.IDLE);
+      return "done";
+    }
+    // Their opponent yielding ends it too, without a parting shot.
+    const rival = ctx.registry ? ctx.registry.get(task.targetId) : null;
+    if (rival && rival.yielded) { citizen.setMode("idle"); return "done"; }
+  } else if (citizen.healthFraction < CONFIG.fleeHealthFraction && grit(citizen) < 0.75) {
+    // Wounded and not brave enough? Break off.
     ctx.replaceTask(fleeTask(target.location));
     return "running";
   }
@@ -88,7 +111,9 @@ export function stepFight(ctx, task) {
   const weapon = equipTool(citizen, "sword") || equipTool(citizen, "axe");
   const bonus = weapon ? (WEAPON_DAMAGE[weapon.replace("minecraft:", "")] || 4) : 0;
   const base = citizen.job === "guard" ? 6 : 3;
-  const damage = Math.max(base, bonus);
+  // Pulled blows in a spar, so a bout lasts long enough to watch and nobody
+  // is killed by a lucky opening hit.
+  const damage = task.spar ? 2 : Math.max(base, bonus);
 
   citizen.setState(STATE.ATTACK);
   task.cooldown = CONFIG.attackCooldownTicks;
@@ -107,6 +132,8 @@ export function stepFight(ctx, task) {
   if (killed) {
     remember(citizen.memory, `killed a ${prettyId(task.targetType || "creature")}`, 3, tick);
     reassure(citizen, 20);
+    // Counted so a hunting contest can be scored off real kills.
+    citizen.contestKills = (citizen.contestKills || 0) + 1;
     citizen.setMode("idle");
     return "done";
   }

@@ -338,11 +338,26 @@ export function contextFor(citizen, topic, ctx) {
     if (struct) {
       const bp = blueprintById(struct.blueprintId);
       out.structure = bp ? bp.name : "building";
-      out.need = struct.need || "space";
+      out.need = sayableNeed(struct.need);
     }
   }
   if (citizen.task) out.taskLine = taskCommentary(citizen);
   return out;
+}
+
+/**
+ * A settlement's need is a planning label - "housing", "requested", "ordered" -
+ * and half of them are not things a person says they are short of. Anything
+ * without a plain-English form is dropped rather than spoken, which is why
+ * citizens no longer announce "it's ordered we're short of".
+ */
+const NEED_WORDS = {
+  housing: "roofs", food: "food", water: "water", storage: "storage",
+  crafting: "tools", safety: "light", defence: "walls", space: "space",
+};
+
+function sayableNeed(need) {
+  return NEED_WORDS[String(need || "").toLowerCase()] || "space";
 }
 
 function taskCommentary(citizen) {

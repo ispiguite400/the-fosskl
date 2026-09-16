@@ -122,6 +122,80 @@ export function takeName(args) {
   return { name: args[0], rest: args.slice(1) };
 }
 
+/** Job words that can stand in for a group: "all the miners, go dig". */
+const JOB_WORDS = {
+  miner: "miner", miners: "miner",
+  builder: "builder", builders: "builder", mason: "builder", masons: "builder",
+  farmer: "farmer", farmers: "farmer",
+  guard: "guard", guards: "guard", soldier: "guard", soldiers: "guard",
+  crafter: "crafter", crafters: "crafter", smith: "crafter", smiths: "crafter",
+  scout: "scout", scouts: "scout",
+  hauler: "hauler", haulers: "hauler",
+  woodcutter: "lumberjack", woodcutters: "lumberjack",
+  lumberjack: "lumberjack", lumberjacks: "lumberjack",
+  architect: "architect", architects: "architect",
+  settler: "settler", settlers: "settler",
+};
+
+const WORD_NUMBERS = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
+  nine: 9, ten: 10, both: 2, a: 1, an: 1,
+};
+
+/**
+ * Who an order is aimed at.
+ *
+ * An order can open by naming its audience - "all the miners", "three of you",
+ * "Ada and Bram", "half of you" - and the rest of the sentence is the order
+ * itself. Without this every order goes to everyone in earshot, which makes
+ * dividing a town's labour impossible.
+ *
+ * @returns {{kind, value, text}} kind is "all" | "job" | "count" | "half" |
+ *          "nearest" | "names" | "none"; text is the order with the selector
+ *          stripped off.
+ */
+export function takeAudience(input) {
+  const raw = String(input || "").trim();
+  const strip = (match) => raw.slice(match.length).replace(/^[\s,:.-]+/, "").trim();
+
+  // A trade first, because "all the miners" opens with a word that would
+  // otherwise be read as "all of them".
+  let m = /^(?:all\s+(?:the\s+)?|the\s+)?([a-z]+)\b[\s,:.-]*/i.exec(raw);
+  if (m && JOB_WORDS[m[1].toLowerCase()]) {
+    return { kind: "job", value: JOB_WORDS[m[1].toLowerCase()], text: strip(m[0]) };
+  }
+
+  // "everyone", "all of you", "citizens"
+  m = /^(everyone|everybody|all of you|all of ya|citizens|all|lads|folks|team)\b[\s,:.-]*/i.exec(raw);
+  if (m) return { kind: "all", value: null, text: strip(m[0]) };
+
+  // "the rest of you", "the others"
+  m = /^(the rest of you|the rest|the others|everyone else)\b[\s,:.-]*/i.exec(raw);
+  if (m) return { kind: "others", value: null, text: strip(m[0]) };
+
+  // "half of you"
+  m = /^(half of you|half of ya|half)\b[\s,:.-]*/i.exec(raw);
+  if (m) return { kind: "half", value: null, text: strip(m[0]) };
+
+  // "the nearest one", "closest"
+  m = /^(the nearest( one)?|nearest|the closest( one)?|closest)\b[\s,:.-]*/i.exec(raw);
+  if (m) return { kind: "nearest", value: 1, text: strip(m[0]) };
+
+  // "three of you", "2 of you"
+  m = /^(\d+|one|two|three|four|five|six|seven|eight|nine|ten|both)\s+of\s+(you|ya|them)\b[\s,:.-]*/i.exec(raw);
+  if (m) {
+    const word = m[1].toLowerCase();
+    const n = /^\d+$/.test(word) ? Number(word) : (WORD_NUMBERS[word] || 1);
+    return { kind: "count", value: Math.max(1, Math.min(n, 20)), text: strip(m[0]) };
+  }
+
+  // "@Ada and @Bram", "Ada and Bram"
+  m = /^@?([A-Z][\w'-]{1,15})\s+(?:and|&|,)\s+@?([A-Z][\w'-]{1,15})\b[\s,:.-]*/.exec(raw);
+  if (m) return { kind: "names", value: [m[1], m[2]], text: strip(m[0]) };
+
+  return { kind: "none", value: null, text: raw };
+}
+
 export function looksLikeQuestion(text) {
   return /\?\s*$/.test(text) || /^(what|where|who|why|how|when|can you|do you|are you|is there)\b/i.test(text);
 }

@@ -46,6 +46,56 @@ export function gatherTask(predicate, radius, count, label) {
   };
 }
 
+/**
+ * Dig out a given list of cells, in order.
+ *
+ * A moat, a pit, a staircase and a levelled site are all the same job - clear
+ * these blocks - differing only in which blocks. Working from a cell list keeps
+ * the shape in one place (civ/shapes.js) and the digging in another, and every
+ * cell goes through the ordinary miner, so tools, reach, pathing and drops all
+ * behave exactly as they do anywhere else.
+ */
+export function excavateTask(cells, opts = {}) {
+  return {
+    kind: "excavate",
+    cells: cells.slice(0, 512),
+    index: 0,
+    current: null,
+    cleared: 0,
+    skipped: 0,
+    label: opts.label || "digging",
+  };
+}
+
+export function stepExcavate(ctx, task) {
+  const dim = ctx.citizen.dimension;
+
+  // Skip past anything already gone, protected, or outside the world.
+  while (task.index < task.cells.length && !task.current) {
+    const cell = task.cells[task.index];
+    const type = blockType(dim, cell.x, cell.y, cell.z);
+    if (type === undefined || isPassable(type) || type === "minecraft:air"
+        || isProtected(type)) {
+      task.index += 1;
+      task.skipped += 1;
+      continue;
+    }
+    task.current = mineTask(cell, { vein: false, label: task.label });
+  }
+
+  if (!task.current) return task.cleared > 0 || task.skipped > 0 ? "done" : "failed";
+
+  const result = stepMine(ctx, task.current);
+  if (result === "running") return "running";
+
+  // Done or failed, either way this cell is finished with - a block we cannot
+  // reach must not stall the whole shape.
+  if (result === "done") task.cleared += 1;
+  task.current = null;
+  task.index += 1;
+  return task.index >= task.cells.length ? "done" : "running";
+}
+
 export function stepMine(ctx, task) {
   const { citizen, tick } = ctx;
   const dim = citizen.dimension;

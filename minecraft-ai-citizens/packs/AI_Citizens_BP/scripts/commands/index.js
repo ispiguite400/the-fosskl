@@ -10,7 +10,7 @@ import { world, system } from "@minecraft/server";
 import { CONFIG } from "../core/config.js";
 import { tell, safe, debug } from "../core/log.js";
 import { dist, trimTo } from "../core/util.js";
-import { classify, interpret, looksLikeQuestion, PREFIX } from "./parser.js";
+import { classify, interpret, looksLikeQuestion, takeAudience, PREFIX } from "./parser.js";
 import { runCommand } from "./handlers.js";
 import { say, TONE, interrupt } from "../ui/caption.js";
 import { openPanel, openCitizen } from "../ui/panel.js";
@@ -145,14 +145,21 @@ function routeSpeech(app, player, parsed) {
       return;
     }
     case "group": {
-      // One of them answers for the group; a chorus of eight is unreadable.
-      const sorted = listeners.slice().sort(
-        (a, b) => dist(a.location, player.location) - dist(b.location, player.location));
-      sorted.forEach((c, i) => instruct(app, player, c, parsed.text, true, i > 0));
+      // Anything said after the attention word arrives here, so this is where
+      // "all the miners" and "three of you" have to be read - not only in the
+      // overheard path.
+      const aimed = audienceFor(app, player, listeners, parsed.text);
+      if (aimed) { orderGroup(app, player, aimed.audience, aimed.text); return; }
+      orderGroup(app, player, listeners, parsed.text);
       return;
     }
-    default:
+    default: {
+      // "all the miners, go dig" and "three of you follow me" are orders to a
+      // slice of the town, not chatter to overhear.
+      const picked = audienceFor(app, player, listeners, parsed.text);
+      if (picked) { orderGroup(app, player, picked.audience, picked.text); return; }
       overhear(app, player, listeners, parsed.text);
+    }
   }
 }
 
@@ -161,10 +168,67 @@ function routeSpeech(app, player, parsed) {
  * Local parsing handles the common phrasings instantly; Claude (when present)
  * answers in its own words a moment later and can supersede the plan.
  */
+/**
+ * Work out who an order names, if anyone.
+ * @returns {null|{audience: Citizen[], text: string}} null when the sentence
+ *          names nobody, so it stays ordinary overheard speech.
+ */
+function audienceFor(app, player, listeners, text) {
+  const picked = takeAudience(text);
+  if (picked.kind === "none" || !picked.text) return null;
+
+  const byDistance = listeners.slice().sort(
+    (a, b) => dist(a.location, player.location) - dist(b.location, player.location));
+
+  let audience;
+  switch (picked.kind) {
+    case "all": audience = byDistance; break;
+    case "half": audience = byDistance.slice(0, Math.max(1, Math.ceil(byDistance.length / 2))); break;
+    case "nearest": audience = byDistance.slice(0, 1); break;
+    case "count": audience = byDistance.slice(0, picked.value); break;
+    case "job": audience = byDistance.filter((c) => c.job === picked.value); break;
+    case "others": audience = byDistance.filter((c) => !c.currentOrder); break;
+    case "names": {
+      audience = picked.value
+        .map((name) => app.registry.byName(name))
+        .filter((c) => Boolean(c));
+      break;
+    }
+    default: return null;
+  }
+
+  if (!audience.length) {
+    if (picked.kind === "job") tell(player, `§7No ${picked.value}s here.§r`);
+    else if (picked.kind === "names") tell(player, "§7Nobody here by those names.§r");
+    return null;
+  }
+  return { audience, text: picked.text };
+}
+
+/** One of them answers for the group; a chorus of eight captions is unreadable. */
+function orderGroup(app, player, audience, text) {
+  audience.forEach((c, i) => instruct(app, player, c, text, true, i > 0));
+}
+
+/**
+ * Give one citizen one order, as if a player had said it to them.
+ *
+ * Used by standing orders, which fire from the tick loop with no chat message
+ * behind them. `quiet` keeps a nightly "come home" from filling the screen with
+ * the same caption every evening.
+ */
+export function instructOne(app, player, citizen, text, opts = {}) {
+  if (!player || !citizen || !citizen.valid) return false;
+  instruct(app, player, citizen, text, true, Boolean(opts.quiet));
+  return true;
+}
+
 function instruct(app, player, citizen, text, direct, quiet, depth = 0) {
   const ctx = app.buildCtx(citizen);
   ctx.speakerId = player.id;
   ctx.speakerLocation = player.location;
+  // "race to that hill" means the hill they are looking at.
+  ctx.speakerFacing = safe("chat.facing", () => player.getViewDirection(), null);
   ctx.tasks = app.taskFactories;
 
   pushDialogue(citizen.memory, player.name, text);

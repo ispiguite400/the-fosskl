@@ -36,6 +36,51 @@ export const C = {
   TEACH: "TEACH", FORGET: "FORGET", REPEAT: "REPEAT", HELP: "HELP",
   STATUS: "STATUS", INVENTORY: "INVENTORY",
 
+  // --- contests ---
+  CHALLENGE: "CHALLENGE", RACE: "RACE", DUEL: "DUEL", MELEE: "MELEE",
+  TOURNAMENT: "TOURNAMENT", CONTEST_BUILD: "CONTEST_BUILD", SCOREBOARD: "SCOREBOARD",
+  WINNER: "WINNER", FIRST: "FIRST", VERSUS: "VERSUS", TEAM: "TEAM",
+  BEAT: "BEAT", CALLOFF: "CALLOFF", PRIZE: "PRIZE",
+
+  // --- terraforming and site work ---
+  FLATTEN: "FLATTEN", FILL: "FILL", MOAT: "MOAT", PIT: "PIT", STAIRS: "STAIRS",
+  ROOF: "ROOF", FENCE: "FENCE", PERIMETER: "PERIMETER", SEAL: "SEAL",
+  HOLLOW: "HOLLOW", DOCK: "DOCK",
+
+  // --- logistics ---
+  SORT: "SORT", COUNT: "COUNT", SHARE: "SHARE", ARM: "ARM", COLLECT: "COLLECT",
+  SWAP: "SWAP",
+
+  // --- conditions and scheduling ---
+  WHEN: "WHEN", UNTIL: "UNTIL", ALWAYS: "ALWAYS", NEVER: "NEVER",
+  MORNING: "MORNING", NOON: "NOON",
+
+  // --- places ---
+  NAMEPLACE: "NAMEPLACE", WAYPOINT: "WAYPOINT",
+
+  // --- manner and voice ---
+  VOICE: "VOICE", FASTER: "FASTER", SLOWER: "SLOWER", CAREFUL: "CAREFUL",
+  LOUDER: "LOUDER", FUNNY: "FUNNY", SERIOUS: "SERIOUS", PIRATE: "PIRATE",
+  POLITE: "POLITE",
+
+  // --- group selectors ---
+  HALF: "HALF", EACH: "EACH", NEAREST: "NEAREST", OTHERS: "OTHERS",
+
+  // --- social ---
+  PRAISE: "PRAISE", SCOLD: "SCOLD", STORY: "STORY", OPINION: "OPINION",
+  INTRODUCE: "INTRODUCE",
+
+  // --- questions about the town ---
+  WHEREIS: "WHEREIS", BEST: "BEST", REPORT: "REPORT", HEADCOUNT: "HEADCOUNT",
+
+  // --- more work ---
+  REPAIR: "REPAIR", DEMOLISH: "DEMOLISH", SAPLING: "SAPLING", WATER_CROPS: "WATER_CROPS",
+  TORCHLINE: "TORCHLINE", MEET: "MEET", WAITFOR: "WAITFOR", ESCORT: "ESCORT",
+  SING: "SING", CELEBRATE: "CELEBRATE", COUNTOFF: "COUNTOFF",
+  OPENDOOR: "OPENDOOR", CLOSEDOOR: "CLOSEDOOR", RESUME: "RESUME",
+  ROADTO: "ROADTO", TUNNELTO: "TUNNELTO", GUARDPLACE: "GUARDPLACE", MAKEBED: "MAKEBED",
+  DESCRIBE: "DESCRIBE", HURT: "HURT", TIME: "TIME", KEEPBACK: "KEEPBACK",
+
   // --- materials and resources ---
   WOOD: "WOOD", STONE: "STONE", IRON: "IRON", COAL: "COAL", DIAMOND: "DIAMOND",
   GOLD: "GOLD", COPPER: "COPPER", REDSTONE: "REDSTONE", LAPIS: "LAPIS",
@@ -94,7 +139,7 @@ define(C.CHOP, ["chop", "cut", "fell", "axe", "lumber", "logging", "deforest"]);
 define(C.FARM, ["farm", "farming", "till", "crop", "crops", "agriculture", "field"]);
 define(C.PLANT, ["plant", "sow", "seeding", "replant", "grow"]);
 define(C.HARVEST, ["harvest", "reap", "pick", "gathering"]);
-define(C.BUILD, ["build", "construct", "erect", "assemble", "raise", "rebuild"]);
+define(C.BUILD, ["build", "make", "makes", "making", "construct", "erect", "assemble", "raise", "rebuild"]);
 define(C.PLACE, ["place", "put", "set", "lay"]);
 define(C.CLEAR, ["clear", "flatten", "level", "strip", "demolish", "raze", "tear", "dismantle", "remove", "clean"]);
 define(C.TUNNEL, ["tunnel", "corridor", "passage", "burrow", "bore"]);
@@ -140,6 +185,114 @@ define(C.REPEAT, ["repeat", "redo", "encore"]);
 define(C.HELP, ["help", "assist", "aid", "commands", "instructions"]);
 define(C.STATUS, ["status", "report", "doing", "busy", "progress", "update"]);
 define(C.INVENTORY, ["inventory", "carrying", "pockets", "bag", "pack", "holdings"]);
+
+// --- contests -------------------------------------------------------------
+define(C.CHALLENGE, ["challenge", "challenges", "compete", "competition", "contest", "match", "bet", "wager"]);
+define(C.RACE, ["race", "racing", "sprint", "dash", "footrace"]);
+define(C.DUEL, ["duel", "duels", "spar", "sparring", "bout", "showdown", "one-on-one"]);
+define(C.MELEE, ["melee", "brawl", "freeforall", "free-for-all", "scrap", "rumble"]);
+define(C.TOURNAMENT, ["tournament", "tourney", "bracket", "championship", "league"]);
+define(C.SCOREBOARD, ["scoreboard", "score", "scores", "standings", "leaderboard", "results"]);
+define(C.WINNER, ["winner", "winning", "won", "champion", "victor", "leading"]);
+define(C.FIRST, ["first", "fastest", "quickest", "soonest", "earliest"]);
+define(C.VERSUS, ["versus", "vs", "against"]);
+define(C.TEAM, ["teams", "side", "sides", "squad", "pair", "partner"]);
+define(C.BEAT, ["beat", "outdo", "best-them", "defeat", "thrash"]);
+define(C.CALLOFF, ["calloff", "callitoff", "abandon-contest"]);
+define(C.PRIZE, ["prize", "reward", "stake", "stakes", "trophy"]);
+
+// --- terraforming ---------------------------------------------------------
+define(C.FLATTEN, ["flatten", "levelling", "leveling", "smooth", "even-out", "terrace"]);
+define(C.FILL, ["fill", "plug", "backfill", "infill"]);
+define(C.MOAT, ["moat", "ditch", "trench"]);
+define(C.PIT, ["pit", "hole", "crater", "quarry-pit"]);
+define(C.STAIRS, ["stairs", "steps", "stairway", "staircase"]);
+define(C.ROOF, ["roof", "roofing", "ceiling", "canopy"]);
+define(C.FENCE, ["fencing", "railing", "enclose", "enclosure", "pen"]);
+define(C.PERIMETER, ["perimeter", "boundary", "border", "surround", "ring"]);
+define(C.SEAL, ["seal", "block-up", "wall-off", "close-off", "barricade"]);
+define(C.HOLLOW, ["hollow", "carve", "scoop"]);
+define(C.DOCK, ["dock", "pier", "jetty", "harbour", "harbor", "wharf"]);
+
+// --- logistics ------------------------------------------------------------
+define(C.SORT, ["sort", "organise", "organize", "tidy", "arrange"]);
+define(C.COUNT, ["count", "tally", "how-many", "stocktake"]);
+define(C.SHARE, ["share", "split", "divide", "distribute", "deal-out"]);
+define(C.ARM, ["arm-everyone", "equip-everyone", "kit", "outfit"]);
+define(C.COLLECT, ["pickup", "scoop-up", "gather-drops"]);
+define(C.SWAP, ["swap", "exchange", "trade-places", "switch"]);
+
+// --- conditions -----------------------------------------------------------
+define(C.WHEN, ["whenever", "everytime", "each-time"]);
+define(C.UNTIL, ["until", "til", "till"]);
+define(C.ALWAYS, ["always", "constantly", "forever", "permanently"]);
+define(C.NEVER, ["never", "never-ever"]);
+define(C.MORNING, ["morning", "dawn", "sunrise", "daybreak", "daylight"]);
+define(C.NOON, ["noon", "midday", "afternoon"]);
+
+// --- places ---------------------------------------------------------------
+define(C.NAMEPLACE, ["nameplace", "mark", "marks", "bookmark", "pin", "note-this"]);
+define(C.WAYPOINT, ["waypoint", "waypoints", "landmark", "landmarks", "places", "spots"]);
+
+// --- manner ---------------------------------------------------------------
+define(C.VOICE, ["voice", "accent", "tone", "manner"]);
+define(C.FASTER, ["faster", "quicker", "hurry", "hustle", "quickly", "rush"]);
+define(C.SLOWER, ["slower", "slowly", "steady-on", "careful-now"]);
+define(C.CAREFUL, ["careful", "cautious", "safely", "mind-yourself"]);
+define(C.LOUDER, ["louder", "shout-up", "speak-up"]);
+define(C.FUNNY, ["funny", "funnier", "joke", "jokes", "amusing", "cheerful-voice"]);
+define(C.SERIOUS, ["serious", "solemn", "grave", "businesslike"]);
+define(C.PIRATE, ["pirate", "pirates", "buccaneer", "sailor-talk"]);
+define(C.POLITE, ["polite", "politely", "manners", "courteous"]);
+
+// --- group selectors ------------------------------------------------------
+define(C.HALF, ["halve", "halves"]);
+define(C.EACH, ["apiece", "individually", "one-each"]);
+define(C.NEAREST, ["nearest", "closest", "nearby"]);
+define(C.OTHERS, ["others", "rest", "remainder", "everyone-else"]);
+
+// --- social ---------------------------------------------------------------
+define(C.PRAISE, ["praise", "wellplayed", "proud", "brilliant", "excellent"]);
+define(C.SCOLD, ["scold", "useless", "hopeless", "rubbish", "sloppy", "lazy"]);
+define(C.STORY, ["story", "stories", "tale", "yarn", "legend"]);
+define(C.OPINION, ["opinion", "think-of", "reckon-about"]);
+define(C.INTRODUCE, ["introduce", "introductions", "meet-everyone"]);
+
+// --- questions about the town --------------------------------------------
+define(C.WHEREIS, ["whereis", "located", "whereabouts"]);
+define(C.BEST, ["best", "strongest", "toughest", "hardest-working", "worst"]);
+define(C.REPORT, ["report", "situation", "overview", "summary", "how-goes"]);
+define(C.HEADCOUNT, ["headcount", "howmanyofus", "population"]);
+
+// --- more work ------------------------------------------------------------
+define(C.REPAIR, ["repair", "mend", "patch", "fix", "restore"]);
+define(C.DEMOLISH, ["demolish", "teardown", "knockdown", "flatten-building"]);
+define(C.SAPLING, ["planttrees", "reforest", "orchard"]);
+define(C.WATER_CROPS, ["water", "irrigate", "watercrops"]);
+define(C.TORCHLINE, ["torchline", "lightthepath", "torchtrail"]);
+define(C.MEET, ["meet", "rendezvous", "meetup", "assemble-at"]);
+define(C.WAITFOR, ["waitfor"]);
+define(C.ESCORT, ["escortme"]);
+define(C.SING, ["sing", "song", "sings", "singing", "chant"]);
+define(C.CELEBRATE, ["party", "feast", "festival", "celebration"]);
+define(C.COUNTOFF, ["countoff", "rollcall", "sound-off"]);
+define(C.OPENDOOR, ["opendoor", "unbar"]);
+define(C.ROADTO, ["roadto"]);
+define(C.TUNNELTO, ["tunnelto"]);
+define(C.GUARDPLACE, ["guardplace"]);
+define(C.MAKEBED, ["makebed"]);
+define(C.CLOSEDOOR, ["closedoor", "shutdoor", "bar-the-door"]);
+define(C.RESUME, ["resume", "carryon", "asyouwere", "continue"]);
+define(C.DESCRIBE, ["describe", "cansee", "whatssee", "lookaround"]);
+define(C.HURT, ["hurt", "wounded", "injured", "bleeding", "health"]);
+define(C.TIME, ["time", "oclock", "timeofday"]);
+define(C.KEEPBACK, ["keepback", "standoff", "give-me-room"]);
+
+// Tokens produced by the phrase table that need a meaning of their own.
+define(C.CONTEST_BUILD, ["buildoff"]);
+define(C.ARM, ["armeveryone"]);
+define(C.SWAP, ["swapjobs"]);
+define(C.COLLECT, ["pickup"]);
 
 // --- materials ------------------------------------------------------------
 define(C.WOOD, ["wood", "wooden", "log", "logs", "timber", "tree", "trees", "oak", "birch", "spruce", "jungle", "acacia", "plank", "planks"]);
@@ -307,6 +460,154 @@ const CONTRACTIONS = {
   "once more": "again", "come back": "return", "head back": "return",
 };
 
+/**
+ * Multi-word phrases, collapsed to one token before anything else looks at the
+ * sentence.
+ *
+ * People do not say "melee", they say "fight each other". A lexicon of single
+ * words cannot see that, and splitting on spaces destroys it, so the phrase is
+ * rewritten first. Longest match wins, so "fight each other" beats "fight".
+ */
+const PHRASES = {
+  // contests
+  "fight each other": "melee", "fight it out": "melee", "free for all": "melee",
+  "have a fight": "melee", "fight amongst yourselves": "melee",
+  "one on one": "duel", "square off": "duel", "square up": "duel",
+  "have a duel": "duel", "fight me": "duel",
+  "first to": "first", "first one to": "first", "whoever gets": "first",
+  "who can get": "first", "see who can": "first", "see who gets": "first",
+  "race to": "race", "race me": "race", "race each other": "race",
+  "build off": "buildoff", "build contest": "buildoff", "building contest": "buildoff",
+  "who is winning": "scoreboard", "whos winning": "scoreboard",
+  "who won": "scoreboard", "what is the score": "scoreboard",
+  "call it off": "calloff", "call off": "calloff", "stop the contest": "calloff",
+  "best of three": "tournament", "knockout": "tournament",
+  "team up": "team", "split into teams": "team",
+  "winner gets": "prize", "winner takes": "prize",
+
+  // work
+  "dig a moat": "moat", "dig a trench": "moat", "dig a pit": "pit",
+  "dig a hole": "pit", "dig out": "hollow", "hollow out": "hollow",
+  "wall off": "seal", "block up": "seal", "close off": "seal",
+  "board up": "seal", "brick up": "seal",
+  "level the ground": "flatten", "level out": "flatten", "even out": "flatten",
+  "flatten out": "flatten", "clear and level": "flatten",
+  "fill in": "fill", "fill the hole": "fill", "fill it in": "fill",
+  "put a roof on": "roof", "roof it": "roof",
+  "fence off": "fence", "fence in": "fence", "put a fence": "fence",
+  "wall around": "perimeter", "all the way round": "perimeter",
+  "cut steps": "stairs", "cut some stairs": "stairs",
+  "strip mine": "tunnel", "branch mine": "tunnel",
+  "dig down to": "downward", "dig straight down": "downward",
+  "go get": "gather", "go and get": "gather", "fetch me": "gather",
+
+  // items
+  "bring me": "give", "hand over": "give", "hand me": "give",
+  "pass me": "give", "give me": "give",
+  "put away": "store", "take everything": "store", "empty your pockets": "store",
+  "drop everything": "store", "stash it": "store",
+  "pick up": "take", "pick it up": "take", "collect the drops": "pickup",
+  "arm everyone": "armeveryone", "kit everyone out": "armeveryone",
+  "give everyone": "share", "share out": "share", "split it": "share",
+  "divide it up": "share", "hand them out": "share",
+  "sort the chests": "sort", "sort out the chests": "sort", "tidy the chests": "sort",
+  "how many": "count", "how much": "count",
+  "swap jobs": "swapjobs", "trade places": "swapjobs",
+
+  // movement and posture
+  "stay close": "follow", "keep up": "follow", "stick with me": "follow",
+  "come back": "return", "head back": "return", "get back here": "return",
+  "wait here": "stay", "wait there": "stay", "hold position": "stay",
+  "stand still": "stay", "stay put": "stay", "dont move": "stay",
+  "hold on": "stop", "knock it off": "stop", "that is enough": "stop",
+  "pack it in": "stop", "leave it": "stop", "drop it": "stop",
+  "back off": "flee", "get out of there": "flee", "run for it": "flee",
+  "leg it": "flee", "get clear": "flee",
+  "spread out": "spread", "fan out": "spread",
+  "get together": "regroup", "gather round": "regroup", "form up": "regroup",
+  "line up": "regroup",
+
+  // combat
+  "look after": "defend", "watch my back": "defend", "cover me": "defend",
+  "keep watch": "guard", "stand guard": "guard", "on guard": "guard",
+  "keep an eye out": "guard", "keep an eye on": "defend",
+  "stay near": "defend", "stick close to": "defend",
+  "take it down": "attack", "deal with": "attack", "get rid of": "attack",
+  "go for": "attack",
+
+  // life
+  "get some sleep": "sleep", "turn in": "sleep", "lie down": "sleep",
+  "get up": "wake", "wake up": "wake", "rise and shine": "wake",
+  "have a rest": "rest", "take a break": "rest", "sit down": "rest",
+  "something to eat": "eat", "get some food": "eat", "have a bite": "eat",
+
+  // social
+  "well done": "praise", "good job": "praise", "nice work": "praise",
+  "good work": "praise", "thank you": "praise", "thanks": "praise",
+  "not good enough": "scold", "do better": "scold", "thats rubbish": "scold",
+  "tell me a story": "story", "tell us a story": "story",
+  "what do you think of": "opinion", "how do you feel about": "opinion",
+  "talk like a pirate": "pirate", "be a pirate": "pirate",
+  "be funnier": "funny", "be more serious": "serious", "be serious": "serious",
+  "speak less": "quiet", "talk less": "quiet", "pipe down": "quiet",
+  "speak up": "louder", "talk more": "louder",
+  "from now on": "always", "every time": "whenever", "each morning": "morning",
+  "when it gets dark": "night", "at night": "night", "when night falls": "night",
+  "at dawn": "morning", "in the morning": "morning",
+  "keep going until": "until", "carry on until": "until", "keep at it": "always",
+
+  // places
+  "call this place": "nameplace", "call this spot": "nameplace",
+  "name this place": "nameplace", "mark this spot": "nameplace",
+  "remember this place": "nameplace", "remember this spot": "nameplace",
+  "name this spot": "nameplace", "name this area": "nameplace",
+  "call this area": "nameplace", "call this the": "nameplace",
+  "this place is": "nameplace", "this is the": "nameplace",
+
+  // more work
+  "plant trees": "planttrees", "plant some trees": "planttrees",
+  "plant saplings": "planttrees", "grow some trees": "planttrees",
+  "water the crops": "watercrops", "water the field": "watercrops",
+  "tear down": "teardown", "knock down": "knockdown", "pull down": "teardown",
+  "torches every": "torchline", "light the path": "lightthepath",
+  "light the way": "lightthepath", "torch the tunnel": "torchtrail",
+  "meet at": "meet", "meet me at": "meet", "gather at": "meet",
+  "everyone to": "meet", "assemble at": "meet",
+  "wait for": "waitfor", "hang on for": "waitfor",
+  "escort me": "escortme", "walk me": "escortme", "come with me": "escortme",
+  "sing a song": "sing", "sing us": "sing",
+  "have a party": "party", "throw a party": "party",
+  "count off": "countoff", "roll call": "rollcall",
+
+  // doors and odds and ends
+  "open the door": "opendoor", "open the gate": "opendoor",
+  "close the door": "closedoor", "shut the door": "closedoor",
+  "shut the gate": "closedoor", "bar the door": "closedoor",
+  "carry on": "carryon", "as you were": "asyouwere", "back to work": "carryon",
+  "what can you see": "cansee", "what do you see": "cansee",
+  "look around": "lookaround", "anything out there": "cansee",
+  "are you hurt": "hurt", "are you ok": "hurt", "are you alright": "hurt",
+  "how is your health": "health",
+  "what time is it": "timeofday", "is it night": "timeofday",
+  "keep back": "keepback", "stand back": "keepback", "give me room": "keepback",
+  "make me a bed": "makebed", "set up a bed": "makebed", "build me a bed": "makebed",
+  "build a road to": "roadto", "make a road to": "roadto", "path to": "roadto",
+  "tunnel to": "tunnelto", "dig to": "tunnelto",
+  "guard the": "guardplace",
+
+  // questions
+  "where is": "whereis", "wheres": "whereis", "where has": "whereis",
+  "how many of us": "howmanyofus", "how many are we": "howmanyofus",
+  "how many citizens": "howmanyofus", "how is the town": "report",
+  "how are things": "report", "how goes it": "report",
+  "who is the best": "best", "whos the best": "best",
+  "who is the worst": "best", "whats it like": "report",
+
+  // groups
+  "all of the": "all", "every one of you": "everyone", "the rest of you": "others",
+  "half of you": "half", "the nearest one": "nearest",
+};
+
 const NUMBER_WORDS = {
   one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
   nine: 9, ten: 10, eleven: 11, twelve: 12, fifteen: 15, twenty: 20,
@@ -318,11 +619,20 @@ const NUMBER_WORDS = {
 // --------------------------------------------------------------------------
 // Pipeline
 // --------------------------------------------------------------------------
+/** Phrase keys, longest first, so the most specific match is taken. */
+const PHRASE_KEYS = Object.keys(PHRASES).sort((a, b) => b.length - a.length);
+
 export function normalise(text) {
   let s = String(text || "").toLowerCase();
   for (const [from, to] of Object.entries(CONTRACTIONS)) s = s.split(from).join(to);
+  // Punctuation goes before phrase matching, so "who's winning?" still matches.
   // Coordinates may be negative, so a minus sign attached to a digit survives.
-  return s.replace(/[^a-z0-9'\s-]/g, " ").replace(/\s+/g, " ").trim();
+  s = s.replace(/[^a-z0-9'\s-]/g, " ").replace(/\s+/g, " ").trim();
+  for (const phrase of PHRASE_KEYS) {
+    if (!s.includes(phrase)) continue;
+    s = s.split(phrase).join(PHRASES[phrase]);
+  }
+  return s.replace(/\s+/g, " ").trim();
 }
 
 export function tokenise(text) {
@@ -433,13 +743,21 @@ export function applyTaught(text) {
   return s.replace(/\s+/g, " ").trim();
 }
 
-/** Concepts for one token: exact stem first, then a spelling-tolerant search. */
-export function conceptsFor(token) {
+/**
+ * Concepts for one token: exact stem first, then a spelling-tolerant search.
+ *
+ * `noCorrection` marks a token as a name. Names must never be corrected:
+ * "Bramble" is two edits from "rumble", so without this guard naming a citizen
+ * Bramble starts a brawl.
+ */
+export function conceptsFor(token, noCorrection = false) {
   for (const stem of stems(token)) {
     const hit = LEXICON.get(stem);
     if (hit) return { concepts: hit, exact: true, matched: stem };
   }
-  if (token.length < 4) return { concepts: [], exact: true, matched: null };
+  if (token.length < 4 || noCorrection) {
+    return { concepts: [], exact: true, matched: null };
+  }
 
   // Only correct words we do not recognise as ordinary English. A real word is
   // a real word, however close it sits to something in the lexicon.
@@ -461,6 +779,48 @@ export function conceptsFor(token) {
     return { concepts: LEXICON.get(best), exact: false, matched: best, distance: bestDist };
   }
   return { concepts: [], exact: true, matched: null };
+}
+
+/** Words that introduce a name, so whatever follows them is not a typo. */
+const NAMING_WORDS = new Set([
+  "name", "named", "call", "called", "rename", "nameplace", "dub", "christen",
+]);
+
+/**
+ * Which tokens are names rather than words, and how strongly.
+ *
+ * Two signals, and they deserve different treatment:
+ *
+ *   position   the words after "call" or "name" are a name whatever they look
+ *              like, so they carry no meaning at all - otherwise "call him
+ *              Rumble" starts a brawl, because a rumble is a real brawl
+ *   capitals   a capital part-way through a sentence marks a proper noun. It
+ *              only blocks *correction*: "call this place the Quarry" should
+ *              still not be read as an order to quarry, but the word is doing
+ *              ordinary work elsewhere, so its meaning is left alone.
+ */
+function nameMask(raw, tokens) {
+  const blocked = new Array(tokens.length).fill(false);
+  const noCorrect = new Array(tokens.length).fill(false);
+
+  const rawWords = String(raw || "").split(/\s+/);
+  const capitalised = new Set();
+  for (let i = 1; i < rawWords.length; i++) {
+    const word = rawWords[i].replace(/[^A-Za-z'-]/g, "");
+    if (word.length > 1 && /^[A-Z][a-z]/.test(word)) capitalised.add(word.toLowerCase());
+  }
+
+  let naming = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    if (capitalised.has(tokens[i])) noCorrect[i] = true;
+    if (naming > 0 && !STOPWORDS.has(tokens[i])) {
+      blocked[i] = true;
+      noCorrect[i] = true;
+      naming -= 1;
+    }
+    if (NAMING_WORDS.has(tokens[i])) naming = 3;
+  }
+  return { blocked, noCorrect };
 }
 
 /** Numbers, as digits or words, including "a few" and "a stack". */
@@ -564,6 +924,8 @@ const CREATURE_CONCEPTS = [
 const ITEM_CONCEPTS = [
   C.TORCH, C.PICKAXE, C.AXE, C.SWORD, C.SHOVEL, C.HOE, C.ARMOUR, C.CHEST,
   C.FURNACE, C.TABLE, C.BED, C.DOOR, C.LADDER, C.BOAT, C.BUCKET, C.STICK,
+  // Handed over as often as they are eaten or sown.
+  C.FOOD, C.SEEDS,
 ];
 const JOB_CONCEPTS = {
   [C.J_MINER]: "miner", [C.J_BUILDER]: "builder", [C.J_FARMER]: "farmer",
@@ -586,7 +948,10 @@ const DIRECTION_CONCEPTS = {
  */
 export function understand(text) {
   const tokens = tokenise(applyTaught(text));
-  const analysed = tokens.map(conceptsFor);
+  const names = nameMask(text, tokens);
+  const analysed = tokens.map((t, i) => (names.blocked[i]
+    ? { concepts: [], exact: true, matched: null }
+    : conceptsFor(t, names.noCorrect[i])));
   const corrections = [];
   for (let i = 0; i < tokens.length; i++) {
     if (analysed[i].matched && !analysed[i].exact) {
@@ -648,6 +1013,9 @@ export function understand(text) {
     negated: negatedConcepts.size > 0,
     question,
     concepts: [...present],
+    // "never fight" pushes the action into the negated set, and a caller that
+    // wants to know *what* is being refused has to be able to see it.
+    refused: [...negatedConcepts],
     tokens,
     corrections,
     signals: meaningful.length,
@@ -710,6 +1078,9 @@ function scoreIntents(f) {
   if (has(C.COME)) add("come", has(C.SELF) ? 0.88 : 0.7);
   if (has(C.GOTO) && coords) add("goto", 0.95);
   if (coords && !has(C.BUILD)) add("goto", 0.8);
+  // "go to Ada", "go to the quarry" - a destination the lexicon cannot know,
+  // so score it low and let the planner look for a name it recognises.
+  if (has(C.GOTO) && !coords) add("goto", 0.4);
   if (has(C.GOTO) && direction && direction !== C.UP && direction !== C.DOWN) add("go_direction", 0.9);
   if (direction && distance && !has(C.MINE) && !has(C.TUNNEL)) add("go_direction", 0.85);
   if (has(C.RETURN)) add("go_home", 0.88);
@@ -731,6 +1102,8 @@ function scoreIntents(f) {
 
   // --- items ------------------------------------------------------------
   if (has(C.CRAFT)) add("craft", item || resource ? 0.9 : 0.7);
+  // "make" builds a house and crafts a pickaxe - the object decides which.
+  if (has(C.BUILD) && item && !structure) add("craft", 0.92);
   if (has(C.SMELT)) add("smelt", 0.88);
   if (has(C.GIVE) && (has(C.SELF) || item || resource)) add("give", 0.88);
   if (has(C.DROP)) add("drop", 0.85);
@@ -757,6 +1130,115 @@ function scoreIntents(f) {
   if (has(C.JOIN)) add("join_town", 0.85);
   if (has(C.STATUS)) add("status", 0.88);
 
+  // --- contests ---------------------------------------------------------
+  // Checked with a high floor: "first to get 20 wood" contains an order to
+  // gather, and the contest has to win over it or it becomes plain work.
+  if (has(C.SCOREBOARD)) add("scoreboard", 0.95);
+  if (has(C.CALLOFF)) add("contest_stop", 0.95);
+  if (has(C.MELEE)) add("contest_melee", 0.96);
+  if (has(C.TOURNAMENT)) add("contest_tournament", 0.96);
+  if (has(C.DUEL)) add("contest_duel", 0.96);
+  if (has(C.CONTEST_BUILD)) add("contest_build", 0.96);
+  if (has(C.RACE)) add(coords || direction || has(C.HERE) ? "contest_race" : "contest_race", 0.94);
+
+  // "first to ..." turns whatever follows into the thing being raced for.
+  // It has to beat the plain work it describes: "first to get 20 wood" is a
+  // race, and scoring it as an order to chop wood loses the whole point.
+  if (has(C.FIRST) || has(C.CHALLENGE) || has(C.WINNER)) {
+    if (has(C.ATTACK) || has(C.HUNT) || creature) add("contest_hunt", 0.98);
+    else if (has(C.BUILD) || structure) add("contest_build", 0.98);
+    else if (has(C.DOWNWARD) || (has(C.MINE) && has(C.DOWN))) add("contest_dig", 0.98);
+    else if (resource) add("contest_gather", 0.98);
+    else if (has(C.RACE) || has(C.GOTO) || coords) add("contest_race", 0.98);
+    else if (has(C.CHALLENGE)) add("contest_melee", 0.9);
+  }
+  if (has(C.VERSUS) && !has(C.CHALLENGE)) add("contest_duel", 0.9);
+
+  // --- terraforming and site work ---------------------------------------
+  if (has(C.FLATTEN)) add("flatten", 0.92);
+  if (has(C.FILL)) add("fill_hole", 0.9);
+  if (has(C.MOAT)) add("moat", 0.93);
+  if (has(C.PIT)) add("pit", 0.9);
+  if (has(C.STAIRS)) add("stairs", 0.9);
+  if (has(C.SEAL)) add("seal", 0.93);
+  if (has(C.HOLLOW)) add("hollow", 0.9);
+  if (has(C.PERIMETER) && (has(C.WALL) || has(C.BUILD) || has(C.FENCE))) add("perimeter", 0.93);
+  else if (has(C.PERIMETER)) add("perimeter", 0.85);
+  if (has(C.FENCE)) add("fence", 0.94);
+  if (has(C.ROOF)) add("roof", 0.88);
+  if (has(C.DOCK)) add("dock", 0.9);
+
+  // --- logistics --------------------------------------------------------
+  if (has(C.SORT)) add("sort_chests", 0.9);
+  if (has(C.COUNT)) add("count_stock", 0.88);
+  if (has(C.SHARE)) add("share_out", 0.9);
+  if (has(C.ARM)) add("arm_everyone", 0.92);
+  if (has(C.COLLECT)) add("collect_drops", 0.9);
+  if (has(C.SWAP)) add("swap_jobs", 0.9);
+
+  // --- manner and voice -------------------------------------------------
+  if (has(C.PIRATE)) add("set_voice", 0.94);
+  if (has(C.FUNNY)) add("set_voice", 0.9);
+  if (has(C.SERIOUS)) add("set_voice", 0.9);
+  if (has(C.POLITE)) add("set_voice", 0.88);
+  if (has(C.LOUDER)) add("set_voice", 0.85);
+  if (has(C.FASTER)) add("work_faster", 0.88);
+  if (has(C.SLOWER) || has(C.CAREFUL)) add("work_careful", 0.88);
+
+  // --- social -----------------------------------------------------------
+  if (has(C.PRAISE)) add("praise", 0.92);
+  if (has(C.SCOLD)) add("scold", 0.9);
+  if (has(C.STORY)) add("story", 0.92);
+  if (has(C.OPINION)) add("opinion", 0.9);
+  if (has(C.INTRODUCE)) add("introduce", 0.9);
+
+  // --- places -----------------------------------------------------------
+  if (has(C.NAMEPLACE)) add("name_place", 0.95);
+  if (has(C.WAYPOINT)) add("list_places", 0.85);
+
+  // --- more work --------------------------------------------------------
+  if (has(C.REPAIR)) add("repair", 0.9);
+  if (has(C.DEMOLISH)) add("demolish", 0.92);
+  if (has(C.SAPLING)) add("plant_trees", 0.94);
+  if (has(C.WATER_CROPS)) add("water_crops", 0.92);
+  if (has(C.TORCHLINE)) add("torch_line", 0.93);
+  if (has(C.MEET)) add("meet_at", 0.92);
+  if (has(C.WAITFOR)) add("wait_for", 0.92);
+  if (has(C.ESCORT)) add("escort", 0.92);
+  if (has(C.SING)) add("sing", 0.92);
+  if (has(C.CELEBRATE)) add("celebrate", 0.92);
+  if (has(C.COUNTOFF)) add("count_off", 0.92);
+  if (has(C.OPENDOOR)) add("open_door", 0.93);
+  if (has(C.CLOSEDOOR)) add("close_door", 0.93);
+  if (has(C.RESUME)) add("resume", 0.9);
+  if (has(C.DESCRIBE)) add("describe_view", 0.92);
+  if (has(C.HURT)) add("health_check", 0.92);
+  if (has(C.TIME)) add("time_check", 0.92);
+  if (has(C.KEEPBACK)) add("keep_back", 0.9);
+  if (has(C.ROADTO)) add("road_to", 0.95);
+  if (has(C.TUNNELTO)) add("tunnel_to", 0.95);
+  if (has(C.GUARDPLACE)) add("guard_place", 0.91);
+  if (has(C.MAKEBED)) add("make_bed", 0.93);
+
+  // --- questions about the town -----------------------------------------
+  if (has(C.WHEREIS)) add("where_is", 0.92);
+  if (has(C.BEST)) add("who_best", 0.94);
+  if (has(C.REPORT) || (has(C.TOWN) && question)) add("town_report", 0.9);
+  if (has(C.HEADCOUNT)) add("head_count", 0.92);
+
+  // --- standing orders --------------------------------------------------
+  // "when it gets dark, come home" is not an order to come home now.
+  const conditional = has(C.WHEN) || (has(C.NIGHT) && !question) || has(C.MORNING)
+    || has(C.ALWAYS) || /\bif\b/.test(normalise(raw));
+  if (conditional && [...present].some(isActionConcept)) add("standing_order", 0.93);
+  if (has(C.UNTIL) && [...present].some(isActionConcept)) add("until_order", 0.9);
+  // "never fight" negates the very action it is about, so the action lands in
+  // negatedConcepts rather than present - look in both.
+  if (has(C.NEVER) && (
+    [...present].some(isActionConcept) || [...negatedConcepts].some(isActionConcept))) {
+    add("never_do", 0.92);
+  }
+
   // A question about any of this is a question, not an order - except where
   // the question *is* the request. "What are you carrying?" wants the answer
   // the inventory intent already produces, not a shrug.
@@ -770,7 +1252,22 @@ function scoreIntents(f) {
 }
 
 /** Intents that answer a question rather than being drowned out by one. */
-const ANSWERABLE_QUESTIONS = new Set(["inventory", "status", "help", "teach", "forget"]);
+/**
+ * Intents a question mark does not weaken.
+ *
+ * Some are answers ("what are you carrying?"); the contests are orders that
+ * happen to be phrased as questions - "who can get 20 wood first?" is a
+ * challenge, not idle curiosity.
+ */
+const ANSWERABLE_QUESTIONS = new Set([
+  "inventory", "status", "help", "teach", "forget",
+  "scoreboard", "count_stock", "opinion", "story", "list_places",
+  "where_is", "who_best", "town_report", "head_count",
+  "describe_view", "health_check", "time_check",
+  "contest_melee", "contest_duel", "contest_tournament", "contest_gather",
+  "contest_race", "contest_dig", "contest_hunt", "contest_build",
+  "contest_find", "contest_stop",
+]);
 
 const HOSTILES = new Set([C.ZOMBIE, C.SKELETON, C.CREEPER, C.SPIDER, C.ENDERMAN,
   C.WITCH, C.SLIME, C.HOSTILE]);

@@ -13,11 +13,11 @@ import { STATE } from "../agent/citizen.js";
 import {
   travelTo, isTravelling, tickNavigation, stopTravel, snapToGround, blockType,
 } from "./navigation.js";
-import { stepMine, stepGather, mineTask, gatherTask, findNearestBlock, lookAt, standingSpotFor } from "./mine.js";
+import { stepMine, stepGather, stepExcavate, mineTask, gatherTask, excavateTask, findNearestBlock, lookAt, standingSpotFor } from "./mine.js";
 import { stepPlace, stepBuild, placeTask, buildTask } from "./build.js";
 import { stepCraft, craftTask } from "./craft.js";
 import { stepFarm, farmTask } from "./farm.js";
-import { stepFight, stepFlee, fightTask, fleeTask, resolveEntity } from "./combat.js";
+import { stepFight, stepFlee, fightTask, sparTask, fleeTask, resolveEntity } from "./combat.js";
 import { stepEat, stepSleep, stepRest, stepLight, eatTask, sleepTask, restTask, lightTask } from "./interact.js";
 import {
   openBlockContainer, depositTo, withdrawFrom, dropItem, giveItem, isFull,
@@ -106,6 +106,7 @@ const STEPPERS = {
   give: stepGive,
   mine: stepMine,
   gather: stepGather,
+  excavate: stepExcavate,
   place: stepPlace,
   build: stepBuild,
   craft: stepCraft,
@@ -338,6 +339,6 @@ function stepGive(ctx, task) {
 }
 
 export {
-  mineTask, gatherTask, placeTask, buildTask, craftTask, farmTask,
-  fightTask, fleeTask, eatTask, sleepTask, restTask, lightTask,
+  mineTask, gatherTask, excavateTask, placeTask, buildTask, craftTask, farmTask,
+  fightTask, sparTask, fleeTask, eatTask, sleepTask, restTask, lightTask,
 };

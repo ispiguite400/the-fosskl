@@ -33,6 +33,7 @@ import * as TaskFactory from "./actions/registry.js";
 import { findBedNear } from "./actions/interact.js";
 import { findBuildSite } from "./actions/build.js";
 
+import { Contests } from "./civ/contest.js";
 import { Settlements, refreshStockpiles, shortages, checkPromotion, planNext, logEvent, recomputeStats, allocatePlot } from "./civ/settlement.js";
 import { assignJobs, planJob, JOBS } from "./civ/jobs.js";
 import { blueprintById } from "./civ/blueprints.js";
@@ -43,14 +44,16 @@ import { record } from "./social/relationships.js";
 import { completionLine } from "./social/dialogue.js";
 
 import {
-  registerChat, registerInteraction, handleCommandText, handleSpeech,
+  registerChat, registerInteraction, handleCommandText, handleSpeech, instructOne,
 } from "./commands/index.js";
 import { loadVocabulary } from "./commands/effects.js";
+import { loadPlaces } from "./civ/places.js";
 import { registerSlashCommands, registerScriptEvents } from "./commands/slash.js";
 
 // --------------------------------------------------------------------------
 const registry = new CitizenRegistry();
 const settlements = new Settlements();
+const contests = new Contests();
 const thinkRobin = new RoundRobin(1);
 
 let tick = 0;
@@ -83,6 +86,7 @@ const DIMENSIONS = ["overworld", "nether", "the_end"];
 const app = {
   registry,
   settlements,
+  contests,
   taskFactories: TaskFactory,
   get tick() { return tick; },
 
@@ -258,6 +262,7 @@ function boot() {
 
   safe("boot.config", () => loadConfigOverrides(world));
   safe("boot.vocabulary", () => loadVocabulary());
+  safe("boot.places", () => loadPlaces());
   capabilities.settlementsLoaded = safe("boot.settlements", () => {
     settlements.load();
     return true;
@@ -410,6 +415,7 @@ function masterTick() {
   safe("tick.captions", () => tickCaptions(registry.all, tick, CONFIG.fastTickInterval));
   safe("tick.think", thinkSlice);
   safe("tick.claudeSweep", () => claudeBrain.sweep(tick));
+  safe("tick.contest", () => contests.tick(app));
 
   if (tick % 40 < CONFIG.fastTickInterval) {
     safe("tick.conversations", () => {
@@ -419,6 +425,7 @@ function masterTick() {
   }
   if (tick % CONFIG.slowTickInterval < CONFIG.fastTickInterval) {
     safe("tick.slow", slowTick);
+    safe("tick.standing", () => tickStandingOrders(timeIsNight(world.getTimeOfDay())));
   }
 }
 
@@ -551,6 +558,9 @@ function thinkSlice() {
   for (const citizen of thinkRobin.next(all)) {
     if (!citizen.valid) continue;
     if (tick - citizen.lastThinkTick < CONFIG.thinkIntervalTicks / 2) continue;
+    // Someone in a contest is left alone: the contest hands out their tasks
+    // and the planner second-guessing it would lose them the race.
+    if (citizen.inContest) continue;
     // A citizen mid-task only re-plans if something has interrupted them.
     if (citizen.task && !needsReplan(citizen)) continue;
 
@@ -560,6 +570,7 @@ function thinkSlice() {
 }
 
 function needsReplan(citizen) {
+  if (citizen.inContest) return false;
   const threat = citizen.snapshot?.threats?.[0];
   if (threat && threat.distance < 12 && citizen.task.kind !== "fight" && citizen.task.kind !== "flee") return true;
   if (citizen.needs.hunger < 18 && citizen.task.kind !== "eat") return true;
@@ -597,6 +608,60 @@ function thinkOne(citizen) {
 // Slow tick: needs, settlement upkeep, persistence, growth
 // --------------------------------------------------------------------------
 let slowCounter = 0;
+
+/**
+ * Standing orders: "when it gets dark, come home".
+ *
+ * Checked once a slow tick against what is actually true right now. A trigger
+ * that is still true next tick must not fire again, so each one is rate
+ * limited - otherwise a citizen would restart the same order every second all
+ * night.
+ */
+function tickStandingOrders(night) {
+  for (const citizen of registry.all) {
+    if (!citizen.valid || !citizen.standingOrders || !citizen.standingOrders.length) continue;
+    if (citizen.inContest) continue;
+
+    for (const order of citizen.standingOrders) {
+      if (tick - (order.lastFired || 0) < 20 * 60) continue;
+      if (!triggerHolds(citizen, order.trigger, night)) continue;
+
+      order.lastFired = tick;
+      const owner = order.from
+        ? (safe("standing.player", () => world.getAllPlayers(), []) || [])
+            .find((p) => p.name === order.from)
+        : null;
+      const speaker = owner || nearestPlayerTo(citizen);
+      if (!speaker) continue;
+      safe("standing.run", () => instructOne(app, speaker, citizen, order.order, { quiet: true }));
+      break;
+    }
+  }
+}
+
+function triggerHolds(citizen, trigger, night) {
+  if (trigger === "night") return night;
+  if (trigger === "morning") return !night;
+  if (trigger === "hungry") return citizen.needs.hunger < CONFIG.eatThreshold;
+  if (trigger === "always") return true;
+  if (String(trigger).startsWith("sees:")) {
+    const want = String(trigger).slice(5).toLowerCase();
+    const threats = citizen.snapshot?.threats || [];
+    if (want === "hostile") return threats.length > 0;
+    return threats.some((t) => String(t.kind).toLowerCase().includes(want));
+  }
+  return false;
+}
+
+function nearestPlayerTo(citizen) {
+  const players = safe("standing.players", () => world.getAllPlayers(), []) || [];
+  let best = null, bestD = Infinity;
+  for (const p of players) {
+    const d = dist(p.location, citizen.location);
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  return best;
+}
 
 function slowTick() {
   slowCounter += 1;
@@ -676,7 +741,7 @@ function growSettlements() {
  * tools/simulate.mjs; nothing in the add-on depends on it.
  */
 export function debugState() {
-  return { registry, settlements, tick, claudeBrain };
+  return { registry, settlements, contests, tick, claudeBrain, app };
 }
 globalThis.aiCitizensDebug = debugState;
 

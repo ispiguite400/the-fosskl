@@ -615,7 +615,7 @@ await scenario("They understand what you actually typed", async (sim) => {
     ["find me some irno", "mine", { resource: C.IRON }],
     ["have a rest", "rest", {}],                    // must NOT be heard as "axe"
     ["come here", "come", {}],
-    ["wait there", "stop", {}],
+    ["wait there", "stay", {}],
   ];
 
   let right = 0;
@@ -804,8 +804,8 @@ await scenario("Orders survive the round trip into the world", async (sim) => {
 
   drove("go mine some iron", ["gather", "mine", "goto"]);
   drove("follow me", ["follow"]);
-  drove("dig down 12", ["mine"]);
-  drove("tunnel north 20 blocks", ["mine"]);
+  drove("dig down 12", ["excavate"]);
+  drove("tunnel north 20 blocks", ["excavate"]);
   drove("go north 30 blocks", ["goto"]);
   drove("have a rest", ["rest"]);
 
@@ -830,6 +830,186 @@ await scenario("Orders survive the round trip into the world", async (sim) => {
   mock.advance(3);
   check("a citizen answers to a new name",
     all.some((c) => c.name === "Bramble"), all.map((c) => c.name).join(","));
+});
+
+// --------------------------------------------------------------------------
+// Contests. The point of a challenge is that somebody actually wins it, and
+// that a duel does not cost the town two citizens.
+// --------------------------------------------------------------------------
+await scenario("Challenges run, and somebody wins", async (sim) => {
+  const { mock } = sim;
+  mock.seedArea();
+  const player = mock.addPlayer("Jordan", { x: 0, y: mock.SEA + 1, z: 0 });
+  await sim.start();
+  mock.sendScriptEvent("ai:cmd", "spawn 4", player);
+  mock.advance(20);
+
+  const dbg = sim.debug();
+  const contests = dbg.contests;
+  const healthBefore = dbg.registry.all.map((c) => c.health);
+
+  mock.sendScriptEvent("ai:tell", "make them fight each other", player);
+  mock.advance(5);
+  check("a melee started", Boolean(contests.current), "no contest");
+  check("everyone nearby is in it",
+    Boolean(contests.current) && contests.current.players.length >= 3,
+    String(contests.current?.players.length));
+
+  mock.advance(2400);
+  check("it produced a winner",
+    Boolean(contests.current) && contests.current.status === "done"
+      && Boolean(contests.current.winner),
+    `${contests.current?.status} / ${contests.current?.winner}`);
+
+  // A duel is a contest, not an execution.
+  check("nobody died", dbg.registry.all.length === healthBefore.length,
+    `${dbg.registry.all.length} of ${healthBefore.length}`);
+  check("and everyone was patched up afterwards",
+    dbg.registry.all.every((c) => c.healthFraction > 0.9),
+    dbg.registry.all.map((c) => Math.round(c.health)).join(","));
+  check("the winner's tally went up",
+    dbg.registry.all.some((c) => (c.wins || 0) > 0),
+    dbg.registry.all.map((c) => c.wins || 0).join(","));
+
+  // And the contest releases them when it is over.
+  check("entrants go back to ordinary work",
+    dbg.registry.all.every((c) => !c.inContest),
+    dbg.registry.all.map((c) => c.inContest || "-").join(","));
+});
+
+await scenario("A race for resources is won by whoever gets there first", async (sim) => {
+  const { mock } = sim;
+  mock.seedArea();
+  const player = mock.addPlayer("Jordan", { x: 0, y: mock.SEA + 1, z: 0 });
+  await sim.start();
+  mock.sendScriptEvent("ai:cmd", "spawn 3", player);
+  mock.advance(20);
+  const dbg = sim.debug();
+
+  mock.sendScriptEvent("ai:tell", "first to get 4 wood wins", player);
+  mock.advance(5);
+  const contest = dbg.contests.current;
+  check("a gathering race started", Boolean(contest) && contest.kind === "gather",
+    contest?.kind || "none");
+  check("the goal came from what was said", contest?.goal === 4, String(contest?.goal));
+  check("entrants were put to work",
+    dbg.registry.all.some((c) => c.task && c.task.kind === "gather"),
+    dbg.registry.all.map((c) => c.task?.kind || "-").join(","));
+
+  mock.advance(2400);
+  check("somebody won it",
+    dbg.contests.current?.status === "done" && Boolean(dbg.contests.current?.winner),
+    `${dbg.contests.current?.status} / ${dbg.contests.current?.winner}`);
+});
+
+// --------------------------------------------------------------------------
+// Digging shapes. A single mine task breaks one block; a shaft needs a list.
+// --------------------------------------------------------------------------
+await scenario("Digging actually moves earth", async (sim) => {
+  const { mock } = sim;
+  mock.seedArea();
+  const player = mock.addPlayer("Jordan", { x: 0, y: mock.SEA + 1, z: 0 });
+  await sim.start();
+  mock.sendScriptEvent("ai:cmd", "spawn 1", player);
+  mock.advance(20);
+  const citizen = sim.debug().registry.all[0];
+
+  const startY = citizen.location.y;
+  mock.sendScriptEvent("ai:tell", "dig straight down 10", player);
+  mock.advance(5);
+  check("it became an excavation, not a single block",
+    citizen.task?.kind === "excavate", citizen.task?.kind || "none");
+  check("with a cell for every block of the shaft",
+    (citizen.task?.cells?.length || 0) >= 10, String(citizen.task?.cells?.length));
+
+  mock.advance(3000);
+  const dropped = startY - citizen.location.y;
+  check(`they went down ${Math.round(dropped)} blocks`, dropped >= 8, String(dropped));
+});
+
+// --------------------------------------------------------------------------
+// Aiming an order at part of the town.
+// --------------------------------------------------------------------------
+await scenario("Orders can be aimed at some of them", async (sim) => {
+  const { mock } = sim;
+  mock.seedArea();
+  const player = mock.addPlayer("Jordan", { x: 0, y: mock.SEA + 1, z: 0 });
+  await sim.start();
+  mock.sendScriptEvent("ai:cmd", "spawn 4 miner", player);
+  mock.sendScriptEvent("ai:cmd", "spawn 2 farmer", player);
+  mock.advance(20);
+  const all = sim.debug().registry.all;
+  // Citizens remember an order they have not finished and pick it up again, so
+  // clearing the task alone would let one sub-test bleed into the next.
+  const reset = () => {
+    for (const c of all) {
+      c.task = null;
+      c.plan.length = 0;
+      c.currentOrder = null;
+      c.memory.orders.length = 0;
+    }
+  };
+
+  reset();
+  mock.sendScriptEvent("ai:tell", "all the miners follow me", player);
+  mock.advance(5);
+  const miners = all.filter((c) => c.job === "miner");
+  const farmers = all.filter((c) => c.job === "farmer");
+  check(`only the miners took it (${miners.filter((c) => c.task?.kind === "follow").length})`,
+    miners.some((c) => c.task?.kind === "follow")
+      && !farmers.some((c) => c.task?.kind === "follow"),
+    all.map((c) => `${c.job}:${c.task?.kind || "-"}`).join(" "));
+
+  reset();
+  mock.sendScriptEvent("ai:tell", "two of you follow me", player);
+  mock.advance(5);
+  const following = all.filter((c) => c.task?.kind === "follow").length;
+  check(`exactly two followed (${following})`, following === 2, String(following));
+
+  reset();
+  mock.sendScriptEvent("ai:tell", "everyone stop", player);
+  mock.advance(5);
+  check("everyone answers to everyone",
+    all.filter((c) => c.task?.kind === "wait").length >= all.length - 1,
+    all.map((c) => c.task?.kind || "-").join(","));
+});
+
+// --------------------------------------------------------------------------
+// Named places and standing orders outlive the sentence that made them.
+// --------------------------------------------------------------------------
+await scenario("Places get names and orders get conditions", async (sim) => {
+  const { mock } = sim;
+  mock.seedArea();
+  const player = mock.addPlayer("Jordan", { x: 0, y: mock.SEA + 1, z: 0 });
+  await sim.start();
+  mock.sendScriptEvent("ai:cmd", "spawn 2", player);
+  mock.advance(20);
+  const all = sim.debug().registry.all;
+  const { placeNamed } = await sim.load("civ/places.js");
+
+  mock.sendScriptEvent("ai:tell", "call this place the quarry", player);
+  mock.advance(5);
+  check("the place took the name", Boolean(placeNamed("quarry")),
+    "no place named quarry");
+
+  for (const c of all) { c.task = null; c.plan.length = 0; }
+  mock.sendScriptEvent("ai:tell", "go to the quarry", player);
+  mock.advance(5);
+  check("and they can be sent to it",
+    all.some((c) => c.task?.kind === "goto"),
+    all.map((c) => c.task?.kind || "-").join(","));
+
+  mock.sendScriptEvent("ai:tell", "when it gets dark come home", player);
+  mock.advance(5);
+  check("a standing order was remembered",
+    all.some((c) => (c.standingOrders || []).some((o) => o.trigger === "night")),
+    all.map((c) => (c.standingOrders || []).length).join(","));
+
+  mock.sendScriptEvent("ai:tell", "never fight", player);
+  mock.advance(5);
+  check("and a refusal was too",
+    all.some((c) => (c.forbidden || []).includes("attack")),
+    all.map((c) => (c.forbidden || []).join("/")).join(","));
 });
 
 // --------------------------------------------------------------------------
