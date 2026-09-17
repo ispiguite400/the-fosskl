@@ -123,9 +123,21 @@ export function handleSpeech(app, player, text) {
 }
 
 function routeSpeech(app, player, parsed) {
-  const listeners = app.registry.near(player.location, CONFIG.chatRadius)
+  let listeners = app.registry.near(player.location, CONFIG.chatRadius)
     .filter((c) => c.dimension.id === player.dimension.id);
-  if (!listeners.length) return;
+
+  // Nobody in earshot. Ordinarily that is the end of it - you cannot give an
+  // order to someone who cannot hear you. The exception is a town you have
+  // sent off to live on its own: they wander, and once they are all over the
+  // horizon there is no way left to call them back. So when there are citizens
+  // off duty somewhere, the nearest of them still hears you.
+  if (!listeners.length) {
+    const strays = app.registry.all
+      .filter((c) => c.offDuty && c.valid && c.dimension.id === player.dimension.id)
+      .sort((a, b) => dist(a.location, player.location) - dist(b.location, player.location));
+    if (!strays.length) return;
+    listeners = strays.slice(0, 1);
+  }
 
   switch (parsed.type) {
     case "direct":

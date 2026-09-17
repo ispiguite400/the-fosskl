@@ -324,6 +324,39 @@ export function applyEffect(app, player, citizen, effect, originalText) {
         : `${here} of us here. ${all} in all.` };
     }
 
+    case "freePlay": {
+      // Off duty means off duty: the standing order goes, the trade stops
+      // driving them, and the ladder in agent/freeplay.js takes over.
+      // Sending them off applies to whoever is in earshot. Calling them back
+      // applies to everyone who is out there, because a citizen who has
+      // wandered over the hill cannot hear you and there is no way to walk to
+      // each of them - "do as I say" would otherwise leave stragglers off duty
+      // forever.
+      const crowd = effect.on
+        ? app.registry.near(player.location, 32)
+        : app.registry.all.filter((c) => c.offDuty);
+      for (const c of crowd) {
+        c.offDuty = Boolean(effect.on);
+        c.jobLocked = false;
+        if (effect.on) {
+          c.currentOrder = null;
+          c.memory.orders.length = 0;
+          c.task = null;
+          c.plan.length = 0;
+          c.freeplay = { skips: {}, rung: null };
+        }
+        c.dirty = true;
+      }
+      const n = crowd.length;
+      return {
+        say: effect.on ? pickLine(FREE_REPLIES) : pickLine(BACK_REPLIES),
+        tell: effect.on
+          ? `§a${n}§r citizen${n === 1 ? "" : "s"} left to their own devices. They'll survive, build and mine on their own — §f${SAY_BACK}§r calls them all back, wherever they have got to.`
+          : `§a${n}§r citizen${n === 1 ? "" : "s"} back under orders.`,
+        label: effect.on ? "living their own life" : "back under orders",
+      };
+    }
+
     case "door": {
       // The nearest door within reach, opened or shut.
       const near = nearestDoor(citizen);
@@ -371,6 +404,17 @@ const VOICE_REPLY = {
   loud: "LOUDER. LIKE THIS?",
   plain: "Plain talking, then.",
 };
+
+const SAY_BACK = "ai! do as I say";
+const FREE_REPLIES = [
+  "Right. I'll see to myself, then.", "About time. I've plans of my own.",
+  "On my own two feet. Fine by me.", "Then I'll build something worth having.",
+  "Good. I've been meaning to sort my own roof out.",
+];
+const BACK_REPLIES = [
+  "Back to it. What do you need?", "Say the word, then.",
+  "Right you are. Orders again.", "As you like. I'm listening.",
+];
 
 const PRAISE_REPLIES = [
   "Kind of you to say.", "I'll take that.", "Someone noticed. Good.",
@@ -427,6 +471,8 @@ function resolveJob(word) {
 /** Everything a citizen can be told, grouped so it is readable in chat. */
 export function describeSkills() {
   return {
+    "Free play": ["do whatever you want", "just live", "survive on your own",
+                  "play like a real player", "do as I say"],
     Challenges: ["make them fight each other", "you two have a duel",
                  "first to get 20 wood wins", "who can get 10 iron first",
                  "race to that hill", "have a tournament",

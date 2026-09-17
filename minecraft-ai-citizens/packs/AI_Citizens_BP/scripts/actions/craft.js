@@ -37,7 +37,9 @@ export function stepCraft(ctx, task) {
     if (!hasItems(citizen, recipe.inputs)) return "nomaterial";
     if (!recipe.station) { task.phase = "work"; task.progress = 0; return "running"; }
     const wanted = STATION_BLOCK[recipe.station];
-    const found = findNearestBlock(citizen, (t) => t === wanted, 20);
+    // A station is there to be used, not mined, so the protected-block guard
+    // must not hide it.
+    const found = findNearestBlock(citizen, (t) => t === wanted, 20, null, 1400, true);
     if (!found) { task.needsStation = wanted; return "nostation"; }
     task.station = found;
     task.phase = "approach";

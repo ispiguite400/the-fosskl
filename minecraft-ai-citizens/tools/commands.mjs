@@ -314,6 +314,18 @@ for (const mate of MATES) {
   add("Each other", `keep an eye on ${mate}`);
 }
 
+// --- left to themselves ---------------------------------------------------
+for (const phrase of [
+  "do whatever you want", "do your own thing", "just live", "free play",
+  "survive on your own", "play like a real player", "get on with it",
+  "look after yourself", "you are on your own", "fend for yourself",
+  "do normal things",
+]) add("Free play", phrase);
+for (const phrase of [
+  "do as I say", "take orders again", "listen to me again",
+  "back under orders", "stop doing your own thing",
+]) add("Free play", phrase);
+
 // --- chained --------------------------------------------------------------
 add("Chained", "mine 20 iron then build a house");
 add("Chained", "chop wood then go home and have a rest");

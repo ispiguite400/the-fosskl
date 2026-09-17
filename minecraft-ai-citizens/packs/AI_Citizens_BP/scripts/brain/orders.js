@@ -735,6 +735,15 @@ export function planOrder(citizen, reading, ctx) {
     case "count_off":
       return plan("counting off", speakTask(`${citizen.short}, present.`));
 
+    // --- living their own life --------------------------------------------
+    case "free_play":
+      return { label: "off doing their own thing", tasks: [], reply: null,
+        effect: { kind: "freePlay", on: !r.negated } };
+
+    case "on_duty":
+      return { label: "back under orders", tasks: [], reply: null,
+        effect: { kind: "freePlay", on: false } };
+
     case "open_door":
     case "close_door":
       return { label: null, tasks: [], reply: null,
@@ -1120,6 +1129,7 @@ export const SUPPORTED_INTENTS = [
   // movement
   "follow", "come", "goto", "go_direction", "go_home", "stay", "stop",
   "spread", "regroup", "meet_at", "wait_for", "escort", "keep_back", "resume",
+  "free_play", "on_duty",
   // fighting
   "attack", "hunt", "defend", "guard", "guard_place", "flee",
   // contests

@@ -300,7 +300,17 @@ export function stepGather(ctx, task) {
  * not what is twenty blocks down. Getting deep is the miner's job (it sinks a
  * shaft), not the search's.
  */
-export function findNearestBlock(citizen, predicate, radius, accept, maxReads = 1400) {
+/**
+ * The nearest block matching `predicate`.
+ *
+ * Protected blocks are skipped by default, because the usual reason to look for
+ * a block is to break it and those must not be broken. `includeProtected` is
+ * for the other reason: finding a crafting table or a furnace to *use*. Without
+ * it, `stepCraft` could never locate a station - both are on the protected
+ * list - so every recipe needing one failed, which is to say every tool.
+ */
+export function findNearestBlock(citizen, predicate, radius, accept, maxReads = 1400,
+                                 includeProtected = false) {
   const dim = citizen.dimension;
   const o = citizen.location;
   const bx = Math.floor(o.x), by = Math.floor(o.y), bz = Math.floor(o.z);
@@ -321,7 +331,8 @@ export function findNearestBlock(citizen, predicate, radius, accept, maxReads = 
 
           const p = { x: bx + dx, y: by + dy, z: bz + dz };
           const t = blockType(dim, p.x, p.y, p.z);
-          if (t === undefined || isProtected(t)) continue;
+          if (t === undefined) continue;
+          if (!includeProtected && isProtected(t)) continue;
           if (!predicate(t)) continue;
           if (accept && !accept(p)) continue;
           const d = (dx * dx) + (dy * dy * 2) + (dz * dz);   // prefer level ground

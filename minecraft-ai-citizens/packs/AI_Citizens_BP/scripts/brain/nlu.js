@@ -78,6 +78,7 @@ export const C = {
   TORCHLINE: "TORCHLINE", MEET: "MEET", WAITFOR: "WAITFOR", ESCORT: "ESCORT",
   SING: "SING", CELEBRATE: "CELEBRATE", COUNTOFF: "COUNTOFF",
   OPENDOOR: "OPENDOOR", CLOSEDOOR: "CLOSEDOOR", RESUME: "RESUME",
+  FREEPLAY: "FREEPLAY", ONDUTY: "ONDUTY",
   ROADTO: "ROADTO", TUNNELTO: "TUNNELTO", GUARDPLACE: "GUARDPLACE", MAKEBED: "MAKEBED",
   DESCRIBE: "DESCRIBE", HURT: "HURT", TIME: "TIME", KEEPBACK: "KEEPBACK",
 
@@ -277,6 +278,8 @@ define(C.SING, ["sing", "song", "sings", "singing", "chant"]);
 define(C.CELEBRATE, ["party", "feast", "festival", "celebration"]);
 define(C.COUNTOFF, ["countoff", "rollcall", "sound-off"]);
 define(C.OPENDOOR, ["opendoor", "unbar"]);
+define(C.FREEPLAY, ["freeplay", "freeroam", "yourownthing", "whateveryouwant"]);
+define(C.ONDUTY, ["onduty", "takeorders", "listentome"]);
 define(C.ROADTO, ["roadto"]);
 define(C.TUNNELTO, ["tunnelto"]);
 define(C.GUARDPLACE, ["guardplace"]);
@@ -578,6 +581,26 @@ const PHRASES = {
   "sing a song": "sing", "sing us": "sing",
   "have a party": "party", "throw a party": "party",
   "count off": "countoff", "roll call": "rollcall",
+
+  // living their own life
+  "do whatever you want": "freeplay", "do what you want": "freeplay",
+  "do whatever you like": "freeplay", "do your own thing": "freeplay",
+  "free play": "freeplay", "free roam": "freeplay", "freeplay": "freeplay",
+  "live your life": "freeplay", "live your own life": "freeplay",
+  "just live": "freeplay", "survive on your own": "freeplay",
+  "fend for yourself": "freeplay", "look after yourself": "freeplay",
+  "play like a real player": "freeplay", "be a real player": "freeplay",
+  "act like a player": "freeplay", "play the game": "freeplay",
+  "you are on your own": "freeplay", "youre on your own": "freeplay",
+  "i wont tell you what to do": "freeplay",
+  "stop taking orders": "freeplay", "off duty": "freeplay",
+  "get on with it": "freeplay", "do normal things": "freeplay",
+  "do normal stuff": "freeplay", "do your thing": "freeplay",
+
+  "take orders again": "takeorders", "listen to me again": "takeorders",
+  "do as i say": "takeorders", "back under orders": "takeorders",
+  "on duty": "onduty", "stop free play": "takeorders",
+  "stop doing your own thing": "takeorders",
 
   // doors and odds and ends
   "open the door": "opendoor", "open the gate": "opendoor",
@@ -1211,6 +1234,8 @@ function scoreIntents(f) {
   if (has(C.OPENDOOR)) add("open_door", 0.93);
   if (has(C.CLOSEDOOR)) add("close_door", 0.93);
   if (has(C.RESUME)) add("resume", 0.9);
+  if (has(C.FREEPLAY)) add("free_play", 0.97);
+  if (has(C.ONDUTY)) add("on_duty", 0.97);
   if (has(C.DESCRIBE)) add("describe_view", 0.92);
   if (has(C.HURT)) add("health_check", 0.92);
   if (has(C.TIME)) add("time_check", 0.92);

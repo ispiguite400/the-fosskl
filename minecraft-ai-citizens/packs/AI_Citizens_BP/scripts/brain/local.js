@@ -24,6 +24,7 @@ import {
   waitTask, gotoTask, followTask,
 } from "../actions/registry.js";
 import { chooseTopic, contextFor, lineFor } from "../social/dialogue.js";
+import { freePlayGoal } from "../agent/freeplay.js";
 import { parse, understand } from "./nlu.js";
 import { planOrder } from "./orders.js";
 
@@ -87,7 +88,10 @@ function chooseGoal(citizen, ctx) {
   }
 
   // --- orders -----------------------------------------------------------
-  if (order && order.task) {
+  // Someone told to get on with it is off duty: no standing order, no trade.
+  // Survival still comes first, because a player left to themselves still runs
+  // from a creeper.
+  if (order && order.task && !citizen.offDuty) {
     candidates.push({
       kind: "order",
       label: order.label || "following orders",
@@ -118,8 +122,14 @@ function chooseGoal(citizen, ctx) {
     });
   }
 
+  // --- living their own life --------------------------------------------
+  if (citizen.offDuty) {
+    const own = freePlayGoal(citizen, ctx);
+    if (own) candidates.push(own);
+  }
+
   // --- work -------------------------------------------------------------
-  const jobTask = planJob(citizen, ctx);
+  const jobTask = citizen.offDuty ? null : planJob(citizen, ctx);
   if (jobTask) {
     const industry = trait(citizen, "industry");
     candidates.push({

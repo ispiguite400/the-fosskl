@@ -1013,6 +1013,83 @@ await scenario("Places get names and orders get conditions", async (sim) => {
 });
 
 // --------------------------------------------------------------------------
+// Left alone, do they play the game? Not "do they look busy" - do they climb
+// the same ladder a player climbs on their first evening in a new world.
+// --------------------------------------------------------------------------
+await scenario("Left to themselves they play like a player", async (sim) => {
+  const { mock } = sim;
+  mock.seedArea();
+  const player = mock.addPlayer("Jordan", { x: 0, y: mock.SEA + 1, z: 0 });
+  await sim.start();
+  mock.sendScriptEvent("ai:cmd", "spawn 3", player);
+  mock.advance(20);
+  const all = sim.debug().registry.all;
+
+  // Strip them bare, so nothing below is inherited from spawning kit.
+  for (const c of all) {
+    const inv = c.entity.getComponent("minecraft:inventory")?.container;
+    if (inv) for (let i = 0; i < inv.size; i++) inv.setItem(i, undefined);
+  }
+
+  mock.sendScriptEvent("ai:tell", "do whatever you want", player);
+  mock.advance(10);
+  check("they went off duty", all.every((c) => c.offDuty),
+    all.map((c) => c.offDuty).join(","));
+  check("and their orders were dropped",
+    all.every((c) => !c.currentOrder), "an order survived");
+
+  const stages = new Set();
+  for (let i = 0; i < 40; i++) {
+    mock.advance(800);
+    for (const c of all) if (c.freeplay?.rung) stages.add(c.freeplay.rung);
+  }
+
+  const has = (id) => all.some((c) => c.countItem(id) > 0);
+  const hasAny = (sub) => all.some((c) =>
+    [...c.listInventory().keys()].some((k) => k.includes(sub)));
+
+  // The ladder, rung by rung, checked against what is actually in their
+  // pockets rather than against what they said they were doing.
+  check("they got wood", hasAny("log") || hasAny("planks"),
+    all.map((c) => c.countItem("minecraft:oak_log")).join(","));
+  check("they made a crafting table", has("minecraft:crafting_table")
+    || stages.has("workbench"), "no table");
+  check("they made a pickaxe", hasAny("pickaxe"), "no pickaxe");
+  check("they mined stone", has("minecraft:cobblestone"),
+    all.map((c) => c.countItem("minecraft:cobblestone")).join(","));
+  check("they upgraded to stone tools", hasAny("stone_pickaxe"), "no stone pickaxe");
+  check("they made torches", has("minecraft:torch"),
+    all.map((c) => c.countItem("minecraft:torch")).join(","));
+  check("they found iron", has("minecraft:raw_iron") || has("minecraft:iron_ingot"),
+    "no iron");
+  check("they smelted it", has("minecraft:iron_ingot"), "no ingots");
+  check("they made iron tools", hasAny("iron_pickaxe"), "no iron pickaxe");
+
+  check(`they worked through ${stages.size} stages`, stages.size >= 6,
+    [...stages].join(","));
+
+  // Off duty means off duty - no trade driving them.
+  check("nothing was driven by their job",
+    all.every((c) => !c.jobLocked), "still job locked");
+
+  // And it can be turned off again.
+  mock.sendScriptEvent("ai:tell", "do as I say", player);
+  mock.advance(10);
+  check("they take orders again", all.every((c) => !c.offDuty),
+    all.map((c) => c.offDuty).join(","));
+
+  // They have spread out over the map by now, so walk over to one before
+  // giving an order - shouting at somebody past the horizon is meant not to
+  // work.
+  for (const c of all) { c.task = null; c.plan.length = 0; }
+  player.location = { ...all[0].location };
+  mock.sendScriptEvent("ai:tell", "follow me", player);
+  mock.advance(5);
+  check("and obey immediately", all.some((c) => c.task?.kind === "follow"),
+    all.map((c) => c.task?.kind || "-").join(","));
+});
+
+// --------------------------------------------------------------------------
 console.log(`\n${"=".repeat(50)}`);
 if (failed) {
   console.log(`\x1b[31m${failed} failed\x1b[0m, ${passed} passed`);
