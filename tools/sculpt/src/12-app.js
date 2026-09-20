@@ -1,0 +1,2379 @@
+/*
+ * SculptFree — the application.
+ *
+ * Owns the scene, the camera, the renderer, the stroke engine and the whole
+ * interface. Split into three parts in this file: state and setup, the
+ * interface, then input and commands.
+ */
+(function (root) {
+  'use strict';
+
+  var S = root.SCULPT;
+  var UI = S.UI;
+  var el = UI.el;
+  var V3 = S.V3, M4 = S.M4, Q4 = S.Q4;
+
+  var STORAGE_KEY = 'sculptfree.settings.v1';
+  var DB_NAME = 'sculptfree';
+  var DB_STORE = 'projects';
+
+  var DEFAULTS = {
+    // brush
+    brush: 'clay',
+    radius: 78,
+    strength: 0.55,
+    falloff: 'smooth',
+    spacing: 0.16,
+    strokeSmoothing: 0.3,
+    autoSmooth: 0.28,
+    clayOffset: 0.18,
+    frontFacing: true,
+    pressureRadius: true,
+    pressureStrength: true,
+    paintColorHex: '#d94f3d',
+    // topology
+    dyntopo: true,
+    detailMode: 'relative',
+    detailPercent: 5,
+    detailSize: 0.01,
+    maxTriangles: 1500000,
+    remeshResolution: 160,
+    remeshSmooth: 2,
+    decimateTarget: 30000,
+    // symmetry
+    symmetryX: true,
+    symmetryY: false,
+    symmetryZ: false,
+    // view
+    matcap: 'clay',
+    flat: false,
+    wireframe: false,
+    vertexColors: true,
+    cavity: 0.4,
+    grid: false,
+    showSymmetry: false,
+    maskVis: 1,
+    bgTop: '#232936',
+    bgBottom: '#0e1116',
+    vignette: 0.35,
+    renderScale: 1,
+    ortho: false,
+    fov: 42,
+    // export
+    exportFormat: 'glb',
+    exportScale: 1,
+    exportAxis: 'y',
+    exportColors: true,
+    exportNormals: true,
+    exportAscii: false,
+    exportSelectedOnly: false,
+    // misc
+    historyBudgetMB: 384,
+    autosave: true,
+    navigateMode: false
+  };
+
+  function App(mount) {
+    this.mount = mount || document.body;
+    this.settings = this.loadSettings();
+    this.scene = new S.Scene();
+    this.history = new S.History(this.settings.historyBudgetMB * 1024 * 1024);
+    this.camera = new S.Camera();
+    this.needsRender = true;
+    this.frameTimes = [];
+    this.fps = 0;
+    this.lastFrame = performance.now();
+    this.cursor = { valid: false, point: V3.create(0, 0, 0), normal: V3.create(0, 1, 0), radius: 0.1, inner: 0.5 };
+    this.pointers = new Map();
+    this.navigating = null;
+    this.spaceDown = false;
+    this.dirtySinceSave = false;
+    this.lastAutosave = 0;
+    this.panelRefs = {};
+    this.statusTip = '';
+
+    this.buildDom();
+    this.initGL();
+    this.bindInput();
+    this.newScene('sphere', 5, true);
+    this.restoreAutosaveOffer();
+    this.loop();
+  }
+  S.App = App;
+  var A = App.prototype;
+
+  /* ================================================================ *
+   * settings
+   * ================================================================ */
+
+  A.loadSettings = function () {
+    var out = {};
+    for (var k in DEFAULTS) out[k] = DEFAULTS[k];
+    try {
+      var raw = root.localStorage && root.localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        var saved = JSON.parse(raw);
+        for (var key in saved) if (key in DEFAULTS) out[key] = saved[key];
+      }
+    } catch (e) { /* private mode, or corrupt: defaults are fine */ }
+    out.paintColor = new Float32Array(UI.hexToRgb(out.paintColorHex));
+    return out;
+  };
+
+  A.saveSettings = function () {
+    try {
+      var copy = {};
+      for (var k in DEFAULTS) copy[k] = this.settings[k];
+      root.localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
+    } catch (e) { /* ignore */ }
+  };
+
+  A.set = function (key, value, opts) {
+    this.settings[key] = value;
+    if (key === 'paintColorHex') this.settings.paintColor = new Float32Array(UI.hexToRgb(value));
+    if (key === 'historyBudgetMB') this.history.budget = value * 1024 * 1024;
+    if (key === 'ortho' || key === 'fov') {
+      this.camera.ortho = !!this.settings.ortho;
+      this.camera.fov = this.settings.fov * Math.PI / 180;
+      this.camera.update();
+    }
+    if (key === 'matcap') this.renderer.setMatcap(value);
+    if (key === 'renderScale') this.resize();
+    this.needsRender = true;
+    if (!opts || opts.persist !== false) this.saveSettings();
+  };
+
+  /* ================================================================ *
+   * DOM skeleton
+   * ================================================================ */
+
+  /* ================================================================ *
+   * the screen
+   *
+   * Deliberately almost empty: the model, a strip of brush icons, two
+   * sliders, and one menu button. Everything else lives in sheets that open
+   * only when asked for, so nothing competes with the sculpt for attention.
+   * ================================================================ */
+
+  /** The brushes that get a permanent button. The rest live under "More". */
+  var PRIMARY_BRUSHES = ['clay', 'draw', 'inflate', 'smooth', 'flatten', 'crease', 'move', 'paint'];
+
+  A.buildDom = function () {
+    var self = this;
+
+    this.canvas = el('canvas#view');
+    this.radiusPreview = el('div#radius-preview');
+    this.hudEl = el('div#stats');
+
+    /* top row: menu, what you are sculpting, undo/redo */
+    this.menuBtn = el('button.round.big', { title: 'Menu', onclick: function (e) {
+      e.stopPropagation();
+      self.openMainMenu();
+    } }, UI.icon('menu'));
+    this.titleChip = el('div#title-chip', { text: '' });
+    this.undoBtn = el('button.round', { title: 'Undo (Ctrl+Z)', onclick: function () { self.undo(); } }, UI.icon('undo'));
+    this.redoBtn = el('button.round', { title: 'Redo (Ctrl+Shift+Z)', onclick: function () { self.redo(); } }, UI.icon('redo'));
+    var topBar = el('div#bar-top', null, [
+      this.menuBtn, this.titleChip, el('div.spring'), this.undoBtn, this.redoBtn
+    ]);
+
+    /* left column: brushes */
+    this.toolsEl = el('div#brushes');
+    this.buildBrushStrip();
+
+    /* right column: the three things worth a permanent switch */
+    this.symBtn = el('button.round', { title: 'Mirror (X)', onclick: function () { self.toggle('symmetryX'); } },
+      UI.icon('symmetry'));
+    this.frameBtn = el('button.round', { title: 'Frame the model (F)', onclick: function () { self.frameSelection(); } },
+      UI.icon('frame'));
+    this.lookBtn = el('button.round', { title: 'Look', onclick: function (e) { e.stopPropagation(); self.openLookSheet(); } },
+      UI.icon('palette'));
+    var rightBar = el('div#bar-right', null, [this.symBtn, this.frameBtn, this.lookBtn]);
+
+    /* bottom: size and strength, the only two numbers that matter */
+    this.sizePill = this.makePill('radius', 'Size', 4, 400, 1, this.settings.radius, function (v) {
+      self.set('radius', v);
+      self.refreshStatus();
+    }, function (v) { return Math.round(v); });
+    this.strengthPill = this.makePill('strength', 'Strength', 0, 2, 0.01, this.settings.strength, function (v) {
+      self.set('strength', v);
+      self.refreshStatus();
+    }, function (v) { return Number(v).toFixed(2); });
+    var bottomBar = el('div#bar-bottom', null, [this.sizePill, this.strengthPill]);
+
+    this.sheetHost = el('div#sheets');
+    this.panelEl = this.sheetHost;        // Escape closes whatever is open
+
+    var ui = el('div#ui', null, [topBar, this.toolsEl, rightBar, bottomBar, this.hudEl]);
+
+    UI.append(this.mount, [
+      el('div#app', null, [this.canvas, this.radiusPreview, ui]),
+      this.sheetHost,
+      el('div#toasts'),
+      el('div#busy', { hidden: true }, el('div.card', null, [
+        el('div.spin'), el('div.what', { text: 'Working' }), el('div.detail')
+      ])),
+      el('div#drop-hint', { hidden: true }, el('div', { text: 'Drop a model to open it' }))
+    ]);
+
+    document.addEventListener('pointerdown', function (e) {
+      if (!e.target.closest('#sheets') && !e.target.closest('#ui')) self.closeSheet();
+    });
+
+    this.panelRefs.radius = this.sizePill;
+    this.panelRefs.strength = this.strengthPill;
+  };
+
+  /** A slider that lives directly on the canvas: icon, track, value. */
+  A.makePill = function (iconName, label, min, max, step, value, onchange, format) {
+    var range = el('input', { type: 'range', min: min, max: max, step: step, value: value });
+    var out = el('span.val', { text: format(value) });
+    range.addEventListener('input', function () {
+      out.textContent = format(range.value);
+      onchange(Number(range.value));
+    });
+    var pill = el('div.pill', { title: label }, [UI.icon(iconName), range, out]);
+    pill.set = function (v) { range.value = v; out.textContent = format(v); };
+    pill.get = function () { return Number(range.value); };
+    return pill;
+  };
+
+  A.buildBrushStrip = function () {
+    var self = this;
+    UI.clear(this.toolsEl);
+    this.toolButtons = {};
+    PRIMARY_BRUSHES.forEach(function (id) {
+      var b = S.brushById(id);
+      var btn = el('button.tool', { title: b.label + ' (' + b.key + ')\n' + b.hint,
+        onclick: function () { self.selectBrush(id); } }, UI.icon(id));
+      self.toolButtons[id] = btn;
+      self.toolsEl.appendChild(btn);
+    });
+    this.moreBrushBtn = el('button.tool.more', { title: 'More brushes',
+      onclick: function (e) { e.stopPropagation(); self.openBrushSheet(); } }, UI.icon('menu'));
+    this.toolsEl.appendChild(this.moreBrushBtn);
+  };
+
+  A.selectBrush = function (id) {
+    this.set('brush', id);
+    var known = false;
+    for (var k in this.toolButtons) {
+      var on = k === id;
+      this.toolButtons[k].classList.toggle('on', on);
+      if (on) known = true;
+    }
+    // a brush from the overflow sheet takes over the More button
+    if (this.moreBrushBtn) {
+      this.moreBrushBtn.classList.toggle('on', !known);
+      UI.clear(this.moreBrushBtn);
+      this.moreBrushBtn.appendChild(UI.icon(known ? 'menu' : id));
+    }
+    var b = S.brushById(id);
+    this.statusTip = b.hint;
+    this.refreshStatus();
+    this.closeSheet();
+    this.needsRender = true;
+  };
+
+  A.syncViewButtons = function () {
+    if (this.symBtn) {
+      var any = this.settings.symmetryX || this.settings.symmetryY || this.settings.symmetryZ;
+      this.symBtn.classList.toggle('on', !!any);
+      var axes = (this.settings.symmetryX ? 'X' : '') + (this.settings.symmetryY ? 'Y' : '') + (this.settings.symmetryZ ? 'Z' : '');
+      this.symBtn.title = 'Mirror ' + (axes || 'off') + ' (X, Y, Z)';
+    }
+  };
+
+  A.refreshStatus = function () {
+    var obj = this.scene.current();
+    if (this.titleChip) {
+      this.titleChip.textContent = obj ? obj.name + '  ·  ' + S.formatCount(obj.mesh.liveTris) : '';
+    }
+    if (this.undoBtn) this.undoBtn.disabled = !this.history.canUndo();
+    if (this.redoBtn) this.redoBtn.disabled = !this.history.canRedo();
+    if (this.sizePill) this.sizePill.set(this.settings.radius);
+    if (this.strengthPill) this.strengthPill.set(this.settings.strength);
+    this.syncViewButtons();
+    if (this.sheetRefresh) this.sheetRefresh();
+  };
+
+  A.updateHud = function () {
+    var obj = this.scene.current();
+    if (!obj) { this.hudEl.textContent = ''; return; }
+    var bits = [S.formatCount(obj.mesh.liveTris) + ' tris'];
+    if (this.settings.dyntopo) bits.push('dyntopo');
+    var axes = (this.settings.symmetryX ? 'X' : '') + (this.settings.symmetryY ? 'Y' : '') + (this.settings.symmetryZ ? 'Z' : '');
+    if (axes) bits.push('mirror ' + axes);
+    bits.push(this.fps + ' fps');
+    this.hudEl.textContent = bits.join('   ');
+  };
+
+  /* placeholder so old call sites stay valid; the material sheet rebuilds
+     its own swatches when it opens */
+  A.syncMatcaps = function () {
+    if (!this.matcapButtons) return;
+    for (var k in this.matcapButtons) {
+      this.matcapButtons[k].classList.toggle('on', k === this.settings.matcap);
+    }
+  };
+
+  A.closeMenus = function () { /* no menu bar any more */ };
+
+  A.toggle = function (key) {
+    this.set(key, !this.settings[key]);
+    this.syncViewButtons();
+    this.refreshStatus();
+    this.updateHud();
+    UI.toast(labelFor(key) + (this.settings[key] ? ' on' : ' off'), null, 1200);
+  };
+
+  function labelFor(key) {
+    return ({
+      wireframe: 'Wireframe', flat: 'Flat shading', grid: 'Grid', ortho: 'Orthographic',
+      symmetryX: 'Mirror X', symmetryY: 'Mirror Y', symmetryZ: 'Mirror Z',
+      dyntopo: 'Dynamic topology', navigateMode: 'One-finger orbit',
+      vertexColors: 'Vertex colour'
+    })[key] || key;
+  }
+
+  /* ================================================================ *
+   * sheets
+   *
+   * One at a time, sliding up from the bottom (or centred on a wide
+   * screen). Rows are big enough for a thumb and carry a one-line
+   * explanation, so nothing needs a manual.
+   * ================================================================ */
+
+  A.closeSheet = function () {
+    if (this._sheet) {
+      var s = this._sheet;
+      this._sheet = null;
+      this.sheetRefresh = null;
+      s.classList.remove('open');
+      setTimeout(function () { if (s.parentNode) s.parentNode.removeChild(s); }, 180);
+    }
+  };
+
+  /**
+   * Show a sheet. `spec` is {title, rows} or {title, content}.
+   * A row is {icon, label, hint, onclick, toggle, value, danger, chevron}.
+   */
+  A.openSheet = function (spec) {
+    var self = this;
+    this.closeSheet();
+    var body = el('div.sheet-body');
+    var sheet = el('div.sheet', null, [
+      el('div.sheet-head', null, [
+        spec.back ? el('button.round.small', { title: 'Back', onclick: function () { spec.back(); } }, UI.icon('chevron')) : null,
+        el('h3', { text: spec.title }),
+        el('div.spring'),
+        el('button.round.small', { title: 'Close', onclick: function () { self.closeSheet(); } }, UI.icon('close'))
+      ]),
+      body
+    ]);
+
+    if (spec.content) UI.append(body, spec.content);
+    if (spec.rows) {
+      spec.rows.forEach(function (row) {
+        if (!row) return;
+        if (row.group) {
+          body.appendChild(el('div.sheet-group', { text: row.group }));
+          return;
+        }
+        var right = null;
+        if (row.toggle) {
+          right = el('span.switch' + (row.value() ? '.on' : ''));
+        } else if (row.chevron) {
+          right = UI.icon('chevron');
+          right.classList.add('go');
+        } else if (row.note) {
+          right = el('span.row-note', { text: row.note });
+        }
+        var node = el('button.sheet-row' + (row.danger ? '.danger' : ''), {
+          onclick: function () {
+            if (row.toggle) {
+              row.onclick();
+              right.classList.toggle('on', !!row.value());
+              return;                      // toggles keep the sheet open
+            }
+            if (!row.keepOpen) self.closeSheet();
+            row.onclick();
+          }
+        }, [
+          row.icon ? UI.icon(row.icon) : el('span.no-icon'),
+          el('span.sheet-label', null, [
+            el('b', { text: row.label }),
+            row.hint ? el('small', { text: row.hint }) : null
+          ]),
+          right
+        ]);
+        body.appendChild(node);
+      });
+    }
+    this.sheetHost.appendChild(sheet);
+    this._sheet = sheet;
+    // let the browser lay it out before starting the slide-up
+    requestAnimationFrame(function () { sheet.classList.add('open'); });
+    return sheet;
+  };
+
+  /* ---- the main menu ---- */
+
+  A.openMainMenu = function () {
+    var self = this;
+    this.openSheet({
+      title: 'Menu',
+      rows: [
+        { group: 'Model' },
+        { icon: 'plus', label: 'New shape', hint: 'Start again from a sphere, box, cylinder…',
+          chevron: true, onclick: function () { self.dialogPrimitive(true); } },
+        { icon: 'cube', label: 'Add a shape', hint: 'Put another object in the scene',
+          chevron: true, onclick: function () { self.dialogPrimitive(); } },
+        { icon: 'layers', label: 'Objects', hint: 'Switch between, hide, rename, delete',
+          chevron: true, onclick: function () { self.openObjectsSheet(); } },
+
+        { group: 'Files — all free, no limits' },
+        { icon: 'upload', label: 'Open a model', hint: 'OBJ, STL, PLY, GLB or a saved project',
+          chevron: true, onclick: function () { self.importDialog(); } },
+        { icon: 'download', label: 'Export', hint: 'GLB, OBJ, PLY or STL for your game',
+          chevron: true, onclick: function () { self.openExportSheet(); } },
+        { icon: 'save', label: 'Save project', hint: 'Keeps masks, colour and the camera',
+          onclick: function () { self.saveProject(); } },
+        { icon: 'camera', label: 'Screenshot', onclick: function () { self.screenshot(); } },
+
+        { group: 'Surface' },
+        { icon: 'remesh', label: 'Remesh', hint: 'Rebuild it with even triangles',
+          chevron: true, onclick: function () { self.dialogRemesh(); } },
+        { icon: 'subdivide', label: 'Subdivide', hint: 'Four times the triangles, smoother',
+          onclick: function () { self.subdivide(true); } },
+        { icon: 'decimate', label: 'Reduce triangles', hint: 'Make a light version for a game',
+          chevron: true, onclick: function () { self.dialogDecimate(); } },
+        { icon: 'mirror', label: 'Make symmetrical', hint: 'Mirror the +X half onto the other side',
+          onclick: function () { self.symmetrize(0, true); } },
+        { icon: 'smooth', label: 'Smooth everything', onclick: function () { self.smoothAll(); } },
+        { icon: 'mask', label: 'Mask', hint: 'Clear, invert or blur the locked area',
+          chevron: true, onclick: function () { self.openMaskSheet(); } },
+
+        { group: 'Settings' },
+        { icon: 'sliders', label: 'Brush settings', hint: 'Falloff, spacing, detail, pressure',
+          chevron: true, onclick: function () { self.openBrushSettingsSheet(); } },
+        { icon: 'palette', label: 'Look', hint: 'Material, wireframe, background',
+          chevron: true, onclick: function () { self.openLookSheet(); } },
+        { icon: 'settings', label: 'Preferences', hint: 'Undo memory, recovery, touch',
+          chevron: true, onclick: function () { self.dialogPreferences(); } },
+
+        { group: 'Help' },
+        { icon: 'keyboard', label: 'Controls', hint: 'Mouse, touch and keyboard',
+          chevron: true, onclick: function () { self.dialogShortcuts(); } },
+        { icon: 'cube', label: 'Getting models into a game', chevron: true,
+          onclick: function () { self.dialogPipeline(); } },
+        { icon: 'info', label: 'About', chevron: true, onclick: function () { self.dialogAbout(); } }
+      ]
+    });
+  };
+
+  /* ---- brush picker (the overflow) ---- */
+
+  A.openBrushSheet = function () {
+    var self = this;
+    var grid = el('div.brush-grid');
+    S.BRUSHES.forEach(function (b) {
+      var btn = el('button.brush-card' + (b.id === self.settings.brush ? '.on' : ''), {
+        title: b.hint,
+        onclick: function () { self.selectBrush(b.id); }
+      }, [UI.icon(b.id), el('b', { text: b.label }), el('small', { text: b.key })]);
+      grid.appendChild(btn);
+    });
+    this.openSheet({
+      title: 'Brushes',
+      content: [
+        grid,
+        el('p.sheet-note', { text: 'Hold Shift while sculpting to smooth, Ctrl to invert — with any brush.' })
+      ]
+    });
+  };
+
+  /* ---- export ---- */
+
+  A.openExportSheet = function () {
+    var self = this;
+    var totals = this.scene.totals();
+    this.openSheet({
+      title: 'Export',
+      rows: [
+        { icon: 'cube', label: 'GLB', hint: 'For Three.js, Unity, Godot, Unreal',
+          note: 'best', onclick: function () { self.quickExport('glb'); } },
+        { icon: 'file', label: 'OBJ', hint: 'Opens in anything', onclick: function () { self.quickExport('obj'); } },
+        { icon: 'palette', label: 'PLY', hint: 'Keeps painted colour exactly', onclick: function () { self.quickExport('ply'); } },
+        { icon: 'decimate', label: 'STL', hint: 'For 3D printing', onclick: function () { self.quickExport('stl'); } },
+        { group: 'More' },
+        { icon: 'sliders', label: 'Export options', hint: 'Scale, up axis, colour, text formats',
+          chevron: true, onclick: function () { self.dialogExport(); } },
+        { icon: 'save', label: 'Save project', hint: 'To carry on sculpting later',
+          onclick: function () { self.saveProject(); } }
+      ],
+      content: null
+    });
+    // a short line about what will be written
+    var body = this._sheet.querySelector('.sheet-body');
+    body.insertBefore(el('p.sheet-note', {
+      text: S.formatCount(totals.tris) + ' triangles across ' + totals.objects +
+            ' object' + (totals.objects === 1 ? '' : 's') + ' — nothing is watermarked or limited.'
+    }), body.firstChild);
+  };
+
+  /* ---- objects ---- */
+
+  A.openObjectsSheet = function () {
+    var self = this;
+    var list = el('div#objects');
+    this.objectsHost = list;
+    this.openSheet({
+      title: 'Objects',
+      content: [
+        list,
+        el('div.sheet-buttons', null, [
+          UI.button('Add', { icon: 'plus', onclick: function () { self.closeSheet(); self.dialogPrimitive(); } }),
+          UI.button('Duplicate', { icon: 'copy', onclick: function () { self.duplicateObject(); self.refreshObjects(); } }),
+          UI.button('Merge all', { icon: 'layers', onclick: function () { self.closeSheet(); self.mergeAll(); } }),
+          UI.button('Delete', { icon: 'trash', class: 'danger', onclick: function () { self.deleteObject(); self.refreshObjects(); } })
+        ]),
+        el('p.sheet-note', { text: 'Each object has its own mesh. Sculpting only ever touches the selected one.' })
+      ]
+    });
+    this.refreshObjects();                 // the list is in the document now
+    this.sheetRefresh = function () { self.refreshObjects(); };
+  };
+
+  /**
+   * Bring the object list up to date.
+   *
+   * Rows are updated in place when the list has not changed shape. Tearing
+   * them down and rebuilding on every selection detached the element under
+   * the pointer — which swallowed the click that caused it — and flickered.
+   */
+  A.refreshObjects = function () {
+    var self = this;
+    var host = this.objectsHost;
+    if (!host || !host.parentNode) return;
+    var objs = this.scene.objects;
+
+    if (host.children.length === objs.length) {
+      for (var i = 0; i < objs.length; i++) {
+        var row = host.children[i];
+        var obj = objs[i];
+        row.classList.toggle('on', i === self.scene.selected);
+        var eye = row.querySelector('button');
+        var wantVisible = obj.visible ? '1' : '0';
+        if (eye.dataset.visible !== wantVisible) {
+          eye.dataset.visible = wantVisible;
+          eye.classList.toggle('off', !obj.visible);
+          UI.clear(eye);
+          eye.appendChild(UI.icon(obj.visible ? 'eye' : 'eyeOff'));
+        }
+        var name = row.querySelector('.name');
+        if (document.activeElement !== name && name.value !== obj.name) name.value = obj.name;
+        row.querySelector('.count').textContent = S.formatCount(obj.mesh.liveTris);
+      }
+      return;
+    }
+
+    UI.clear(host);
+    objs.forEach(function (obj, i) {
+      var nameInput = el('input.name', { type: 'text', value: obj.name, onchange: function () {
+        obj.name = nameInput.value || obj.name;
+        self.refreshStatus();
+      } });
+      var eye = el('button' + (obj.visible ? '' : '.off'), { title: 'Show or hide', onclick: function () {
+        obj.visible = !obj.visible;
+        self.refreshObjects();
+        self.needsRender = true;
+      } }, UI.icon(obj.visible ? 'eye' : 'eyeOff'));
+      eye.dataset.visible = obj.visible ? '1' : '0';
+      var row = el('div.obj-row' + (i === self.scene.selected ? '.on' : ''), {
+        onpointerdown: function (e) {
+          if (e.target.closest('button')) return;
+          if (self.scene.selected === i) return;
+          self.scene.selected = i;
+          self.refreshObjects();
+          self.refreshStatus();
+          self.needsRender = true;
+        }
+      }, [eye, nameInput, el('span.count', { text: S.formatCount(obj.mesh.liveTris) })]);
+      host.appendChild(row);
+    });
+  };
+
+  /* ---- mask ---- */
+
+  A.openMaskSheet = function () {
+    var self = this;
+    this.openSheet({
+      title: 'Mask',
+      rows: [
+        { icon: 'mask', label: 'Clear the mask', hint: 'Unlock the whole surface',
+          onclick: function () { self.maskOp('clear'); } },
+        { icon: 'mirror', label: 'Invert', onclick: function () { self.maskOp('invert'); } },
+        { icon: 'smooth', label: 'Blur the edge', onclick: function () { self.maskOp('smooth'); } },
+        { icon: 'mask', label: 'Mask everything', onclick: function () { self.maskOp('fill'); } }
+      ],
+      content: null
+    });
+    var body = this._sheet.querySelector('.sheet-body');
+    body.insertBefore(el('p.sheet-note', {
+      text: 'Pick the Mask brush (M) and paint to lock part of the surface; hold Ctrl to erase. Locked areas ignore every brush.'
+    }), body.firstChild);
+  };
+
+  /* ---- look (material and display) ---- */
+
+  A.openLookSheet = function () {
+    var self = this;
+    var st = this.settings;
+    var matcapHost = el('div.matcaps');
+    this.matcapButtons = {};
+    S.MATCAPS.forEach(function (preset) {
+      var canvas = el('canvas', { width: 64, height: 64 });
+      var mc = S.makeMatcap(preset, 64);
+      var ctx2d = canvas.getContext('2d');
+      var img = ctx2d.createImageData(64, 64);
+      img.data.set(mc.data);
+      ctx2d.putImageData(img, 0, 0);
+      var b = el('button.matcap', { title: preset.label, onclick: function () {
+        self.set('matcap', preset.id);
+        self.syncMatcaps();
+      } }, canvas);
+      self.matcapButtons[preset.id] = b;
+      matcapHost.appendChild(b);
+    });
+    this.syncMatcaps();
+
+    this.openSheet({
+      title: 'Look',
+      content: [
+        el('p.sheet-note', { text: 'Material' }),
+        matcapHost,
+        el('div.sheet-buttons', null, [
+          UI.button('Load matcap', { icon: 'upload', onclick: function () { self.loadMatcapImage(); } }),
+          UI.button('Screenshot', { icon: 'camera', onclick: function () { self.screenshot(); } })
+        ])
+      ],
+      rows: [
+        { group: 'Show' },
+        { icon: 'wire', label: 'Wireframe', toggle: true, keepOpen: true,
+          value: function () { return self.settings.wireframe; },
+          onclick: function () { self.set('wireframe', !self.settings.wireframe); } },
+        { icon: 'flatten', label: 'Flat shading', toggle: true, keepOpen: true,
+          value: function () { return self.settings.flat; },
+          onclick: function () { self.set('flat', !self.settings.flat); } },
+        { icon: 'grid', label: 'Ground grid', toggle: true, keepOpen: true,
+          value: function () { return self.settings.grid; },
+          onclick: function () { self.set('grid', !self.settings.grid); } },
+        { icon: 'symmetry', label: 'Mirror planes', toggle: true, keepOpen: true,
+          value: function () { return self.settings.showSymmetry; },
+          onclick: function () { self.set('showSymmetry', !self.settings.showSymmetry); } },
+        { icon: 'palette', label: 'Painted colour', toggle: true, keepOpen: true,
+          value: function () { return self.settings.vertexColors; },
+          onclick: function () { self.set('vertexColors', !self.settings.vertexColors); } },
+        { icon: 'cube', label: 'Orthographic camera', toggle: true, keepOpen: true,
+          value: function () { return self.settings.ortho; },
+          onclick: function () { self.set('ortho', !self.settings.ortho); } }
+      ]
+    });
+
+    var body = this._sheet.querySelector('.sheet-body');
+    body.appendChild(el('p.sheet-note', { text: 'Fine tuning' }));
+    body.appendChild(UI.slider({ label: 'Creases', min: 0, max: 1.5, step: 0.01, value: st.cavity,
+      title: 'Screen-space crease shading, which makes form easy to read',
+      onchange: function (v) { self.set('cavity', v); } }));
+    body.appendChild(UI.slider({ label: 'Quality', min: 0.5, max: 2, step: 0.05, value: st.renderScale,
+      title: 'Lower it for more speed on a laptop or phone',
+      onchange: function (v) { self.set('renderScale', v); } }));
+    body.appendChild(el('div.row', null, [
+      el('label', { text: 'Backdrop' }),
+      el('input', { type: 'color', value: st.bgTop, oninput: function (e) { self.set('bgTop', e.target.value); } }),
+      el('input', { type: 'color', value: st.bgBottom, oninput: function (e) { self.set('bgBottom', e.target.value); } })
+    ]));
+  };
+
+  /* ---- brush settings (everything that used to crowd the screen) ---- */
+
+  A.openBrushSettingsSheet = function () {
+    var self = this;
+    var st = this.settings;
+    var brush = S.brushById(st.brush);
+
+    var detailRow = UI.slider({ label: 'Detail', min: 2, max: 100, step: 1, value: st.detailPercent, suffix: '%',
+      title: 'Triangle size under the brush, as a percentage of the brush size',
+      onchange: function (v) { self.set('detailPercent', v); } });
+    var maxRow = UI.slider({ label: 'Limit', min: 50000, max: 6000000, step: 50000, value: st.maxTriangles,
+      format: function (v) { return S.formatCount(Number(v)); },
+      title: 'Dynamic topology stops adding triangles here',
+      onchange: function (v) { self.set('maxTriangles', v); } });
+
+    var colorInput = el('input', { type: 'color', value: st.paintColorHex, oninput: function () {
+      self.set('paintColorHex', colorInput.value);
+    } });
+    var swatches = el('div.swatches');
+    ['#d94f3d', '#e8833a', '#f2c14e', '#7fb069', '#4a9fd4', '#5b6ee1', '#9b6bd4', '#8c6239', '#c9c9c9', '#ffffff']
+      .forEach(function (hex) {
+        swatches.appendChild(el('button.swatch', { style: { background: hex }, title: hex, onclick: function () {
+          self.set('paintColorHex', hex);
+          colorInput.value = hex;
+        } }));
+      });
+
+    this.openSheet({
+      title: brush.label + ' settings',
+      content: [
+        el('p.sheet-note', { text: brush.hint }),
+        UI.select({ label: 'Falloff', value: st.falloff,
+          options: S.FALLOFFS.map(function (f) { return { id: f.id, label: f.label }; }),
+          onchange: function (v) { self.set('falloff', v); } }),
+        UI.slider({ label: 'Smoothing', min: 0, max: 1, step: 0.01, value: st.autoSmooth,
+          title: 'Relaxes the surface slightly behind every stamp',
+          onchange: function (v) { self.set('autoSmooth', v); } }),
+        UI.slider({ label: 'Steadiness', min: 0, max: 0.92, step: 0.01, value: st.strokeSmoothing,
+          title: 'Smooths the path of the stroke for steadier lines',
+          onchange: function (v) { self.set('strokeSmoothing', v); } }),
+        UI.slider({ label: 'Spacing', min: 0.02, max: 1, step: 0.01, value: st.spacing,
+          title: 'Distance between brush stamps',
+          onchange: function (v) { self.set('spacing', v); } }),
+        el('p.sheet-note', { text: 'Paint colour' }),
+        el('div.row', null, [colorInput,
+          UI.button('Pick from model', { icon: 'palette', class: 'grow', onclick: function () {
+            self.closeSheet();
+            self.startColorPick();
+          } })]),
+        swatches,
+        el('div.sheet-buttons', null, [
+          UI.button('Fill object', { onclick: function () { self.fillColor(); } }),
+          UI.button('Clear colour', { onclick: function () { self.fillColor(true); } })
+        ])
+      ],
+      rows: [
+        { group: 'Triangles' },
+        { icon: 'layers', label: 'Dynamic topology', hint: 'Add detail as you sculpt (D)',
+          toggle: true, keepOpen: true,
+          value: function () { return self.settings.dyntopo; },
+          onclick: function () { self.set('dyntopo', !self.settings.dyntopo); self.updateHud(); } },
+        { group: 'Mirror' },
+        { icon: 'symmetry', label: 'Mirror X', toggle: true, keepOpen: true,
+          value: function () { return self.settings.symmetryX; },
+          onclick: function () { self.set('symmetryX', !self.settings.symmetryX); self.syncViewButtons(); } },
+        { icon: 'symmetry', label: 'Mirror Y', toggle: true, keepOpen: true,
+          value: function () { return self.settings.symmetryY; },
+          onclick: function () { self.set('symmetryY', !self.settings.symmetryY); self.syncViewButtons(); } },
+        { icon: 'symmetry', label: 'Mirror Z', toggle: true, keepOpen: true,
+          value: function () { return self.settings.symmetryZ; },
+          onclick: function () { self.set('symmetryZ', !self.settings.symmetryZ); self.syncViewButtons(); } },
+        { group: 'Pen' },
+        { icon: 'draw', label: 'Pressure changes size', toggle: true, keepOpen: true,
+          value: function () { return self.settings.pressureRadius; },
+          onclick: function () { self.set('pressureRadius', !self.settings.pressureRadius); } },
+        { icon: 'draw', label: 'Pressure changes strength', toggle: true, keepOpen: true,
+          value: function () { return self.settings.pressureStrength; },
+          onclick: function () { self.set('pressureStrength', !self.settings.pressureStrength); } },
+        { icon: 'eye', label: 'Skip surfaces facing away', toggle: true, keepOpen: true,
+          value: function () { return self.settings.frontFacing; },
+          onclick: function () { self.set('frontFacing', !self.settings.frontFacing); } }
+      ]
+    });
+
+    // the detail sliders belong with the dyntopo switch
+    var body = this._sheet.querySelector('.sheet-body');
+    body.appendChild(detailRow);
+    body.appendChild(maxRow);
+  };
+
+  /* ================================================================ *
+   * GL, sizing and the frame loop
+   * ================================================================ */
+
+  A.initGL = function () {
+    var self = this;
+    this.renderer = new S.Renderer(this.canvas);
+    this.renderer.setMatcap(this.settings.matcap);
+    this.camera.ortho = !!this.settings.ortho;
+    this.camera.fov = this.settings.fov * Math.PI / 180;
+    this.engine = new S.StrokeEngine({
+      scene: this.scene, history: this.history, settings: this.settings, camera: this.camera
+    });
+    this.history.onChange = function () { self.refreshStatus(); };
+
+    if (root.ResizeObserver) {
+      this._ro = new ResizeObserver(function () { self.resize(); });
+      this._ro.observe(this.canvas.parentNode);
+    }
+    root.addEventListener('resize', function () { self.resize(); });
+    this.resize();
+  };
+
+  A.resize = function () {
+    var wrap = this.canvas.parentNode;
+    var w = wrap.clientWidth || 800;
+    var h = wrap.clientHeight || 600;
+    this.renderer.resize(w, h, this.settings.renderScale);
+    this.camera.setViewport(w, h);
+    this.needsRender = true;
+  };
+
+  A.loop = function () {
+    var self = this;
+    function frame(now) {
+      var dt = Math.min((now - self.lastFrame) / 1000, 0.25);
+      self.lastFrame = now;
+      if (self.camera.animate(dt)) self.needsRender = true;
+      if (self.needsRender) {
+        self.draw();
+        self.needsRender = false;
+      }
+      self.frameTimes.push(dt);
+      if (self.frameTimes.length > 30) self.frameTimes.shift();
+      var sum = 0;
+      for (var i = 0; i < self.frameTimes.length; i++) sum += self.frameTimes[i];
+      self.fps = sum > 0 ? Math.round(self.frameTimes.length / sum) : 0;
+      self.maybeAutosave(now);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  };
+
+  A.draw = function () {
+    var st = this.settings;
+    var scene = this.scene;
+    var obj = scene.current();
+    var gridExtent = 1;
+    if (obj) gridExtent = Math.max(obj.mesh.boundsRadius() * 2.4, this.camera.distance * 0.8);
+
+    this.renderer.render(scene, this.camera, {
+      background: [UI.hexToRgb(st.bgTop), UI.hexToRgb(st.bgBottom)],
+      vignette: st.vignette,
+      wireframe: st.wireframe,
+      flat: st.flat,
+      vertexColors: st.vertexColors,
+      cavity: st.cavity,
+      maskVis: st.maskVis,
+      grid: st.grid,
+      gridExtent: gridExtent,
+      symmetry: st.showSymmetry ? {
+        any: st.symmetryX || st.symmetryY || st.symmetryZ,
+        x: st.symmetryX, y: st.symmetryY, z: st.symmetryZ
+      } : null,
+      cursor: this.cursor
+    });
+    this.updateHud();
+  };
+
+  /* ================================================================ *
+   * input
+   * ================================================================ */
+
+  A.eventPos = function (e) {
+    var rect = this.canvas.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  A.bindInput = function () {
+    var self = this;
+    var canvas = this.canvas;
+
+    canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+
+    canvas.addEventListener('pointerdown', function (e) {
+      self.closeMenus();
+      canvas.setPointerCapture(e.pointerId);
+      var p = self.eventPos(e);
+      self.pointers.set(e.pointerId, { x: p.x, y: p.y, type: e.pointerType, button: e.button });
+
+      if (self.pointers.size >= 2) {
+        // A second finger means the user is navigating, not sculpting, so the
+        // dab the first finger just made is undone rather than committed.
+        if (self.engine.active) {
+          self.engine.cancel();
+          self.needsRender = true;
+        }
+        self.startTouchNav();
+        return;
+      }
+
+      var wantNav = e.button === 1 || e.button === 2 || e.altKey || self.spaceDown ||
+                    (e.pointerType === 'touch' && self.settings.navigateMode);
+      if (wantNav) {
+        var mode = (e.button === 1 || (e.shiftKey && e.button === 2) || self.spaceDown) ? 'pan' : 'orbit';
+        self.navigating = { mode: mode, x: p.x, y: p.y };
+        canvas.classList.add('navigating');
+        return;
+      }
+
+      if (self.pickingColor) {
+        self.finishColorPick(p);
+        return;
+      }
+
+      var started = self.engine.begin({
+        x: p.x, y: p.y,
+        pressure: e.pointerType === 'mouse' ? 1 : (e.pressure || 0.5) * 2,
+        invert: e.ctrlKey || e.metaKey,
+        smooth: e.shiftKey
+      });
+      if (started) {
+        self.dirtySinceSave = true;
+        self.needsRender = true;
+      } else {
+        // clicking off the model orbits instead, which feels natural
+        self.navigating = { mode: 'orbit', x: p.x, y: p.y };
+        canvas.classList.add('navigating');
+      }
+    });
+
+    canvas.addEventListener('pointermove', function (e) {
+      var p = self.eventPos(e);
+      var tracked = self.pointers.get(e.pointerId);
+      if (tracked) { tracked.x = p.x; tracked.y = p.y; }
+
+      if (self.pointers.size >= 2) { self.updateTouchNav(); return; }
+
+      if (self.navigating) {
+        var dx = p.x - self.navigating.x, dy = p.y - self.navigating.y;
+        self.navigating.x = p.x;
+        self.navigating.y = p.y;
+        if (self.navigating.mode === 'pan') self.camera.pan(dx, dy);
+        else self.camera.orbit(dx, dy);
+        self.needsRender = true;
+        return;
+      }
+
+      if (self.engine.active) {
+        self.engine.move({
+          x: p.x, y: p.y,
+          pressure: e.pointerType === 'mouse' ? 1 : (e.pressure || 0.5) * 2,
+          invert: e.ctrlKey || e.metaKey,
+          smooth: e.shiftKey
+        });
+        self.updateCursor(p, true);
+        self.needsRender = true;
+        return;
+      }
+      self.updateCursor(p, false);
+    });
+
+    function endPointer(e) {
+      self.pointers.delete(e.pointerId);
+      if (self.engine.active) {
+        var committed = self.engine.end();
+        if (committed) self.dirtySinceSave = true;
+        self.refreshStatus();
+        self.refreshObjects();
+      }
+      if (self.pointers.size < 2) self.touchNav = null;
+      if (!self.pointers.size) {
+        self.navigating = null;
+        self.canvas.classList.remove('navigating');
+      }
+      self.needsRender = true;
+    }
+    canvas.addEventListener('pointerup', endPointer);
+    canvas.addEventListener('pointercancel', endPointer);
+    canvas.addEventListener('pointerleave', function (e) {
+      if (!self.engine.active && !self.navigating) {
+        self.cursor.valid = false;
+        self.needsRender = true;
+      }
+    });
+
+    canvas.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      if (e.shiftKey) {
+        self.nudgeRadius(e.deltaY > 0 ? -6 : 6);
+        return;
+      }
+      if (e.ctrlKey || e.metaKey) {
+        self.nudgeStrength(e.deltaY > 0 ? -0.04 : 0.04);
+        return;
+      }
+      var factor = Math.exp(S.clamp(e.deltaY, -240, 240) * 0.0016);
+      var p = self.eventPos(e);
+      var hit = self.engine.pick(p.x, p.y, false);
+      self.camera.zoomAt(factor, hit ? hit.point : null);
+      self.needsRender = true;
+    }, { passive: false });
+
+    document.addEventListener('keydown', function (e) { self.onKey(e); });
+    document.addEventListener('keyup', function (e) {
+      if (e.code === 'Space') self.spaceDown = false;
+    });
+
+    // drag and drop import
+    var dropHint = document.getElementById('drop-hint');
+    var dragDepth = 0;
+    root.addEventListener('dragenter', function (e) {
+      e.preventDefault();
+      dragDepth++;
+      dropHint.hidden = false;
+    });
+    root.addEventListener('dragover', function (e) { e.preventDefault(); });
+    root.addEventListener('dragleave', function (e) {
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (!dragDepth) dropHint.hidden = true;
+    });
+    root.addEventListener('drop', function (e) {
+      e.preventDefault();
+      dragDepth = 0;
+      dropHint.hidden = true;
+      var files = e.dataTransfer && e.dataTransfer.files;
+      if (files && files.length) self.importFiles(Array.prototype.slice.call(files));
+    });
+
+    root.addEventListener('beforeunload', function (e) {
+      if (self.dirtySinceSave && self.scene.totals().tris > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+        return '';
+      }
+    });
+  };
+
+  /* ---- touch navigation ---- */
+
+  A.startTouchNav = function () {
+    var pts = Array.from(this.pointers.values());
+    this.touchNav = {
+      cx: (pts[0].x + pts[1].x) / 2,
+      cy: (pts[0].y + pts[1].y) / 2,
+      dist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1,
+      count: this.pointers.size
+    };
+    this.canvas.classList.add('navigating');
+  };
+
+  A.updateTouchNav = function () {
+    if (!this.touchNav) { this.startTouchNav(); return; }
+    var pts = Array.from(this.pointers.values());
+    if (pts.length < 2) return;
+    var cx = (pts[0].x + pts[1].x) / 2;
+    var cy = (pts[0].y + pts[1].y) / 2;
+    var dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y) || 1;
+    var nav = this.touchNav;
+    var dx = cx - nav.cx, dy = cy - nav.cy;
+
+    if (pts.length >= 3) this.camera.pan(dx, dy);
+    else {
+      this.camera.orbit(dx, dy);
+      var pinch = nav.dist / dist;
+      if (isFinite(pinch) && pinch > 0) this.camera.zoom(S.clamp(pinch, 0.5, 2));
+    }
+    nav.cx = cx; nav.cy = cy; nav.dist = dist;
+    this.needsRender = true;
+  };
+
+  /* ---- brush cursor ---- */
+
+  A.updateCursor = function (p, duringStroke) {
+    var hit = this.engine.pick(p.x, p.y, true);
+    if (!hit) {
+      if (this.cursor.valid) this.needsRender = true;
+      this.cursor.valid = false;
+      return;
+    }
+    var perPixel = this.camera.worldPerPixel(hit.point);
+    V3.copy(this.cursor.point, hit.point);
+    V3.copy(this.cursor.normal, hit.normal);
+    this.cursor.radius = this.settings.radius * perPixel;
+    this.cursor.inner = 0.55;
+    this.cursor.valid = true;
+    var brush = S.brushById(this.settings.brush);
+    this.cursor.color = brush.paint ? [this.settings.paintColor[0], this.settings.paintColor[1], this.settings.paintColor[2], 0.95]
+                      : brush.mask ? [0.45, 0.65, 1, 0.9]
+                      : [1, 1, 1, 0.8];
+    this.needsRender = true;
+  };
+
+  A.nudgeRadius = function (delta) {
+    var v = S.clamp(this.settings.radius + delta, 4, 400);
+    this.set('radius', v);
+    if (this.panelRefs.radius) this.panelRefs.radius.set(v);
+    this.showRadiusPreview();
+    this.refreshStatus();
+  };
+
+  A.nudgeStrength = function (delta) {
+    var v = S.clamp(this.settings.strength + delta, 0, 2);
+    this.set('strength', v);
+    if (this.panelRefs.strength) this.panelRefs.strength.set(v);
+    UI.toast('Strength ' + v.toFixed(2), null, 900);
+    this.refreshStatus();
+  };
+
+  A.showRadiusPreview = function () {
+    var self = this;
+    var prev = this.radiusPreview;
+    var r = this.settings.radius;
+    var rect = this.canvas.getBoundingClientRect();
+    prev.style.display = 'block';
+    prev.style.width = prev.style.height = (r * 2) + 'px';
+    prev.style.left = (rect.width / 2 - r) + 'px';
+    prev.style.top = (rect.height / 2 - r) + 'px';
+    clearTimeout(this._radiusTimer);
+    this._radiusTimer = setTimeout(function () { prev.style.display = 'none'; }, 600);
+  };
+
+  /* ---- keyboard ---- */
+
+  A.onKey = function (e) {
+    var tag = e.target && e.target.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
+      if (e.key === 'Escape') e.target.blur();
+      return;
+    }
+    if (e.code === 'Space') { this.spaceDown = true; e.preventDefault(); return; }
+
+    var mod = e.ctrlKey || e.metaKey;
+    var key = e.key;
+
+    if (mod) {
+      switch (key.toLowerCase()) {
+        case 'z': e.preventDefault(); if (e.shiftKey) this.redo(); else this.undo(); return;
+        case 'y': e.preventDefault(); this.redo(); return;
+        case 's': e.preventDefault(); this.saveProject(); return;
+        case 'e': e.preventDefault(); this.dialogExport(); return;
+        case 'i': e.preventDefault(); this.importDialog(); return;
+        case 'o': e.preventDefault(); this.openProject(); return;
+        case 'p': e.preventDefault(); this.screenshot(); return;
+        case 'r': e.preventDefault(); this.dialogRemesh(); return;
+        case 'd': e.preventDefault(); this.subdivide(true); return;
+        case 'n': e.preventDefault(); this.dialogNew(); return;
+      }
+      return;
+    }
+
+    if (e.altKey) {
+      var views = ['front', 'back', 'left', 'right', 'top', 'bottom', 'iso'];
+      var n = parseInt(key, 10);
+      if (n >= 1 && n <= 7) {
+        e.preventDefault();
+        this.camera.setView(views[n - 1]);
+        this.needsRender = true;
+      }
+      return;
+    }
+
+    // brush hotkeys
+    for (var i = 0; i < S.BRUSHES.length; i++) {
+      var b = S.BRUSHES[i];
+      if (b.key && b.key.toLowerCase() === key.toLowerCase() && !e.shiftKey) {
+        this.selectBrush(b.id);
+        UI.toast(b.label, null, 900);
+        return;
+      }
+    }
+
+    switch (key) {
+      case '[': this.nudgeRadius(-Math.max(2, this.settings.radius * 0.1)); return;
+      case ']': this.nudgeRadius(Math.max(2, this.settings.radius * 0.1)); return;
+      case '{': this.nudgeStrength(-0.05); return;
+      case '}': this.nudgeStrength(0.05); return;
+      case 'f': this.frameSelection(); return;
+      case 'F': this.frameAll(); return;
+      case 'w': this.toggle('wireframe'); return;
+      case 'W': this.toggle('flat'); return;
+      case 'G': this.toggle('grid'); return;
+      case 'O': this.toggle('ortho'); return;
+      case 'x': this.toggle('symmetryX'); return;
+      case 'y': this.toggle('symmetryY'); return;
+      case 'z': this.toggle('symmetryZ'); return;
+      case 'd': this.toggle('dyntopo'); return;
+      case 'A': this.dialogPrimitive(); return;
+      case '?': this.dialogShortcuts(); return;
+      case 'Escape':
+        if (this.engine.active) { this.engine.cancel(); this.needsRender = true; }
+        this.closeSheet();
+        return;
+      case 'Delete': this.deleteObject(); return;
+    }
+  };
+
+  A.toggleFullscreen = function () {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+  };
+  /* ================================================================ *
+   * scene commands
+   * ================================================================ */
+
+  A.captureScene = function () {
+    // a light snapshot of the object list for undoing add/delete/merge
+    var objects = this.scene.objects.slice();
+    return { objects: objects, selected: this.scene.selected };
+  };
+
+  A.restoreScene = function (state) {
+    this.scene.objects = state.objects.slice();
+    this.scene.selected = Math.min(state.selected, Math.max(0, this.scene.objects.length - 1));
+    this.refreshObjects();
+    this.refreshStatus();
+    this.needsRender = true;
+  };
+
+  A.sceneOp = function (label, fn) {
+    var self = this;
+    return this.history.runSceneOp(label, function () { return self.captureScene(); },
+      function (state) { self.restoreScene(state); }, fn);
+  };
+
+  A.newScene = function (primId, detail, initial) {
+    var self = this;
+    for (var i = 0; i < this.scene.objects.length; i++) this.renderer.releaseObject(this.scene.objects[i]);
+    this.scene.clear();
+    this.history.clear();
+    var mesh = S.Prim.makeMesh(primId || 'sphere', detail);
+    var obj = new S.SceneObject(S.Prim.byId(primId || 'sphere').label, mesh);
+    this.scene.add(obj);
+    this.frameAll(true);
+    this.refreshObjects();
+    this.refreshStatus();
+    this.dirtySinceSave = false;
+    this.needsRender = true;
+    if (!initial) UI.toast('New sculpt started');
+  };
+
+  A.addPrimitive = function (primId, detail) {
+    var self = this;
+    var entry = S.Prim.byId(primId);
+    this.sceneOp('Add ' + entry.label, function () {
+      var mesh = S.Prim.makeMesh(primId, detail);
+      var obj = new S.SceneObject(entry.label, mesh);
+      // drop it beside whatever is already there
+      var mn = V3.create(0, 0, 0), mx = V3.create(0, 0, 0);
+      if (self.scene.objects.length && self.scene.bounds(mn, mx)) {
+        obj.position[0] = mx[0] + (mesh.boundsMax()[0] - mesh.boundsMin()[0]) * 0.6 + 0.05;
+        obj.touch();
+      }
+      self.scene.add(obj);
+    });
+    this.refreshObjects();
+    this.refreshStatus();
+    this.dirtySinceSave = true;
+    this.needsRender = true;
+  };
+
+  A.duplicateObject = function () {
+    var self = this;
+    var obj = this.scene.current();
+    if (!obj) return;
+    this.sceneOp('Duplicate object', function () {
+      var copy = obj.cloneObject();
+      copy.position[0] += Math.max(obj.mesh.boundsRadius(), 0.1) * 0.8;
+      copy.touch();
+      self.scene.add(copy);
+    });
+    this.refreshObjects();
+    this.refreshStatus();
+    this.dirtySinceSave = true;
+    this.needsRender = true;
+  };
+
+  A.deleteObject = function () {
+    var self = this;
+    if (this.scene.objects.length <= 1) {
+      UI.toast('The last object cannot be deleted — use File > New instead', 'bad');
+      return;
+    }
+    var index = this.scene.selected;
+    var obj = this.scene.objects[index];
+    this.sceneOp('Delete object', function () {
+      self.scene.remove(index);
+    });
+    if (obj) this.renderer.releaseObject(obj);
+    this.refreshObjects();
+    this.refreshStatus();
+    this.dirtySinceSave = true;
+    this.needsRender = true;
+  };
+
+  A.mergeAll = function () {
+    var self = this;
+    var visible = [];
+    for (var i = 0; i < this.scene.objects.length; i++) if (this.scene.objects[i].visible) visible.push(i);
+    if (visible.length < 2) { UI.toast('Nothing to merge — there is only one visible object', 'bad'); return; }
+    UI.busy('Merging objects', visible.length + ' objects', function () {
+      return self.scene.mergeObjects(visible, 'Merged');
+    }, function (merged) {
+      if (!merged) { UI.toast('Merge produced nothing', 'bad'); return; }
+      self.sceneOp('Merge objects', function () {
+        for (var k = visible.length - 1; k >= 0; k--) {
+          var victim = self.scene.objects[visible[k]];
+          self.renderer.releaseObject(victim);
+          self.scene.remove(visible[k]);
+        }
+        self.scene.add(merged);
+      });
+      self.refreshObjects();
+      self.refreshStatus();
+      self.dirtySinceSave = true;
+      self.needsRender = true;
+      UI.toast('Merged into ' + S.formatCount(merged.mesh.liveTris) + ' triangles', 'ok');
+    });
+  };
+
+  A.undo = function () {
+    var entry = this.history.undo();
+    if (!entry) { UI.toast('Nothing to undo'); return; }
+    this.refreshObjects();
+    this.refreshStatus();
+    this.needsRender = true;
+    this.dirtySinceSave = true;
+  };
+
+  A.redo = function () {
+    var entry = this.history.redo();
+    if (!entry) { UI.toast('Nothing to redo'); return; }
+    this.refreshObjects();
+    this.refreshStatus();
+    this.needsRender = true;
+    this.dirtySinceSave = true;
+  };
+
+  /* ================================================================ *
+   * mesh commands
+   * ================================================================ */
+
+  A.withMesh = function (label, fn, busyText) {
+    var self = this;
+    var obj = this.scene.current();
+    if (!obj) { UI.toast('No object selected', 'bad'); return; }
+    var run = function (report) {
+      return self.history.runMeshOp(obj, label, function () { return fn(obj, obj.mesh, report); });
+    };
+    if (busyText) {
+      UI.busy(busyText, '', run, function (result, ms) {
+        self.afterMeshOp(obj);
+        if (result && result.message) UI.toast(result.message + ' in ' + UI.formatMs(ms), 'ok', 3600);
+      });
+    } else {
+      var t0 = performance.now();
+      var result = run(function () {});
+      this.afterMeshOp(obj);
+      if (result && result.message) UI.toast(result.message + ' in ' + UI.formatMs(performance.now() - t0), 'ok', 3600);
+    }
+  };
+
+  A.afterMeshOp = function (obj) {
+    obj.mesh.topoDirty = true;
+    obj.mesh.dirtyMinVert = 0;
+    obj.mesh.dirtyMaxVert = obj.mesh.masks.length - 1;
+    this.refreshObjects();
+    this.refreshStatus();
+    this.dirtySinceSave = true;
+    this.needsRender = true;
+  };
+
+  A.subdivide = function (smooth) {
+    var self = this;
+    var obj = this.scene.current();
+    if (!obj) return;
+    var predicted = obj.mesh.liveTris * 4;
+    if (predicted > 6000000) {
+      UI.toast('That would make ' + S.formatCount(predicted) + ' triangles — decimate or remesh first', 'bad', 4200);
+      return;
+    }
+    this.withMesh(smooth ? 'Subdivide (smooth)' : 'Subdivide', function (o, mesh) {
+      var before = mesh.liveTris;
+      mesh.subdivide(!!smooth);
+      return { message: 'Subdivided ' + S.formatCount(before) + ' → ' + S.formatCount(mesh.liveTris) + ' triangles' };
+    }, 'Subdividing');
+  };
+
+  A.smoothAll = function () {
+    this.withMesh('Smooth mesh', function (o, mesh) {
+      mesh.smoothAll(2, 0.5, true);
+      return { message: 'Smoothed the whole mesh' };
+    }, 'Smoothing');
+  };
+
+  A.weld = function () {
+    this.withMesh('Merge vertices', function (o, mesh) {
+      var removed = mesh.weld();
+      return { message: removed ? 'Merged ' + removed + ' duplicate vertices' : 'No duplicate vertices found' };
+    }, 'Merging vertices');
+  };
+
+  A.recomputeNormals = function () {
+    this.withMesh('Recompute normals', function (o, mesh) {
+      mesh.computeNormals();
+      return { message: 'Normals recomputed' };
+    });
+  };
+
+  A.flipNormals = function () {
+    this.withMesh('Flip normals', function (o, mesh) {
+      mesh.flipNormals();
+      return { message: 'Normals flipped' };
+    });
+  };
+
+  A.symmetrize = function (axis, positive) {
+    this.withMesh('Symmetrise', function (o, mesh) {
+      mesh.symmetrize(axis, positive);
+      return { message: 'Symmetrised: ' + S.formatCount(mesh.liveTris) + ' triangles' };
+    }, 'Symmetrising');
+  };
+
+  A.centerOrigin = function () {
+    var self = this;
+    this.withMesh('Centre origin', function (o, mesh) {
+      var moved = mesh.centerOrigin();
+      // keep the object where it looks: shift the transform the other way
+      var world = V3.create(0, 0, 0);
+      V3.transformDir(world, moved, o.matrix());
+      V3.add(o.position, o.position, world);
+      o.touch();
+      return { message: 'Origin centred' };
+    });
+  };
+
+  A.applyTransform = function () {
+    this.withMesh('Apply transform', function (o, mesh) {
+      o.applyTransform();
+      return { message: 'Transform baked into the mesh' };
+    });
+  };
+
+  A.resetTransform = function () {
+    var obj = this.scene.current();
+    if (!obj) return;
+    V3.set(obj.position, 0, 0, 0);
+    Q4.identity(obj.rotation);
+    V3.set(obj.scale, 1, 1, 1);
+    obj.touch();
+    this.refreshStatus();
+    this.needsRender = true;
+  };
+
+  A.maskOp = function (op) {
+    var self = this;
+    var obj = this.scene.current();
+    if (!obj) return;
+    this.history.runMeshOp(obj, 'Mask: ' + op, function () {
+      var mesh = obj.mesh;
+      if (op === 'clear') mesh.setMaskAll(0);
+      else if (op === 'fill') mesh.setMaskAll(1);
+      else if (op === 'invert') mesh.invertMask();
+      else if (op === 'smooth') mesh.smoothMask(3, 0.6);
+    });
+    this.afterMeshOp(obj);
+  };
+
+  A.fillColor = function (white) {
+    var self = this;
+    var obj = this.scene.current();
+    if (!obj) return;
+    var c = white ? [1, 1, 1] : this.settings.paintColor;
+    this.history.runMeshOp(obj, 'Fill colour', function () {
+      obj.mesh.setColorAll(c[0], c[1], c[2]);
+    });
+    this.set('vertexColors', true);
+    this.afterMeshOp(obj);
+  };
+
+  A.startColorPick = function () {
+    this.pickingColor = true;
+    this.canvas.style.cursor = 'copy';
+    UI.toast('Click the model to pick up its colour');
+  };
+
+  A.finishColorPick = function (p) {
+    this.pickingColor = false;
+    this.canvas.style.cursor = '';
+    var hit = this.engine.pick(p.x, p.y, true);
+    if (!hit) { UI.toast('Nothing there', 'bad'); return; }
+    var mesh = hit.object.mesh;
+    var v = mesh.tris.array[hit.tri * 3];
+    var c = [mesh.colors.array[v * 3], mesh.colors.array[v * 3 + 1], mesh.colors.array[v * 3 + 2]];
+    var hex = UI.rgbToHex(c);
+    this.set('paintColorHex', hex);
+    this.rebuildColourSwatches && this.rebuildColourSwatches();
+    UI.toast('Picked ' + hex);
+    this.needsRender = true;
+  };
+
+  A.frameSelection = function (immediate) {
+    var obj = this.scene.current();
+    if (!obj) return this.frameAll(immediate);
+    var mn = V3.create(0, 0, 0), mx = V3.create(0, 0, 0);
+    obj.worldBounds(mn, mx);
+    this.camera.frameBounds(mn, mx, immediate);
+    this.needsRender = true;
+  };
+
+  A.frameAll = function (immediate) {
+    var mn = V3.create(0, 0, 0), mx = V3.create(0, 0, 0);
+    this.scene.bounds(mn, mx);
+    this.camera.frameBounds(mn, mx, immediate);
+    this.needsRender = true;
+  };
+
+  /* ================================================================ *
+   * remesh / decimate
+   * ================================================================ */
+
+  A.runRemesh = function (opts) {
+    var self = this;
+    var obj = this.scene.current();
+    if (!obj) return;
+    UI.busy('Voxel remeshing', 'resolution ' + opts.resolution, function (report) {
+      return self.history.runMeshOp(obj, 'Voxel remesh', function () {
+        return S.Remesh.run(obj.mesh, opts, function (frac) {
+          // the overlay cannot repaint mid-operation, but the text is set for
+          // anything that reads the DOM (and for the tests)
+          report(Math.round(frac * 100) + '%');
+        });
+      });
+    }, function (result, ms) {
+      self.afterMeshOp(obj);
+      if (result && result.ok) {
+        UI.toast('Remeshed: ' + S.formatCount(result.before.tris) + ' → ' +
+          S.formatCount(result.after.tris) + ' triangles in ' + UI.formatMs(ms), 'ok', 4000);
+      } else if (result && result.reason) {
+        UI.toast(result.reason, 'bad', 4000);
+      }
+    });
+  };
+
+  A.runDecimate = function (target, preserveBorders) {
+    var self = this;
+    this.withMesh('Decimate', function (o, mesh) {
+      var before = mesh.liveTris;
+      mesh.decimate(target, preserveBorders);
+      return { message: 'Decimated ' + S.formatCount(before) + ' → ' + S.formatCount(mesh.liveTris) + ' triangles' };
+    }, 'Decimating');
+  };
+
+  /* ================================================================ *
+   * import / export
+   * ================================================================ */
+
+  A.importDialog = function () {
+    var self = this;
+    var axis = this.settings.exportAxis;
+    var fitCheck, centreCheck, replaceCheck;
+    UI.dialog({
+      title: 'Import a model',
+      icon: 'upload',
+      content: [
+        el('p', { text: 'OBJ, STL (binary or ascii), PLY, glTF/GLB and .sculpt projects. Triangle soups such as STL are welded on the way in so they can be sculpted straight away.' }),
+        UI.select({ label: 'Up axis', value: axis, options: S.IO.AXIS_MODES,
+          onchange: function (v) { axis = v; } }),
+        el('div.row.wrap', null, [
+          (fitCheck = UI.check({ label: 'Scale to about one unit', value: false,
+            title: 'Handy when a model arrives in millimetres or in feet' })),
+          (centreCheck = UI.check({ label: 'Centre on origin', value: false }))
+        ]),
+        el('div.row.wrap', null, [
+          (replaceCheck = UI.check({ label: 'Replace the current scene', value: false }))
+        ]),
+        el('div.hint', { text: 'You can also drag files onto the window at any time.' })
+      ],
+      buttons: [
+        { label: 'Cancel' },
+        { label: 'Choose files…', class: 'accent', onclick: function () {
+          UI.pickFiles('.obj,.stl,.ply,.glb,.gltf,.sculpt', true, function (files) {
+            self.importFiles(files, {
+              axis: axis,
+              fit: fitCheck.get(),
+              centre: centreCheck.get(),
+              replace: replaceCheck.get()
+            });
+          });
+        } }
+      ]
+    });
+  };
+
+  A.importFiles = function (files, opts) {
+    var self = this;
+    opts = opts || {};
+    var pending = files.length;
+    var results = [];
+    files.forEach(function (file) {
+      UI.readFile(file, function (buffer) {
+        results.push({ name: file.name, buffer: buffer, size: file.size });
+        if (--pending === 0) self.processImports(results, opts);
+      }, function (err) {
+        pending--;
+        UI.toast('Could not read ' + file.name, 'bad');
+        if (pending === 0 && results.length) self.processImports(results, opts);
+      });
+    });
+  };
+
+  A.processImports = function (files, opts) {
+    var self = this;
+    UI.busy('Importing', files.map(function (f) { return f.name; }).join(', '), function (report) {
+      var added = [];
+      var warnings = [];
+      var projectLoaded = false;
+      for (var i = 0; i < files.length; i++) {
+        report(files[i].name);
+        var res = S.IO.importBuffer(files[i].name, files[i].buffer);
+        if (res.project) {
+          self.applyProject(res.project);
+          projectLoaded = true;
+          continue;
+        }
+        (res.warnings || []).forEach(function (w) { warnings.push(files[i].name + ': ' + w); });
+        var baseName = files[i].name.replace(/\.[^.]+$/, '');
+        for (var k = 0; k < res.objects.length; k++) {
+          var src = res.objects[k];
+          if (!src.indices || !src.indices.length) continue;
+          var mesh = new S.Mesh();
+          var positions = src.positions;
+          if (opts.axis === 'z') {
+            positions = new Float32Array(src.positions.length);
+            var tmp = [0, 0, 0];
+            for (var v = 0; v < src.positions.length; v += 3) {
+              S.IO.axisIn('z', src.positions[v], src.positions[v + 1], src.positions[v + 2], tmp);
+              positions[v] = tmp[0]; positions[v + 1] = tmp[1]; positions[v + 2] = tmp[2];
+            }
+          }
+          mesh.setFromArrays(positions, src.indices, { colors: src.colors, weld: true });
+          if (!mesh.liveTris) continue;
+          var name = res.objects.length > 1 ? baseName + ' / ' + (src.name || (k + 1)) : baseName;
+          var obj = new S.SceneObject(name, mesh);
+          if (opts.centre || opts.fit) {
+            mesh.centerOrigin();
+          }
+          if (opts.fit) {
+            var r = mesh.boundsRadius();
+            if (r > 1e-9) {
+              var s = 0.6 / r;
+              var m = M4.identity(M4.create());
+              m[0] = m[5] = m[10] = s;
+              mesh.applyMatrix(m);
+            }
+          }
+          added.push(obj);
+        }
+      }
+      return { added: added, warnings: warnings, projectLoaded: projectLoaded };
+    }, function (result, ms) {
+      if (!result) return;
+      if (result.projectLoaded && !result.added.length) return;
+      if (!result.added.length) {
+        self.showImportWarnings(result.warnings, 0, 0);
+        return;
+      }
+      self.sceneOp('Import', function () {
+        if (opts.replace) {
+          for (var i = self.scene.objects.length - 1; i >= 0; i--) {
+            self.renderer.releaseObject(self.scene.objects[i]);
+            self.scene.remove(i);
+          }
+        }
+        for (var k = 0; k < result.added.length; k++) self.scene.add(result.added[k]);
+      });
+      var tris = 0, verts = 0;
+      result.added.forEach(function (o) { tris += o.mesh.liveTris; verts += o.mesh.liveVerts; });
+      self.frameAll(true);
+      self.refreshObjects();
+      self.refreshStatus();
+      self.dirtySinceSave = true;
+      self.needsRender = true;
+      UI.toast('Imported ' + result.added.length + ' object' + (result.added.length > 1 ? 's' : '') + ': ' +
+        S.formatCount(tris) + ' triangles in ' + UI.formatMs(ms), 'ok', 3800);
+      if (result.warnings.length) self.showImportWarnings(result.warnings, tris, verts);
+    });
+  };
+
+  A.showImportWarnings = function (warnings, tris, verts) {
+    if (!warnings || !warnings.length) return;
+    UI.dialog({
+      title: 'Import notes',
+      icon: 'info',
+      content: [
+        tris ? el('p', { text: 'The model came in, but the reader had something to say:' })
+             : el('p', { text: 'Nothing could be imported from that file.' })
+      ].concat(warnings.map(function (w) { return el('div.warn', { text: w }); })),
+      buttons: [{ label: 'Close', class: 'accent' }]
+    });
+  };
+
+  A.exportOptions = function () {
+    var st = this.settings;
+    return {
+      scale: st.exportScale,
+      axis: st.exportAxis,
+      applyTransform: true,
+      includeColors: st.exportColors,
+      includeNormals: st.exportNormals,
+      ascii: st.exportAscii
+    };
+  };
+
+  A.exportTargets = function () {
+    var objs = [];
+    if (this.settings.exportSelectedOnly) {
+      var cur = this.scene.current();
+      if (cur) objs.push(cur);
+    } else {
+      for (var i = 0; i < this.scene.objects.length; i++) {
+        if (this.scene.objects[i].visible) objs.push(this.scene.objects[i]);
+      }
+    }
+    return objs;
+  };
+
+  A.quickExport = function (format) {
+    var self = this;
+    var objs = this.exportTargets();
+    if (!objs.length) { UI.toast('Nothing to export', 'bad'); return; }
+    var opts = this.exportOptions();
+    UI.busy('Exporting ' + format.toUpperCase(), '', function () {
+      var geoms = S.IO.prepare(objs, opts);
+      if (!geoms.length) throw new Error('The selected objects have no geometry.');
+      var out = S.IO.exportGeoms(format, geoms, opts);
+      var name = self.exportFilename(out.ext);
+      var size = UI.download(out.data, name, out.mime);
+      var tris = 0;
+      geoms.forEach(function (g) { tris += g.triCount; });
+      return { name: name, size: size, tris: tris };
+    }, function (result, ms) {
+      if (!result) return;
+      UI.toast('Saved ' + result.name + ' — ' + S.formatCount(result.tris) + ' triangles, ' +
+        S.formatBytes(result.size), 'ok', 4200);
+    });
+  };
+
+  A.exportFilename = function (ext) {
+    var obj = this.scene.current();
+    var base = (obj && obj.name ? obj.name : 'sculpt').replace(/[^\w\-]+/g, '_').replace(/^_+|_+$/g, '');
+    if (!base) base = 'sculpt';
+    var d = new Date();
+    function two(n) { return (n < 10 ? '0' : '') + n; }
+    var stamp = d.getFullYear() + two(d.getMonth() + 1) + two(d.getDate()) + '-' + two(d.getHours()) + two(d.getMinutes());
+    return base + '_' + stamp + '.' + ext;
+  };
+
+  A.saveProject = function () {
+    var self = this;
+    UI.busy('Saving project', '', function () {
+      var data = S.IO.saveProject({
+        objects: self.scene.objects,
+        selected: self.scene.selected,
+        camera: self.camera.serialize(),
+        settings: self.exportableSettings()
+      });
+      var name = self.exportFilename('sculpt');
+      var size = UI.download(data, name, 'application/octet-stream');
+      return { name: name, size: size };
+    }, function (result) {
+      if (!result) return;
+      self.dirtySinceSave = false;
+      UI.toast('Saved ' + result.name + ' (' + S.formatBytes(result.size) + ')', 'ok', 3600);
+    });
+  };
+
+  A.exportableSettings = function () {
+    var out = {};
+    for (var k in DEFAULTS) out[k] = this.settings[k];
+    return out;
+  };
+
+  A.openProject = function () {
+    var self = this;
+    UI.pickFiles('.sculpt', false, function (files) {
+      self.importFiles(files, { replace: true });
+    });
+  };
+
+  A.applyProject = function (project) {
+    var self = this;
+    for (var i = this.scene.objects.length - 1; i >= 0; i--) {
+      this.renderer.releaseObject(this.scene.objects[i]);
+    }
+    this.scene.clear();
+    this.history.clear();
+    project.objects.forEach(function (o) {
+      var mesh = new S.Mesh();
+      mesh.setFromArrays(o.positions, o.indices, { colors: o.colors, weld: false });
+      if (o.masks && o.masks.length === mesh.masks.length) mesh.masks.array.set(o.masks, 0);
+      var obj = new S.SceneObject(o.name, mesh);
+      if (o.position) V3.set(obj.position, o.position[0], o.position[1], o.position[2]);
+      if (o.rotation) obj.rotation.set(o.rotation);
+      if (o.scale) V3.set(obj.scale, o.scale[0], o.scale[1], o.scale[2]);
+      if (o.baseColor) V3.set(obj.baseColor, o.baseColor[0], o.baseColor[1], o.baseColor[2]);
+      obj.visible = o.visible !== false;
+      obj.touch();
+      self.scene.add(obj, false);
+    });
+    this.scene.selected = Math.min(project.selected || 0, Math.max(0, this.scene.objects.length - 1));
+    if (project.settings) {
+      for (var k in project.settings) {
+        if (k in DEFAULTS && k.slice(0, 6) !== 'export') this.settings[k] = project.settings[k];
+      }
+      this.settings.paintColor = new Float32Array(UI.hexToRgb(this.settings.paintColorHex));
+      this.renderer.setMatcap(this.settings.matcap);
+      this.camera.ortho = !!this.settings.ortho;
+      this.camera.fov = this.settings.fov * Math.PI / 180;
+    }
+    if (project.camera) this.camera.restore(project.camera);
+    else this.frameAll(true);
+    this.refreshObjects();
+    this.refreshStatus();
+    this.syncMatcaps();
+    this.syncViewButtons();
+    this.dirtySinceSave = false;
+    this.needsRender = true;
+    UI.toast('Project loaded' + (project.saved ? ' (saved ' + new Date(project.saved).toLocaleString() + ')' : ''), 'ok', 3600);
+  };
+
+  A.screenshot = function () {
+    var self = this;
+    this.cursor.valid = false;
+    this.draw();
+    this.canvas.toBlob(function (blob) {
+      if (!blob) { UI.toast('Screenshot failed', 'bad'); return; }
+      var name = self.exportFilename('png');
+      UI.download(blob, name, 'image/png');
+      UI.toast('Saved ' + name, 'ok');
+    }, 'image/png');
+  };
+
+  A.loadMatcapImage = function () {
+    var self = this;
+    UI.pickFiles('image/*', false, function (files) {
+      var url = URL.createObjectURL(files[0]);
+      var img = new Image();
+      img.onload = function () {
+        self.renderer.setMatcap('custom', img);
+        self.settings.matcap = 'custom';
+        self.syncMatcaps();
+        self.needsRender = true;
+        URL.revokeObjectURL(url);
+        UI.toast('Matcap loaded');
+      };
+      img.onerror = function () { UI.toast('That image could not be loaded', 'bad'); };
+      img.src = url;
+    });
+  };
+  /* ================================================================ *
+   * dialogs
+   * ================================================================ */
+
+  A.dialogNew = function () {
+    var self = this;
+    UI.dialog({
+      title: 'Start a new sculpt',
+      icon: 'file',
+      content: [
+        el('p', { text: 'This clears the scene and the undo history. Save your project first if you want to come back to it.' })
+      ],
+      buttons: [
+        { label: 'Cancel' },
+        { label: 'Save project first', onclick: function () { self.saveProject(); } },
+        { label: 'New sculpt', class: 'accent', onclick: function () { self.dialogPrimitive(true); } }
+      ]
+    });
+  };
+
+  A.dialogPrimitive = function (replaceScene) {
+    var self = this;
+    var chosen = 'sphere';
+    var detailRow;
+    var grid = el('div.prim-grid');
+    var buttons = {};
+    var iconFor = { sphere: 'sphere', uvsphere: 'uvsphere', box: 'cube', roundbox: 'roundbox',
+                    cylinder: 'cylinder', cone: 'cone', torus: 'torus', capsule: 'capsule', plane: 'plane' };
+    function select(id) {
+      chosen = id;
+      for (var k in buttons) buttons[k].classList.toggle('on', k === id);
+      var entry = S.Prim.byId(id);
+      detailRow.set(entry.detail);
+      detailRow.querySelector('label').textContent = entry.detailLabel || 'Detail';
+      updateEstimate();
+    }
+    var estimate = el('div.hint', { text: '' });
+    function updateEstimate() {
+      var entry = S.Prim.byId(chosen);
+      var data = entry.build(detailRow.get());
+      estimate.textContent = 'About ' + S.formatCount(data.indices.length / 3) + ' triangles before welding.';
+    }
+    S.Prim.catalogue.forEach(function (entry) {
+      var b = el('button.prim', { onclick: function () { select(entry.id); } }, [
+        UI.icon(iconFor[entry.id] || 'cube'),
+        el('b', { text: entry.label }),
+        el('small', { text: entry.hint })
+      ]);
+      buttons[entry.id] = b;
+      grid.appendChild(b);
+    });
+    detailRow = UI.slider({ label: 'Detail', min: 0, max: 12, step: 1, value: 4,
+      onchange: function () { updateEstimate(); } });
+
+    UI.dialog({
+      title: replaceScene ? 'New sculpt from a primitive' : 'Add a primitive',
+      icon: 'plus',
+      wide: true,
+      content: [grid, detailRow, estimate,
+        el('div.hint', { text: 'Sphere is the usual starting point: its triangles are all about the same size, which is what dynamic topology likes.' })],
+      buttons: [
+        { label: 'Cancel' },
+        { label: replaceScene ? 'Start sculpting' : 'Add object', class: 'accent', onclick: function () {
+          var entry = S.Prim.byId(chosen);
+          var detail = S.clamp(detailRow.get(), 0, entry.detailMax || 12);
+          if (replaceScene) self.newScene(chosen, detail);
+          else self.addPrimitive(chosen, detail);
+        } }
+      ]
+    });
+    select('sphere');
+  };
+
+  A.dialogRemesh = function () {
+    var self = this;
+    var obj = this.scene.current();
+    if (!obj) { UI.toast('No object selected', 'bad'); return; }
+    var mesh = obj.mesh;
+    var open = mesh.countBorderEdges() > 0;
+    var st = this.settings;
+    var resRow, smoothRow, colorCheck, shellCheck, thicknessRow;
+    var info = el('div.hint');
+    var warn = el('div.warn', { hidden: true });
+
+    function refresh() {
+      var plan = S.Remesh.plan(mesh, resRow.get());
+      var voxels = plan.samples;
+      info.innerHTML = 'Voxel grid <b>' + plan.dims.join(' × ') + '</b> (' + S.formatCount(voxels) +
+        ' samples), voxel size <b>' + plan.voxel.toPrecision(3) + '</b>. Expect roughly <b>' +
+        S.formatCount(plan.estimateTris) + '</b> triangles.';
+      var heavy = voxels > 6e6;
+      warn.hidden = !(heavy || plan.clamped);
+      if (plan.clamped) warn.textContent = 'That resolution needs more memory than is safe, so it has been capped at ' + plan.resolution + '.';
+      else if (heavy) warn.textContent = 'This is a big grid — the app will be unresponsive for a few seconds while it works.';
+      thicknessRow.style.display = shellCheck.get() ? '' : 'none';
+    }
+
+    resRow = UI.slider({ label: 'Resolution', min: 24, max: 640, step: 4, value: st.remeshResolution,
+      title: 'Voxels along the longest side of the model',
+      onchange: function (v) { self.set('remeshResolution', v); refresh(); } });
+    smoothRow = UI.slider({ label: 'Relax passes', min: 0, max: 6, step: 1, value: st.remeshSmooth,
+      title: 'Takes the staircase off the voxel surface',
+      onchange: function (v) { self.set('remeshSmooth', v); } });
+    colorCheck = UI.check({ label: 'Carry vertex colour over', value: true });
+    shellCheck = UI.check({ label: 'Shell (solidify) instead of fill', value: open,
+      title: 'For surfaces with open edges, which have no inside to fill',
+      onchange: function () { refresh(); } });
+    thicknessRow = UI.slider({ label: 'Thickness', min: 0.002, max: 0.2, step: 0.002,
+      value: Math.max(0.01, mesh.boundsRadius() * 0.05),
+      format: function (v) { return Number(v).toFixed(3); } });
+
+    UI.dialog({
+      title: 'Voxel remesh',
+      icon: 'remesh',
+      content: [
+        el('p', { text: 'Rebuilds the surface as an even grid of triangles. Use it when sculpting has stretched the topology, or before decimating for a game.' }),
+        resRow, smoothRow,
+        el('div.row.wrap', null, [colorCheck, shellCheck]),
+        thicknessRow,
+        info, warn,
+        open ? el('div.warn', { text: 'This mesh has open edges (' + mesh.countBorderEdges() +
+          ' of them). Filling needs a closed surface, so shell mode is switched on for you.' }) : null,
+        el('div.hint', { text: 'Current mesh: ' + S.formatCount(mesh.liveTris) + ' triangles, ' +
+          S.formatCount(mesh.liveVerts) + ' vertices.' })
+      ],
+      buttons: [
+        { label: 'Cancel' },
+        { label: 'Remesh', class: 'accent', icon: 'remesh', onclick: function () {
+          self.runRemesh({
+            resolution: resRow.get(),
+            smooth: smoothRow.get(),
+            colors: colorCheck.get(),
+            shell: shellCheck.get(),
+            thickness: thicknessRow.get()
+          });
+        } }
+      ]
+    });
+    refresh();
+  };
+
+  A.dialogDecimate = function () {
+    var self = this;
+    var obj = this.scene.current();
+    if (!obj) { UI.toast('No object selected', 'bad'); return; }
+    var current = obj.mesh.liveTris;
+    var target = Math.min(this.settings.decimateTarget, Math.max(100, Math.floor(current / 2)));
+    var info = el('div.hint');
+    var targetRow, borderCheck;
+    function refresh() {
+      var t = targetRow.get();
+      info.innerHTML = 'From <b>' + S.formatCount(current) + '</b> down to <b>' + S.formatCount(t) +
+        '</b> triangles — ' + Math.round(t / current * 100) + '% of the current mesh.';
+    }
+    targetRow = UI.slider({ label: 'Target', min: 100, max: Math.max(1000, current), step: 100, value: target,
+      format: function (v) { return S.formatCount(Number(v)); },
+      onchange: function (v) { self.set('decimateTarget', v); refresh(); } });
+    borderCheck = UI.check({ label: 'Keep open edges where they are', value: true });
+    UI.dialog({
+      title: 'Decimate',
+      icon: 'decimate',
+      content: [
+        el('p', { text: 'Collapses the edges that change the shape least, which is how game LODs are usually baked. Sculpt at full detail, decimate on the way out.' }),
+        targetRow,
+        el('div.row.wrap', null, borderCheck),
+        info,
+        el('div.btn-grid.three', null, [
+          UI.button('50%', { onclick: function () { targetRow.set(Math.floor(current / 2)); refresh(); } }),
+          UI.button('25%', { onclick: function () { targetRow.set(Math.floor(current / 4)); refresh(); } }),
+          UI.button('10%', { onclick: function () { targetRow.set(Math.floor(current / 10)); refresh(); } })
+        ])
+      ],
+      buttons: [
+        { label: 'Cancel' },
+        { label: 'Decimate', class: 'accent', icon: 'decimate', onclick: function () {
+          self.runDecimate(targetRow.get(), borderCheck.get());
+        } }
+      ]
+    });
+    refresh();
+  };
+
+  A.dialogExport = function () {
+    var self = this;
+    var st = this.settings;
+    var format = st.exportFormat;
+    var summary = el('div.hint');
+    var note = el('div.hint');
+    var asciiCheck, colorCheck, normalCheck, selectedCheck, scaleRow, axisRow, formatSeg;
+
+    function estimateBytes(tris, verts) {
+      switch (format) {
+        case 'stl': return asciiCheck.get() ? tris * 260 : 84 + tris * 50;
+        case 'obj': return verts * (colorCheck.get() ? 62 : 34) + (normalCheck.get() ? verts * 38 : 0) + tris * 26;
+        case 'ply': return asciiCheck.get() ? verts * 60 + tris * 14 : 300 + verts * (12 + (normalCheck.get() ? 12 : 0) + (colorCheck.get() ? 3 : 0)) + tris * 13;
+        default: return verts * (24 + (colorCheck.get() ? 16 : 0)) + tris * (verts > 65535 ? 12 : 6) + 2048;
+      }
+    }
+
+    function refresh() {
+      var objs = selectedCheck.get() ? (self.scene.current() ? [self.scene.current()] : [])
+                                     : self.exportTargets();
+      var tris = 0, verts = 0;
+      objs.forEach(function (o) { tris += o.mesh.liveTris; verts += o.mesh.liveVerts; });
+      summary.innerHTML = '<b>' + objs.length + '</b> object' + (objs.length === 1 ? '' : 's') + ', <b>' +
+        S.formatCount(tris) + '</b> triangles, <b>' + S.formatCount(verts) + '</b> vertices — about <b>' +
+        S.formatBytes(estimateBytes(tris, verts)) + '</b>.';
+      var f = S.IO.FORMATS[format];
+      note.textContent = f ? f.note : '';
+      asciiCheck.parentNode.style.display = (format === 'stl' || format === 'ply') ? '' : 'none';
+      colorCheck.parentNode.style.display = format === 'stl' ? '' : '';
+    }
+
+    formatSeg = UI.segment({ value: format, options: [
+      { id: 'glb', label: 'GLB', title: 'glTF 2.0 binary — game engines' },
+      { id: 'obj', label: 'OBJ', title: 'Wavefront OBJ — universal' },
+      { id: 'ply', label: 'PLY', title: 'Stanford PLY — best vertex colour' },
+      { id: 'stl', label: 'STL', title: 'STL — 3D printing' }
+    ], onchange: function (v) { format = v; self.set('exportFormat', v); refresh(); } });
+
+    scaleRow = UI.slider({ label: 'Scale', min: 0.001, max: 1000, step: 0.001, value: st.exportScale,
+      format: function (v) { return '×' + Number(v).toPrecision(4); },
+      title: 'Multiply every coordinate — use 100 for centimetres, 1000 for millimetres',
+      onchange: function (v) { self.set('exportScale', v); } });
+    axisRow = UI.select({ label: 'Up axis', value: st.exportAxis, options: S.IO.AXIS_MODES,
+      onchange: function (v) { self.set('exportAxis', v); } });
+    colorCheck = UI.check({ label: 'Vertex colour', value: st.exportColors,
+      onchange: function (v) { self.set('exportColors', v); refresh(); } });
+    normalCheck = UI.check({ label: 'Normals', value: st.exportNormals,
+      onchange: function (v) { self.set('exportNormals', v); refresh(); } });
+    asciiCheck = UI.check({ label: 'Text instead of binary', value: st.exportAscii,
+      onchange: function (v) { self.set('exportAscii', v); refresh(); } });
+    selectedCheck = UI.check({ label: 'Selected object only', value: st.exportSelectedOnly,
+      onchange: function (v) { self.set('exportSelectedOnly', v); refresh(); } });
+
+    UI.dialog({
+      title: 'Export model',
+      icon: 'download',
+      wide: true,
+      content: [
+        el('div.warn.ok', { text: 'Nothing is locked, watermarked or limited here. Export as often as you like, at any resolution.' }),
+        el('h4', { text: 'Format' }),
+        el('div.row', null, formatSeg),
+        note,
+        el('h4', { text: 'Units and orientation' }),
+        scaleRow, axisRow,
+        el('h4', { text: 'What to include' }),
+        el('div.row.wrap', null, [colorCheck, normalCheck, asciiCheck, selectedCheck]),
+        el('h4', { text: 'Summary' }),
+        summary,
+        el('div.hint', { text: 'Object transforms are baked into the exported coordinates, so what you see is what you get.' })
+      ],
+      buttons: [
+        { label: 'Cancel' },
+        { label: 'Save project instead', icon: 'save', onclick: function () { self.saveProject(); } },
+        { label: 'Export', class: 'accent', icon: 'download', onclick: function () { self.quickExport(format); } }
+      ]
+    });
+    refresh();
+  };
+
+  A.dialogPreferences = function () {
+    var self = this;
+    var st = this.settings;
+    UI.dialog({
+      title: 'Preferences',
+      icon: 'settings',
+      content: [
+        el('h4', { text: 'Undo history' }),
+        UI.slider({ label: 'Memory', min: 64, max: 2048, step: 32, value: st.historyBudgetMB, suffix: ' MB',
+          title: 'Strokes that change topology store a full snapshot, so this is the practical limit on how far back you can go',
+          onchange: function (v) { self.set('historyBudgetMB', v); self.refreshStatus(); } }),
+        el('div.hint', { text: 'Currently holding ' + this.history.undoStack.length + ' steps using ' +
+          S.formatBytes(this.history.bytes) + '.' }),
+        el('h4', { text: 'Recovery' }),
+        el('div.row.wrap', null, UI.check({ label: 'Keep a recovery copy in this browser', value: st.autosave,
+          onchange: function (v) { self.set('autosave', v); } })),
+        el('div.hint', { text: 'Saved every two minutes while you work, and offered back the next time you open the app. It never leaves your machine.' }),
+        el('h4', { text: 'Input' }),
+        el('div.row.wrap', null, [
+          UI.check({ label: 'One finger navigates instead of sculpting', value: st.navigateMode,
+            onchange: function (v) { self.set('navigateMode', v); self.syncViewButtons(); } })
+        ]),
+        el('div.hint', { text: 'Right mouse or two fingers always orbit; middle mouse or three fingers pan.' }),
+        el('h4', { text: 'Everything else' }),
+        el('div.row', null, UI.button('Reset all settings to defaults', { class: 'grow danger', onclick: function () {
+          try { root.localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+          UI.toast('Settings reset — reload to apply', 'ok', 4000);
+        } }))
+      ],
+      buttons: [{ label: 'Done', class: 'accent' }]
+    });
+  };
+
+  A.dialogShortcuts = function () {
+    function dl(pairs) {
+      var d = el('dl');
+      pairs.forEach(function (p) {
+        d.appendChild(el('dt', { text: p[0] }));
+        d.appendChild(el('dd', { text: p[1] }));
+      });
+      return d;
+    }
+    var brushKeys = S.BRUSHES.map(function (b) { return [b.key, b.label]; });
+    UI.dialog({
+      title: 'Keyboard and mouse',
+      icon: 'keyboard',
+      wide: true,
+      content: el('div.shortcut-grid', null, [
+        el('div', null, [el('h4', { text: 'Mouse' }), dl([
+          ['Left drag', 'Sculpt with the current brush'],
+          ['Shift + left', 'Smooth (temporary)'],
+          ['Ctrl + left', 'Invert the brush'],
+          ['Right drag', 'Orbit'],
+          ['Middle drag', 'Pan'],
+          ['Alt + left', 'Orbit'],
+          ['Space + left', 'Pan'],
+          ['Wheel', 'Zoom'],
+          ['Shift + wheel', 'Brush radius'],
+          ['Ctrl + wheel', 'Brush strength']
+        ])]),
+        el('div', null, [el('h4', { text: 'Touch' }), dl([
+          ['One finger', 'Sculpt'],
+          ['Two fingers', 'Orbit and pinch to zoom'],
+          ['Three fingers', 'Pan'],
+          ['Orbit button', 'Make one finger navigate instead']
+        ]), el('h4', { text: 'View' }), dl([
+          ['F', 'Frame the selected object'],
+          ['Shift + F', 'Frame everything'],
+          ['Alt + 1…7', 'Front, back, left, right, top, bottom, 3/4'],
+          ['W', 'Wireframe'],
+          ['Shift + W', 'Flat shading'],
+          ['Shift + G', 'Grid'],
+          ['Shift + O', 'Orthographic']
+        ])]),
+        el('div', null, [el('h4', { text: 'Brushes' }), dl(brushKeys)]),
+        el('div', null, [el('h4', { text: 'Tools and files' }), dl([
+          ['[ / ]', 'Brush radius'],
+          ['{ / }', 'Brush strength'],
+          ['X / Y / Z', 'Toggle mirroring on that axis'],
+          ['D', 'Dynamic topology on or off'],
+          ['Ctrl + Z / Ctrl + Shift + Z', 'Undo / redo'],
+          ['Ctrl + R', 'Voxel remesh'],
+          ['Ctrl + D', 'Subdivide'],
+          ['Shift + A', 'Add a primitive'],
+          ['Ctrl + I', 'Import a model'],
+          ['Ctrl + E', 'Export a model'],
+          ['Ctrl + S', 'Save the project'],
+          ['Ctrl + O', 'Open a project'],
+          ['Ctrl + P', 'Screenshot'],
+          ['Esc', 'Cancel the stroke, close menus'],
+          ['?', 'This list']
+        ])])
+      ]),
+      buttons: [{ label: 'Close', class: 'accent' }]
+    });
+  };
+
+  A.dialogPipeline = function () {
+    UI.dialog({
+      title: 'Getting a sculpt into a game',
+      icon: 'cube',
+      wide: true,
+      content: [
+        el('h4', { text: '1. Sculpt freely, then rebuild the topology' }),
+        el('p', { text: 'Dynamic topology gives you detail where you need it but leaves uneven triangles. Run a voxel remesh (Ctrl+R) when the surface gets messy, and again before you export.' }),
+        el('h4', { text: '2. Decimate to a budget' }),
+        el('p', { text: 'A character for a real-time game usually wants somewhere between 5k and 60k triangles. Decimate collapses the least important edges first, so the silhouette survives. Export one file per level of detail by decimating to 100%, 50% and 20% in turn.' }),
+        el('h4', { text: '3. Export GLB' }),
+        el('p', { html: 'GLB is one self-contained binary: geometry, normals, vertex colours and a PBR material in a single file. It is the format Three.js, Unity, Godot and Unreal all read without a plugin.' }),
+        el('h4', { text: 'Three.js' }),
+        el('p', { html: 'Load it with <code>GLTFLoader</code>:' }),
+        el('pre', { style: { background: 'var(--panel-2)', border: '1px solid var(--line)', borderRadius: '7px', padding: '10px', overflowX: 'auto', fontSize: '11.5px' } },
+          el('code', { text: "import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';\n\nnew GLTFLoader().load('models/hero.glb', (gltf) => {\n  const mesh = gltf.scene;\n  mesh.traverse((n) => { if (n.isMesh) n.castShadow = true; });\n  scene.add(mesh);\n});" })),
+        el('p', { html: 'If your material uses vertex colours, set <code>material.vertexColors = true</code> — the exporter writes them as <code>COLOR_0</code>.' }),
+        el('h4', { text: 'Axes and units' }),
+        el('p', { text: 'SculptFree, glTF, Three.js and Unity are all Y-up, so leave the up axis alone for those. Choose Z-up for Blender, 3ds Max or Godot. The scale multiplier is there for engines that work in centimetres (×100) or millimetres (×1000).' }),
+        el('h4', { text: 'What about UVs and texturing?' }),
+        el('p', { text: 'There is no UV unwrapper here — that is a different tool. Vertex colours carry through to GLB and PLY, which is enough for stylised and low-poly work. For texture maps, export the GLB and unwrap it in Blender.' })
+      ],
+      buttons: [{ label: 'Close', class: 'accent' }]
+    });
+  };
+
+  A.dialogAbout = function () {
+    var info = {};
+    try { info = this.renderer.contextInfo(); } catch (e) {}
+    UI.dialog({
+      title: 'About SculptFree',
+      icon: 'brand',
+      content: [
+        el('p', { html: '<b>SculptFree ' + S.VERSION + '</b> — a digital sculpting app that runs in a browser, in one HTML file, with no account, no network and no paywall.' }),
+        el('div.warn.ok', { text: 'Import and export are free and unlimited: OBJ, STL, PLY and GLB, in and out, at any triangle count.' }),
+        el('h4', { text: 'What is in it' }),
+        el('p', { text: '18 brushes with symmetry, masking and vertex painting; dynamic topology; voxel remeshing; Loop subdivision; quadric decimation; a multi-object scene with transforms; undo that covers topology changes; and its own WebGL2 renderer with generated matcaps, so there are no assets to download.' }),
+        el('h4', { text: 'Your work stays on your machine' }),
+        el('p', { text: 'Nothing is uploaded anywhere. The recovery copy lives in this browser’s own storage, and projects are saved to files you keep.' }),
+        el('h4', { text: 'This machine' }),
+        el('dl.kv', null, [
+          el('dt', { text: 'Renderer' }), el('dd', { text: info.renderer || 'unknown' }),
+          el('dt', { text: 'Max texture' }), el('dd', { text: (info.maxTextureSize || '?') + ' px' })
+        ])
+      ],
+      buttons: [{ label: 'Close', class: 'accent' }]
+    });
+  };
+
+  /* ================================================================ *
+   * recovery copy in IndexedDB
+   * ================================================================ */
+
+  A.withDB = function (mode, fn) {
+    if (!root.indexedDB) return;
+    try {
+      var req = root.indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = function () {
+        var db = req.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+      };
+      req.onsuccess = function () {
+        var db = req.result;
+        try {
+          var tx = db.transaction(DB_STORE, mode);
+          fn(tx.objectStore(DB_STORE), db);
+        } catch (e) { db.close(); }
+      };
+      req.onerror = function () { /* storage unavailable: not fatal */ };
+    } catch (e) { /* ignore */ }
+  };
+
+  A.maybeAutosave = function (now) {
+    if (!this.settings.autosave || !this.dirtySinceSave) return;
+    if (this.engine.active) return;
+    if (now - this.lastAutosave < 120000) return;
+    this.lastAutosave = now;
+    this.writeAutosave();
+  };
+
+  A.writeAutosave = function () {
+    var self = this;
+    if (!this.scene.objects.length) return;
+    var total = this.scene.totals();
+    if (total.verts > 3000000) return;       // too big to be worth blocking on
+    try {
+      var data = S.IO.saveProject({
+        objects: this.scene.objects,
+        selected: this.scene.selected,
+        camera: this.camera.serialize(),
+        settings: this.exportableSettings()
+      });
+      this.withDB('readwrite', function (store) {
+        store.put({ data: data, time: Date.now(), tris: total.tris, objects: total.objects }, 'autosave');
+      });
+    } catch (e) { /* ignore */ }
+  };
+
+  A.restoreAutosaveOffer = function () {
+    var self = this;
+    if (!this.settings.autosave) return;
+    this.withDB('readonly', function (store) {
+      var get = store.get('autosave');
+      get.onsuccess = function () {
+        var rec = get.result;
+        if (!rec || !rec.data) return;
+        var when = new Date(rec.time);
+        var age = Date.now() - rec.time;
+        if (age > 1000 * 60 * 60 * 24 * 30) return;
+        UI.dialog({
+          title: 'Recover your last sculpt?',
+          icon: 'reset',
+          content: [
+            el('p', { text: 'A recovery copy from ' + when.toLocaleString() + ' is in this browser: ' +
+              S.formatCount(rec.tris || 0) + ' triangles across ' + (rec.objects || 1) + ' object(s).' }),
+            el('div.hint', { text: 'Recovering replaces the scene you are looking at now.' })
+          ],
+          buttons: [
+            { label: 'Start fresh' },
+            { label: 'Discard the copy', class: 'danger', onclick: function () {
+              self.withDB('readwrite', function (s2) { s2.delete('autosave'); });
+            } },
+            { label: 'Recover', class: 'accent', onclick: function () {
+              var project = S.IO.loadProject(rec.data);
+              if (project.ok) self.applyProject(project);
+              else UI.toast('The recovery copy could not be read', 'bad');
+            } }
+          ]
+        });
+      };
+    });
+  };
+
+  /* ================================================================ *
+   * boot
+   * ================================================================ */
+
+  S.boot = function (mount) {
+    var host = mount || document.body;
+    try {
+      var probe = document.createElement('canvas');
+      if (!probe.getContext('webgl2')) throw new Error('no webgl2');
+    } catch (e) {
+      host.innerHTML = '<div style="max-width:560px;margin:14vh auto;padding:0 22px;font:14px/1.6 system-ui,sans-serif;color:#e8edf4">' +
+        '<h1 style="font-size:20px">SculptFree needs WebGL 2</h1>' +
+        '<p style="color:#8b96a6">This browser cannot open a WebGL 2 context, so the sculpting view has nothing to draw on. ' +
+        'Any current version of Chrome, Edge, Firefox or Safari will work. On a desktop it is worth checking that hardware acceleration is switched on.</p></div>';
+      return null;
+    }
+    var app = new App(host);
+    root.SCULPT_APP = app;            // the browser tests drive the app through this
+    return app;
+  };
+
+  if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function () { S.boot(); });
+    } else {
+      S.boot();
+    }
+  }
+
+})(typeof globalThis !== 'undefined' ? globalThis : this);
