@@ -369,30 +369,26 @@
     var msk = this.masks.array;
 
     /*
-     * Refinement happens in two tiers, and the second one exists because of
-     * a specific, ugly failure.
+     * Splitting is decided by the triangle, not by where its midpoint lands.
      *
-     * A triangle much bigger than the brush has its longest edge far outside
-     * it, so a strict "the split must land inside the brush" rule refuses to
-     * refine at all. The brush then drags one lone vertex of a huge triangle
-     * and leaves a star of stretched fins — which looks exactly like the
-     * tool breaking.
+     * The obvious rule — "the split has to land inside the brush" — refuses
+     * to refine a triangle bigger than the brush at all, because its longest
+     * edge runs right past. The brush then drags one lone vertex of a huge
+     * triangle and leaves a star of stretched fins, which is exactly what
+     * "it breaks very easily" looked like.
      *
-     * So: inside the brush, split down to the detail size, as always.
-     * Reaching a little further out, split only what is still coarser than
-     * the brush itself. That breaks a big triangle down to roughly brush
-     * size so the first rule has something to work with, and stops there —
-     * refining a wide ring down to the detail size would add tens of
-     * thousands of triangles for a single dab.
+     * So the allowance scales with the edge being split: a split may land up
+     * to its own edge length away from the brush. A huge triangle is
+     * therefore allowed to halve even though the cut falls far outside —
+     * and as its pieces get smaller the allowance shrinks with them, so the
+     * refinement funnels in towards the brush instead of spreading over the
+     * model. The split ceiling below bounds what one stamp may do.
      */
-    var outerSq = (radius * 2.2) * (radius * 2.2);
-    var coarseLen = Math.max(splitLen, radius * 0.7);
-    var outerSplitSq = coarseLen * coarseLen;
 
     if (doSplit && this.liveTris < maxTris) {
       // Several passes: a split shortens the edge it acts on, but the two
       // triangles it leaves behind may still hold edges above the threshold.
-      for (var pass = 0; pass < 6; pass++) {
+      for (var pass = 0; pass < 10; pass++) {
         var tris = this.trisInSphere(cx, cy, cz, radius).slice();
         var did = 0;
         for (var i = 0; i < tris.length; i++) {
@@ -420,15 +416,10 @@
           }
           if (ba < 0) continue;
           if (msk[ba] >= 0.5 || msk[bb] >= 0.5) continue;
+          if (bestSq <= splitSq) continue;                   // already fine enough
           var ddx = bmx - cx, ddy = bmy - cy, ddz = bmz - cz;
-          var midSq = ddx * ddx + ddy * ddy + ddz * ddz;
-          if (midSq <= r2) {
-            if (bestSq <= splitSq) continue;                 // fine enough here
-          } else if (midSq <= outerSq) {
-            if (bestSq <= outerSplitSq) continue;            // only the coarse ones
-          } else {
-            continue;                                        // too far away to matter
-          }
+          var allow = radius + Math.sqrt(bestSq);
+          if (ddx * ddx + ddy * ddy + ddz * ddz > allow * allow) continue;
           if (this.splitEdge(ba, bb) >= 0) { nSplit++; did++; }
         }
         if (!did || nSplit >= splitBudget) break;

@@ -215,7 +215,7 @@
         if (upgrading && saved.brush === 'clay') out.brush = DEFAULTS.brush;
       }
     } catch (e) { /* private mode, or corrupt: defaults are fine */ }
-    out.radius = S.clamp(out.radius, 4, MAX_RADIUS);
+    out.radius = S.clamp(out.radius, 8, MAX_RADIUS);
     out.strength = S.clamp(out.strength, 0, MAX_STRENGTH);
     out.paintColor = new Float32Array(UI.hexToRgb(out.paintColorHex));
     return out;
@@ -233,7 +233,7 @@
     // the two ceilings are enforced here rather than in every caller, so a
     // preset, a project or a settings file from an older build cannot bring
     // an unusable brush back
-    if (key === 'radius') value = S.clamp(value, 4, MAX_RADIUS);
+    if (key === 'radius') value = S.clamp(value, 8, MAX_RADIUS);
     if (key === 'strength') value = S.clamp(value, 0, MAX_STRENGTH);
     if (key === 'detailPixels') value = S.clamp(value, 4, 40);
     this.settings[key] = value;
@@ -310,7 +310,7 @@
     var rightBar = el('div#bar-right', null, [this.moveBtn, this.symBtn, this.frameBtn, this.lookBtn]);
 
     /* bottom: size and strength, the only two numbers that matter */
-    this.sizePill = this.makePill('radius', 'Size', 4, MAX_RADIUS, 1, this.settings.radius, function (v) {
+    this.sizePill = this.makePill('radius', 'Size', 8, MAX_RADIUS, 1, this.settings.radius, function (v) {
       self.set('radius', v);
       self.refreshStatus();
     }, function (v) { return Math.round(v); });
@@ -2319,7 +2319,7 @@
   };
 
   A.nudgeRadius = function (delta) {
-    var v = S.clamp(this.settings.radius + delta, 4, MAX_RADIUS);
+    var v = S.clamp(this.settings.radius + delta, 8, MAX_RADIUS);
     this.set('radius', v);
     if (this.panelRefs.radius) this.panelRefs.radius.set(v);
     this.showRadiusPreview();

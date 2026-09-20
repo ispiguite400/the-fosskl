@@ -831,6 +831,13 @@
       return Math.max(localRadius * S.clamp((st.detailPercent || 20) / 100, 0.02, 1), 1e-6);
     }
     var perPixel = this.camera.worldPerPixel(worldPoint) / this.obj.uniformScale();
+    /*
+     * A flat size in pixels, deliberately not scaled down to match a small
+     * brush. Letting a tiny brush ask for tiny triangles is how a few dabs
+     * turned into tens of thousands of them: the brush refines the surface
+     * to this size first, and once the triangles here are this big, even a
+     * small brush has two or three of them to work with.
+     */
     return Math.max(perPixel * S.clamp(st.detailPixels || 12, 3, 60), 1e-6);
   };
 
@@ -851,9 +858,14 @@
     /*
      * A brush wider than the model itself has nothing useful to do: the
      * surface it averages over is the whole object, so a stroke drags
-     * everything at once and the result is a lopsided blob rather than a
-     * sculpt. Cap it against the model's own size — zoomed out far enough,
-     * the brush stops growing instead of swallowing the thing being made.
+     * everything at once and leaves a lopsided blob rather than a sculpt.
+     * Zoomed out far enough, the brush stops growing instead of swallowing
+     * the thing being made.
+     *
+     * The other end is handled by the refinement rather than here: the
+     * detail size is a flat number of pixels, so a small brush refines the
+     * surface to that size and then has triangles its own scale to work
+     * with.
      */
     var cap = this.obj.mesh.boundsRadius() * 0.8;
     return (cap > 1e-6 && local > cap) ? cap : local;
@@ -1154,6 +1166,25 @@
                      this._anchorLocal[2] + (total ? total[2] * 0.5 : 0),
                      reach, detail, st.maxTriangles);
         mesh.computeNormals();
+      }
+    }
+
+    /*
+     * Settle the stroke.
+     *
+     * A brush only a couple of triangles wide leaves the surface faceted:
+     * each stamp lifts the handful of vertices it covers and the ones just
+     * outside stay put. A light relax over what the stroke touched turns
+     * that into a bump, and it is deliberately not applied to the trims or
+     * to anything working through a stencil, where the crisp edge is the
+     * whole point.
+     */
+    if (this.strokeOrigins && this.strokeOrigins.size && !this.brush.crisp && !this.alpha) {
+      var settle = [];
+      this.strokeOrigins.forEach(function (start, v) { settle.push(v); });
+      if (settle.length) {
+        mesh.smoothVerts(Uint32Array.from(settle), settle.length, 0.18, true);
+        mesh.computeNormals(Uint32Array.from(settle), settle.length);
       }
     }
 

@@ -489,13 +489,48 @@ const S = load();
   const mesh = S.Prim.makeMesh('sphere', 2);        // 320 coarse triangles
   const before = mesh.liveTris;
   const t0 = Date.now();
-  // the pathological ask: a brush far smaller than the triangles it sits on,
-  // wanting detail far finer still
+  /*
+   * A brush far smaller than the triangles it sits on, asking for detail
+   * finer still. It has to refine — a brush that cannot refine drags one
+   * lone vertex of a huge triangle and leaves a star of fins — but it must
+   * not run away doing it.
+   */
   const tiny = mesh.dyntopo(0, 0.5, 0, 0.02, 0.0005, 500000);
   const ms = Date.now() - t0;
-  eq('a brush smaller than the triangles adds nothing at all', tiny.split, 0);
-  check('and says so immediately', ms < 500, `${ms} ms`);
-  eq('the mesh is untouched', mesh.liveTris, before);
+  check('a brush smaller than the triangles still refines', tiny.split > 0, `${tiny.split} splits`);
+  check('and stops at the ceiling rather than running away', tiny.split <= 600,
+    `${tiny.split} splits`);
+  check('quickly', ms < 2000, `${ms} ms`);
+  check('the mesh grew, but not by orders of magnitude', mesh.liveTris < before * 8,
+    `${before} -> ${mesh.liveTris}`);
+  eq('and it is still closed', mesh.countBorderEdges(), 0);
+  eq('and manifold', mesh.countNonManifoldEdges(), 0);
+
+  /*
+   * The refinement has to stay near the brush rather than spreading over
+   * the model: what matters is that the triangles far from it are left
+   * coarse.
+   */
+  const spread = S.Prim.makeMesh('sphere', 2);
+  const savgSpread = spread.averageEdgeLength();
+  spread.dyntopo(0, 0.5, 0, savgSpread * 0.4, savgSpread * 0.15, 500000);
+  let nearFine = 0, farCoarse = 0, farFine = 0;
+  for (let t = 0; t < spread.triDead.length; t++) {
+    if (spread.triDead.array[t]) continue;
+    const T = spread.tris.array, p = spread.positions.array;
+    const a = T[t * 3] * 3;
+    const d = Math.hypot(p[a], p[a + 1] - 0.5, p[a + 2]);
+    let longest = 0;
+    for (let k = 0; k < 3; k++) {
+      const x = T[t * 3 + k] * 3, y = T[t * 3 + (k + 1) % 3] * 3;
+      longest = Math.max(longest, Math.hypot(p[y] - p[x], p[y + 1] - p[x + 1], p[y + 2] - p[x + 2]));
+    }
+    if (d < savgSpread) { if (longest < savgSpread * 0.6) nearFine++; }
+    else if (d > savgSpread * 4) { if (longest > savgSpread * 0.6) farCoarse++; else farFine++; }
+  }
+  check('the triangles under the brush end up fine', nearFine > 0, `${nearFine}`);
+  check('and the far side of the model is left alone', farCoarse > farFine * 4,
+    `${farCoarse} coarse against ${farFine} fine, far from the brush`);
 
   // a sensible ask refines, and stays inside the ceiling per call
   const work = S.Prim.makeMesh('sphere', 2);

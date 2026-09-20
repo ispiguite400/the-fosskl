@@ -57,7 +57,7 @@ orbit. That is the whole interface.
 - One finger sculpts, two fingers orbit and pinch, three fingers pan
 - `A` Add, `S` smooth, `T` / `E` the trims, `C` paint, `M` mask
 - `V` the move/turn/resize handles · `Shift+A` add a shape
-- **Size** goes up to 95 and **Strength** up to 1. Both are capped on purpose:
+- **Size** runs 8 to 95 and **Strength** up to 1. Both are capped on purpose:
   a wider brush averages over so much surface that a stroke drags the whole
   form around, and past full strength a single stamp moves the surface
   further than the brush is wide. The brush is also capped against the model
@@ -102,7 +102,7 @@ work and more of them.
 
 ### What keeps a stroke from going wrong
 
-Three rules, each of them there because of a specific way the tool used to
+Four rules, each of them there because of a specific way the tool used to
 break:
 
 - **One stroke can move a vertex about one brush radius, and no further.** A
@@ -111,14 +111,23 @@ break:
   hold, a stroke that doubles back — used to lift them again and again until
   they shot out as a spike. Lift your finger and the next stroke starts
   again, so material still builds up pass after pass.
-- **Detail is in pixels, not a fraction of the brush.** A four-pixel brush
-  asking for triangles a fifth of its size asks for microscopic ones: one dab
-  could spend minutes adding a hundred thousand triangles and leave a star of
-  stretched fins behind.
-- **Refinement has a ceiling per stamp.** A big brush at full strength moves
-  the surface several triangle widths at a time, so the next stamp finds
-  everything stretched and refines it again. With a ceiling, a stroke refines
-  a little less instead of eating the whole budget.
+- **Detail is a flat number of pixels, not a fraction of the brush.** A tiny
+  brush asking for triangles a fifth of its size asks for microscopic ones:
+  one dab could spend minutes adding a hundred thousand triangles. In pixels,
+  a small brush refines the surface to the detail size and then has triangles
+  its own scale to work with.
+- **A brush can always refine what it sits on.** A triangle bigger than the
+  brush has its longest edge running right past it, so a rule of "the split
+  has to land inside the brush" refuses to refine at all — and then the brush
+  drags one lone vertex of a huge triangle and leaves a star of stretched
+  fins. Instead a split may land up to its own edge length away, so a big
+  triangle can halve even though the cut falls outside, and the allowance
+  shrinks with the pieces so the work funnels in towards the brush. There is
+  also a ceiling on how much one stamp may refine.
+- **A stroke settles when you lift your finger.** A brush only a couple of
+  triangles wide leaves the surface faceted; a light relax over what the
+  stroke touched turns that into a bump. The trims and anything working
+  through a stencil are left alone, where the crisp edge is the point.
 
 And when something does go wrong: **☰ → Fix glitches** pulls needle vertices
 back onto the surface, relaxes the slivers a torn surface is made of, drops
@@ -418,7 +427,7 @@ A few decisions worth knowing about:
 ## Tests
 
 ```bash
-node test/topology.test.mjs     # 111  mesh invariants, split/collapse/flip, spikes, slivers, decimate
+node test/topology.test.mjs     # 116  mesh invariants, split/collapse/flip, spikes, slivers, decimate
 node test/remesh.test.mjs       # 76   watertight and manifold output, volume, colour transfer
 node test/io.test.mjs           # 120  round trips for every format, GLB structure, transforms
 node test/brush.test.mjs        # 347  every brush, adding vs stretching, the stroke limits, masking, undo
@@ -430,7 +439,7 @@ node build.js && node test/browser.test.mjs   # 367 end-to-end in a real browser
 node test/shots.mjs             # renders the screenshots in test/screens
 ```
 
-1,504 checks in total. Some of them are worth naming, because they are the
+1,509 checks in total. Some of them are worth naming, because they are the
 ones that catch a regression you would otherwise ship:
 
 - **Brushes have to add, not stretch.** The same pull is run with dynamic
