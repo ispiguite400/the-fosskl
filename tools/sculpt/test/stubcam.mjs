@@ -40,7 +40,7 @@ export function defaultSettings(over = {}) {
   return Object.assign({
     brush: 'clay', radius: 60, strength: 0.6, falloff: 'smooth', spacing: 0.2,
     strokeSmoothing: 0, autoSmooth: 0.28, clayOffset: 0.18,
-    dyntopo: false, detailMode: 'relative', detailPercent: 25, detailSize: 0.01,
+    dyntopo: false, detailMode: 'pixels', detailPixels: 12, detailPercent: 25, detailSize: 0.01,
     maxTriangles: 2000000, frontFacing: true,
     symmetryX: false, symmetryY: false, symmetryZ: false,
     pressureRadius: false, pressureStrength: false,

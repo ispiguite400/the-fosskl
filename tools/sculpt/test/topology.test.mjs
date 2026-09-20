@@ -372,4 +372,149 @@ const S = load();
   audit(m, 'after a second decimation');
 }
 
+/* ---- spikes: finding them and pulling them back ---------------------- */
+{
+  const clean = S.Prim.makeMesh('sphere', 3);
+  eq('a clean sphere has no spikes', clean.countSpikes(), 0);
+  eq('nor a box', S.Prim.makeMesh('box', 3).countSpikes(), 0);
+  eq('nor a cylinder', S.Prim.makeMesh('cylinder', 3).countSpikes(), 0);
+  eq('nor a torus', S.Prim.makeMesh('torus', 3).countSpikes(), 0);
+  eq('relaxing a clean mesh changes nothing', clean.relaxSpikes(), 0);
+
+  // a cone's tip is a real feature, not a glitch: the default threshold has
+  // to leave it alone, or repairing a model would blunt every point on it
+  const cone = S.Prim.makeMesh('cone', 3);
+  const tipBefore = cone.boundsMax()[1];
+  cone.relaxSpikes();
+  check('a cone keeps its point', Math.abs(cone.boundsMax()[1] - tipBefore) < 1e-6,
+    `${tipBefore} -> ${cone.boundsMax()[1]}`);
+
+  // fling three vertices right out and they should be found and pulled back
+  const poked = S.Prim.makeMesh('sphere', 3);
+  const p = poked.positions.array;
+  for (const v of [12, 300, 1100]) {
+    const o = v * 3;
+    p[o] *= 9; p[o + 1] *= 9; p[o + 2] *= 9;
+  }
+  poked.computeNormals();
+  poked._boundsDirty = true;
+  const wildRadius = poked.boundsRadius();
+  const found = poked.countSpikes();
+  check('flinging vertices out makes needles', found >= 2, `${found}`);
+  const fixed = poked.relaxSpikes();
+  check('relaxing reports what it moved', fixed >= found, `${fixed} vs ${found}`);
+  eq('and the needles are gone', poked.countSpikes(), 0);
+  check('the mesh is not torn by the repair',
+    poked.countBorderEdges() === 0 && poked.countNonManifoldEdges() === 0);
+  audit(poked, 'after relaxing needles');
+  poked._boundsDirty = true;
+  /*
+   * Most of the way back, not all of it: where two needles were neighbours,
+   * each one's ring is still distorted by the other, so the pass stops once
+   * nothing is flagged. Going further would mean smoothing geometry that no
+   * longer looks wrong.
+   */
+  check('the shape comes back close to its old size',
+    poked.boundsRadius() < wildRadius * 0.35 && poked.boundsRadius() < 1.5,
+    `${wildRadius.toFixed(2)} -> ${poked.boundsRadius().toFixed(2)}, sphere is 0.5`);
+
+  /*
+   * The threshold has to sit above the sharpest thing anyone makes on
+   * purpose. A cone's apex is the worst of the primitives, and it must not
+   * be touched; measured spikes from a stroke score lower still, which is
+   * why prevention lives in the brush engine rather than here.
+   */
+  function worstRatio(mesh) {
+    const pos = mesh.positions.array;
+    const ring = [];
+    let worst = 0;
+    for (let v = 0; v < mesh.masks.length; v++) {
+      if (mesh.vertDead.array[v]) continue;
+      ring.length = 0;
+      mesh.ringVerts(v, ring);
+      if (ring.length < 3) continue;
+      const o = v * 3;
+      let cx = 0, cy = 0, cz = 0;
+      for (const r of ring) { const ro = r * 3; cx += pos[ro]; cy += pos[ro + 1]; cz += pos[ro + 2]; }
+      const inv = 1 / ring.length;
+      cx *= inv; cy *= inv; cz *= inv;
+      let span = 0;
+      for (let k = 0; k < ring.length; k++) {
+        const a = ring[k] * 3, b = ring[(k + 1) % ring.length] * 3;
+        span += Math.hypot(pos[b] - pos[a], pos[b + 1] - pos[a + 1], pos[b + 2] - pos[a + 2]);
+      }
+      span *= inv;
+      if (span < 1e-12) continue;
+      worst = Math.max(worst, Math.hypot(pos[o] - cx, pos[o + 1] - cy, pos[o + 2] - cz) / span);
+    }
+    return worst;
+  }
+  const coneWorst = worstRatio(S.Prim.makeMesh('cone', 3));
+  check('a cone apex is the sharpest thing a primitive has', coneWorst > 3 && coneWorst < 6,
+    `${coneWorst.toFixed(2)}`);
+  check('the repair threshold sits above it', coneWorst < 6, `${coneWorst.toFixed(2)}`);
+}
+
+/* ---- slivers, which is what a torn surface is made of ---------------- */
+{
+  const clean = S.Prim.makeMesh('sphere', 3);
+  eq('a clean sphere has no slivers to relax', clean.relaxSlivers(), 0);
+
+  // squash a ring of vertices sideways to make long thin triangles
+  const slivered = S.Prim.makeMesh('sphere', 3);
+  const sp = slivered.positions.array;
+  let squashed = 0;
+  for (let v = 0; v < slivered.liveVerts; v++) {
+    const o = v * 3;
+    if (Math.abs(sp[o + 1]) < 0.06) { sp[o + 1] *= 0.02; squashed++; }
+  }
+  slivered.computeNormals();
+  check('squashing a band makes slivers', squashed > 10, `${squashed}`);
+  const before = slivered.relaxSlivers();
+  check('the slivers are found', before > 0, `${before}`);
+  check('relaxing them leaves fewer', slivered.relaxSlivers() < before,
+    `${before} -> ${slivered.relaxSlivers()}`);
+  eq('and the mesh is still closed', slivered.countBorderEdges(), 0);
+  audit(slivered, 'after relaxing slivers');
+}
+
+/* ---- dynamic topology stays affordable ------------------------------- */
+{
+  /*
+   * The failure this guards against: a brush much smaller than the local
+   * triangles used to ask for microscopic detail, and one dab could spend
+   * minutes adding a hundred thousand triangles. The refinement now has a
+   * ceiling per call.
+   */
+  const mesh = S.Prim.makeMesh('sphere', 2);        // 320 coarse triangles
+  const before = mesh.liveTris;
+  const t0 = Date.now();
+  // the pathological ask: a brush far smaller than the triangles it sits on,
+  // wanting detail far finer still
+  const tiny = mesh.dyntopo(0, 0.5, 0, 0.02, 0.0005, 500000);
+  const ms = Date.now() - t0;
+  eq('a brush smaller than the triangles adds nothing at all', tiny.split, 0);
+  check('and says so immediately', ms < 500, `${ms} ms`);
+  eq('the mesh is untouched', mesh.liveTris, before);
+
+  // a sensible ask refines, and stays inside the ceiling per call
+  const work = S.Prim.makeMesh('sphere', 2);
+  const avg = work.averageEdgeLength();
+  const t1 = Date.now();
+  const result = work.dyntopo(0, 0.5, 0, avg * 2, avg * 0.1, 500000);
+  const ms1 = Date.now() - t1;
+  check('a sensible ask does refine', result.split > 0, JSON.stringify(result));
+  check('one call cannot run away', result.split <= 600, `${result.split} splits`);
+  check('and it returns quickly', ms1 < 2000, `${ms1} ms`);
+  eq('the mesh is still closed', work.countBorderEdges(), 0);
+  eq('and still manifold', work.countNonManifoldEdges(), 0);
+  audit(work, 'after a bounded refinement');
+
+  // the ceiling is adjustable, and honoured
+  const small = S.Prim.makeMesh('sphere', 2);
+  const savg = small.averageEdgeLength();
+  const r2 = small.dyntopo(0, 0.5, 0, savg * 2, savg * 0.1, 500000, undefined, 20);
+  check('a tighter ceiling does less', r2.split <= 20, `${r2.split} splits`);
+}
+
 report('topology');

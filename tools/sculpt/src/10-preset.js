@@ -27,16 +27,16 @@
 
   P.BUILTIN = [
     { id: 'blockout', label: 'Block out', hint: 'Big soft clay for the first shapes',
-      settings: { brush: 'clay', radius: 140, strength: 0.6, falloff: 'smooth', spacing: 0.16,
+      settings: { brush: 'clay', radius: 95, strength: 0.6, falloff: 'smooth', spacing: 0.16,
                   autoSmooth: 0.35, alpha: 'none', stampMode: false, dyntopo: false } },
     { id: 'refine', label: 'Refine form', hint: 'Smaller clay, gentler, for shaping',
       settings: { brush: 'clay', radius: 70, strength: 0.4, falloff: 'smooth', spacing: 0.12,
                   autoSmooth: 0.3, alpha: 'none', stampMode: false } },
     { id: 'smoothpass', label: 'Smooth pass', hint: 'Relax the surface without losing volume',
-      settings: { brush: 'smooth', radius: 110, strength: 0.5, falloff: 'smooth', spacing: 0.1,
+      settings: { brush: 'smooth', radius: 95, strength: 0.5, falloff: 'smooth', spacing: 0.1,
                   autoSmooth: 0, alpha: 'none', stampMode: false } },
     { id: 'hardsurface', label: 'Hard surface', hint: 'Trim Normal, flat and decisive',
-      settings: { brush: 'trimnormal', radius: 100, strength: 0.85, falloff: 'linear', spacing: 0.08,
+      settings: { brush: 'trimnormal', radius: 95, strength: 0.85, falloff: 'linear', spacing: 0.08,
                   autoSmooth: 0, alpha: 'none', stampMode: false } },
     { id: 'panelcut', label: 'Panel cut', hint: 'A square stamp that presses one panel in',
       settings: { brush: 'trimdynamic', radius: 90, strength: 0.9, falloff: 'linear', spacing: 0.08,
@@ -55,14 +55,14 @@
       settings: { brush: 'draw', radius: 60, strength: 0.25, falloff: 'smooth', spacing: 0.25,
                   autoSmooth: 0, alpha: 'scratches', stampMode: false, alphaFollowStroke: true } },
     { id: 'cracked', label: 'Cracked', hint: 'Broken, weathered surface',
-      settings: { brush: 'draw', radius: 100, strength: 0.3, falloff: 'smooth', spacing: 0.35,
+      settings: { brush: 'draw', radius: 95, strength: 0.3, falloff: 'smooth', spacing: 0.35,
                   autoSmooth: 0, alpha: 'cracks', stampMode: false, alphaRandomRotate: true } },
     { id: 'dirtpaint', label: 'Dirt paint', hint: 'Dusty brown through a grain stencil',
-      settings: { brush: 'paint', radius: 110, strength: 0.4, falloff: 'smooth', spacing: 0.2,
+      settings: { brush: 'paint', radius: 95, strength: 0.4, falloff: 'smooth', spacing: 0.2,
                   alpha: 'dirt', stampMode: false, alphaRandomRotate: true,
                   paintColorHex: '#6b5238' } },
     { id: 'basecolour', label: 'Base colour', hint: 'Solid paint with no stencil',
-      settings: { brush: 'paint', radius: 120, strength: 0.7, falloff: 'smooth', spacing: 0.12,
+      settings: { brush: 'paint', radius: 95, strength: 0.7, falloff: 'smooth', spacing: 0.12,
                   alpha: 'none', stampMode: false, paintColorHex: '#d94f3d' } }
   ];
 

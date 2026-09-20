@@ -13,6 +13,16 @@
   var el = UI.el;
   var V3 = S.V3, M4 = S.M4, Q4 = S.Q4;
 
+  /*
+   * The ceilings for the two sliders. Kept low on purpose: a brush wider
+   * than a fifth of the screen averages over so much surface that a stroke
+   * drags the whole form around, and strength above 1 moves the surface
+   * further than the brush is wide in a single stamp — both of which end in
+   * a mess rather than a model.
+   */
+  var MAX_RADIUS = 95;
+  var MAX_STRENGTH = 1;
+
   var STORAGE_KEY = 'sculptfree.settings.v1';
   var DB_NAME = 'sculptfree';
   var DB_STORE = 'projects';
@@ -60,7 +70,15 @@
      *                 reduces a copy to it. The sculpt keeps its detail.
      */
     dyntopo: true,
-    detailMode: 'relative',
+    /*
+     * Detail is measured in screen pixels: triangles under the brush are
+     * kept about this big on screen. Measuring it as a fraction of the brush
+     * instead (the old 'relative' mode, still available) means a small brush
+     * asks for microscopic triangles, which is how a single tap could ask
+     * for a hundred thousand of them and leave a spike behind.
+     */
+    detailMode: 'pixels',
+    detailPixels: 12,
     detailPercent: 20,
     detailSize: 0.01,
     maxTriangles: 150000,
@@ -175,8 +193,9 @@
    * would hand a returning user the very behaviour that was fixed. So those
    * keys are dropped on the way in, once, and everything else is kept.
    */
-  var SETTINGS_SCHEMA = 2;
-  var STALE_ON_UPGRADE = ['dyntopo', 'maxTriangles', 'detailPercent', 'detailMode', 'detailSize'];
+  var SETTINGS_SCHEMA = 3;
+  var STALE_ON_UPGRADE = ['dyntopo', 'maxTriangles', 'detailPercent', 'detailMode', 'detailSize',
+                          'detailPixels'];
 
   A.loadSettings = function () {
     var out = {};
@@ -196,6 +215,8 @@
         if (upgrading && saved.brush === 'clay') out.brush = DEFAULTS.brush;
       }
     } catch (e) { /* private mode, or corrupt: defaults are fine */ }
+    out.radius = S.clamp(out.radius, 4, MAX_RADIUS);
+    out.strength = S.clamp(out.strength, 0, MAX_STRENGTH);
     out.paintColor = new Float32Array(UI.hexToRgb(out.paintColorHex));
     return out;
   };
@@ -209,6 +230,12 @@
   };
 
   A.set = function (key, value, opts) {
+    // the two ceilings are enforced here rather than in every caller, so a
+    // preset, a project or a settings file from an older build cannot bring
+    // an unusable brush back
+    if (key === 'radius') value = S.clamp(value, 4, MAX_RADIUS);
+    if (key === 'strength') value = S.clamp(value, 0, MAX_STRENGTH);
+    if (key === 'detailPixels') value = S.clamp(value, 4, 40);
     this.settings[key] = value;
     if (key === 'paintColorHex') this.settings.paintColor = new Float32Array(UI.hexToRgb(value));
     if (key === 'historyBudgetMB') this.history.budget = value * 1024 * 1024;
@@ -283,11 +310,11 @@
     var rightBar = el('div#bar-right', null, [this.moveBtn, this.symBtn, this.frameBtn, this.lookBtn]);
 
     /* bottom: size and strength, the only two numbers that matter */
-    this.sizePill = this.makePill('radius', 'Size', 4, 400, 1, this.settings.radius, function (v) {
+    this.sizePill = this.makePill('radius', 'Size', 4, MAX_RADIUS, 1, this.settings.radius, function (v) {
       self.set('radius', v);
       self.refreshStatus();
     }, function (v) { return Math.round(v); });
-    this.strengthPill = this.makePill('strength', 'Strength', 0, 2, 0.01, this.settings.strength, function (v) {
+    this.strengthPill = this.makePill('strength', 'Strength', 0, MAX_STRENGTH, 0.01, this.settings.strength, function (v) {
       self.set('strength', v);
       self.refreshStatus();
     }, function (v) { return Number(v).toFixed(2); });
@@ -576,6 +603,8 @@
         { icon: 'mirror', label: 'Make symmetrical', hint: 'Mirror the +X half onto the other side',
           onclick: function () { self.symmetrize(0, true); } },
         { icon: 'smooth', label: 'Smooth everything', onclick: function () { self.smoothAll(); } },
+        { icon: 'reset', label: 'Fix glitches', hint: 'Pull out spikes, drop bad triangles, close hairline splits',
+          onclick: function () { self.repairSurface(); } },
         { icon: 'mask', label: 'Mask', hint: 'Clear, invert or blur the locked area',
           chevron: true, onclick: function () { self.openMaskSheet(); } },
         { icon: 'texture', label: 'Texture', hint: 'Bake the paint into an image and export it',
@@ -796,7 +825,7 @@
       { id: 'join', label: 'Join', title: 'Keep both meshes, one object' },
       { id: 'union', label: 'Union', title: 'Fuse into one surface' },
       { id: 'subtract', label: 'Subtract', title: 'Cut B out of A' },
-      { id: 'intersect', label: 'Overlap', title: 'Keep only the overlap' }
+      { id: 'intersect', label: 'Intersect', title: 'Keep only the part where the two overlap' }
     ], onchange: function (v) {
       mode = v;
       if (v !== 'join') self.set('booleanMode', v);
@@ -1042,10 +1071,19 @@
       options: S.Gizmo.MODES.map(function (m) { return { id: m.id, label: m.label, title: m.hint }; }),
       onchange: function (v) { self.setGizmoMode(v); }
     });
+    /*
+     * All four ways of combining, right where the shape was added: union to
+     * weld it on, subtract to cut it out (a socket, a window, a bite),
+     * intersect to keep only the overlap, join to leave both surfaces alone.
+     */
     this.transformJoin = el('div.gizmo-join', { hidden: true }, [
       UI.button('Union', { class: 'accent', title: 'Weld the shape into the sculpt as one surface',
         onclick: function () { self.joinPendingShape('union'); } }),
-      UI.button('Join', { title: 'Put the shape in the same mesh without welding — instant',
+      UI.button('Subtract', { title: 'Cut the shape out of the sculpt',
+        onclick: function () { self.joinPendingShape('subtract'); } }),
+      UI.button('Intersect', { title: 'Keep only the part where the two overlap',
+        onclick: function () { self.joinPendingShape('intersect'); } }),
+      UI.button('Join', { title: 'Put both surfaces in one mesh without welding, which is instant',
         onclick: function () { self.joinPendingShape('join'); } })
     ]);
     var bar = el('div#bar-transform', { hidden: true }, [
@@ -1328,7 +1366,8 @@
     this.scene.selected = targetIndex;
     t.pending = null;
     this.refreshTransformBar();
-    this.applyCombine(mode === 'union' ? 'union' : 'join', shapeIndex, {
+    var known = { union: 1, subtract: 1, intersect: 1, join: 1 };
+    this.applyCombine(known[mode] ? mode : 'union', shapeIndex, {
       resolution: this.settings.booleanResolution,
       smooth: this.settings.booleanSmooth,
       keep: false,
@@ -1381,7 +1420,8 @@
       ]),
       rows: [
         { group: 'This shape' },
-        { icon: 'boolean', label: 'Union with the sculpt', hint: 'Weld it into the selected sculpt as one surface',
+        { icon: 'boolean', label: 'Combine with another shape', hint: 'Union, subtract, intersect or join',
+          chevron: true,
           onclick: function () { self.openCombineSheet(); } },
         { icon: 'copy', label: 'Duplicate', onclick: function () { self.duplicateObject(); } },
         { icon: 'reset', label: 'Reset the transform', hint: 'Back to no move, no turn, original size',
@@ -1794,9 +1834,9 @@
     var st = this.settings;
     var brush = S.brushById(st.brush);
 
-    var detailRow = UI.slider({ label: 'Detail', min: 2, max: 100, step: 1, value: st.detailPercent, suffix: '%',
-      title: 'Triangle size under the brush, as a percentage of the brush size',
-      onchange: function (v) { self.set('detailPercent', v); } });
+    var detailRow = UI.slider({ label: 'Detail', min: 4, max: 40, step: 1, value: st.detailPixels, suffix: ' px',
+      title: 'How big the new triangles are on screen. Smaller means finer detail and more of them',
+      onchange: function (v) { self.set('detailPixels', v); } });
     var maxRow = UI.slider({ label: 'Limit', min: 25000, max: 2000000, step: 25000, value: st.maxTriangles,
       format: function (v) { return S.formatCount(Number(v)); },
       title: 'Dynamic topology stops adding triangles here',
@@ -2186,7 +2226,7 @@
     var obj = this.scene.current();
     var live = obj ? obj.mesh.liveTris : 0;
     this.set('maxTriangles', Math.max(n * 6, 150000, live));
-    this.set('detailPercent', n <= 2000 ? 26 : (n <= 10000 ? 20 : (n <= 50000 ? 14 : 9)));
+    this.set('detailPixels', n <= 2000 ? 18 : (n <= 10000 ? 14 : (n <= 50000 ? 10 : 8)));
     this.refreshStatus();
     this.updateHud();
     UI.toast('Export budget ' + S.formatCount(n) + ' triangles \u2014 sculpt as dense as you like, ' +
@@ -2279,7 +2319,7 @@
   };
 
   A.nudgeRadius = function (delta) {
-    var v = S.clamp(this.settings.radius + delta, 4, 400);
+    var v = S.clamp(this.settings.radius + delta, 4, MAX_RADIUS);
     this.set('radius', v);
     if (this.panelRefs.radius) this.panelRefs.radius.set(v);
     this.showRadiusPreview();
@@ -2287,7 +2327,7 @@
   };
 
   A.nudgeStrength = function (delta) {
-    var v = S.clamp(this.settings.strength + delta, 0, 2);
+    var v = S.clamp(this.settings.strength + delta, 0, MAX_STRENGTH);
     this.set('strength', v);
     if (this.panelRefs.strength) this.panelRefs.strength.set(v);
     UI.toast('Strength ' + v.toFixed(2), null, 900);
@@ -2602,6 +2642,48 @@
       mesh.subdivide(!!smooth);
       return { message: 'Subdivided ' + S.formatCount(before) + ' → ' + S.formatCount(mesh.liveTris) + ' triangles' };
     }, 'Subdividing');
+  };
+
+  /**
+   * Fix glitches.
+   *
+   * A way out when a sculpt has gone wrong: pull spikes back onto the
+   * surface, collapse the slivers, drop triangles that have shrunk to
+   * nothing, close hairline splits, and rebuild the normals. Nothing here
+   * changes the shape that was meant — it removes the parts that are not
+   * really surface.
+   */
+  A.repairSurface = function () {
+    this.withMesh('Fix glitches', function (obj, mesh) {
+      var beforeTris = mesh.liveTris;
+      var beforeBorder = mesh.countBorderEdges();
+      var beforeNon = mesh.countNonManifoldEdges();
+
+      // needles first: every other measurement here is thrown off by them
+      var spikes = mesh.relaxSpikes();
+      // then the slivers, which is what a torn surface is actually made of
+      var slivers = mesh.relaxSlivers();
+
+      var avg = mesh.averageEdgeLength() || 1e-4;
+      mesh.collapseTinyEdges(avg * 0.02);
+      mesh.removeDegenerateTriangles(avg * avg * 1e-6);
+      if (mesh.countNonManifoldEdges() > 0 || mesh.countBorderEdges() > 0) {
+        // welding rebuilds the mesh from its triangle list, which is also
+        // what separates the pinched vertices behind a non-manifold edge
+        mesh.weld(avg * 0.02);
+      }
+      mesh.computeNormals();
+      mesh.gridRebuild();
+
+      var bits = [];
+      if (spikes) bits.push(spikes + (spikes === 1 ? ' spike' : ' spikes') + ' pulled back');
+      if (slivers) bits.push(slivers + ' sliver' + (slivers === 1 ? '' : 's') + ' relaxed');
+      if (beforeTris - mesh.liveTris > 0) bits.push((beforeTris - mesh.liveTris) + ' bad triangles removed');
+      if (beforeBorder - mesh.countBorderEdges() > 0) bits.push('holes closed');
+      if (beforeNon - mesh.countNonManifoldEdges() > 0) bits.push('pinches separated');
+      return { message: bits.length ? bits.join(', ') : 'Nothing to fix \u2014 the surface is clean',
+               spikes: spikes, slivers: slivers };
+    }, 'Looking for spikes, slivers and splits');
   };
 
   A.smoothAll = function () {

@@ -27,6 +27,20 @@
 
   /** How steeply a surface must turn away before the brush fades out. */
   var RIM_FADE = 0.4;
+  /*
+   * How far one stroke may move a vertex from where it started, as a
+   * multiple of the brush radius.
+   *
+   * Without a limit, a brush that builds material up runs away: every stamp
+   * measures against the surface the last stamp left, so stamps landing on
+   * the same few vertices — a slow drag, a tap and hold, a stroke that
+   * doubles back — lift them again and again until they shoot out as a
+   * spike. A limit per vertex per stroke stops that without stopping a long
+   * pull, because a pull walks over fresh vertices as it goes and each of
+   * them starts its own count. Lift your finger and the next stroke starts
+   * again, so material still builds up pass after pass.
+   */
+  var STROKE_REACH = 1.1;
 
   /** How deep one pass of Trim Normal cuts, as a fraction of brush radius. */
   var TRIM_DEPTH = 0.12;
@@ -201,6 +215,34 @@
     }
     mesh._boundsDirty = true;
   }
+
+  /**
+   * Pull any vertex that has drifted further than `limit` from where this
+   * stroke found it back onto that sphere. This is what keeps a stroke from
+   * growing spikes, and it costs one distance check per touched vertex.
+   */
+  function limitStrokeReach(mesh, verts, count, origins, limit) {
+    if (!(limit > 0)) return 0;
+    var pos = mesh.positions.array;
+    var pulled = 0;
+    for (var i = 0; i < count; i++) {
+      var v = verts[i];
+      var start = origins.get(v);
+      if (!start) continue;
+      var o = v * 3;
+      var dx = pos[o] - start[0], dy = pos[o + 1] - start[1], dz = pos[o + 2] - start[2];
+      var d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (d <= limit || d < 1e-12) continue;
+      var k = limit / d;
+      pos[o] = start[0] + dx * k;
+      pos[o + 1] = start[1] + dy * k;
+      pos[o + 2] = start[2] + dz * k;
+      mesh.markVertDirty(v);
+      pulled++;
+    }
+    return pulled;
+  }
+  S.limitStrokeReach = limitStrokeReach;
 
   var BrushFns = {};
 
@@ -742,6 +784,12 @@
     if (!this._frameFwd) this._frameFwd = V3.create(0, 0, 1);
     V3.perpendicular(this._frameFwd, this._anchorNormal);
     this.ctx.origin = (brush.grab || brush.id === 'layer') ? new Map() : null;
+    /*
+     * Grab brushes already work from a captured start position, and paint and
+     * mask brushes move nothing, so the reach limit applies to the
+     * displacement brushes — the ones that can pile material up.
+     */
+    this.strokeOrigins = (brush.grab || brush.paint || brush.mask) ? null : new Map();
     this.grabVerts = null;
 
     // grab brushes capture their vertex set once, so the same material moves
@@ -751,16 +799,39 @@
       // drags the mesh thin, and the whole point of dynamic topology is that
       // it does not have to
       if (this.usesDyntopo()) {
-        var gDetail = st.detailMode === 'constant'
-          ? st.detailSize
-          : this.anchorRadius * S.clamp(st.detailPercent / 100, 0.02, 1);
+        var gDetail = this.detailSize(this._anchorWorld, this.anchorRadius);
         this.obj.mesh.dyntopo(this._anchorLocal[0], this._anchorLocal[1], this._anchorLocal[2],
-                              this.anchorRadius, Math.max(gDetail, 1e-6), st.maxTriangles);
+                              this.anchorRadius, gDetail, st.maxTriangles);
       }
       this.captureGrabSet();
     }
     this.stampAt(this._anchorLocal, this._anchorNormal, true);
     return true;
+  };
+
+  /**
+   * How big the triangles under the brush should be, in the object's local
+   * units.
+   *
+   * Measured in screen pixels by default, rather than as a fraction of the
+   * brush. Tying detail to the brush size is a mistake worth naming: a small
+   * brush then asks for microscopic triangles, and a single dab with a
+   * four-pixel brush can ask for a hundred thousand of them — which is what
+   * turned a tap into a star of stretched fins. In pixels, detail means the
+   * same thing whatever size the brush is, and the triangle count grows with
+   * the area actually painted over.
+   *
+   * The older modes are still here: 'relative' is the fraction-of-the-brush
+   * behaviour and 'constant' is a fixed size in model units.
+   */
+  StrokeEngine.prototype.detailSize = function (worldPoint, localRadius) {
+    var st = this.settings;
+    if (st.detailMode === 'constant') return Math.max(st.detailSize || 0.01, 1e-6);
+    if (st.detailMode === 'relative') {
+      return Math.max(localRadius * S.clamp((st.detailPercent || 20) / 100, 0.02, 1), 1e-6);
+    }
+    var perPixel = this.camera.worldPerPixel(worldPoint) / this.obj.uniformScale();
+    return Math.max(perPixel * S.clamp(st.detailPixels || 12, 3, 60), 1e-6);
   };
 
   StrokeEngine.prototype.usesDyntopo = function () {
@@ -776,7 +847,16 @@
     var perPixel = this.camera.worldPerPixel(worldPoint);
     var px = st.radius * (st.pressureRadius ? S.lerp(0.35, 1, this.pressure) : 1);
     var world = px * perPixel;
-    return world / this.obj.uniformScale();
+    var local = world / this.obj.uniformScale();
+    /*
+     * A brush wider than the model itself has nothing useful to do: the
+     * surface it averages over is the whole object, so a stroke drags
+     * everything at once and the result is a lopsided blob rather than a
+     * sculpt. Cap it against the model's own size — zoomed out far enough,
+     * the brush stops growing instead of swallowing the thing being made.
+     */
+    var cap = this.obj.mesh.boundsRadius() * 0.8;
+    return (cap > 1e-6 && local > cap) ? cap : local;
   };
 
   StrokeEngine.prototype.captureGrabSet = function () {
@@ -832,11 +912,14 @@
       var cx = local[0] * m[0], cy = local[1] * m[1], cz = local[2] * m[2];
 
       if (this.usesDyntopo() && !(brush.grab && !brush.follow)) {
-        var detail = st.detailMode === 'constant'
-          ? st.detailSize
-          : radius * S.clamp(st.detailPercent / 100, 0.02, 1);
-        detail = Math.max(detail, 1e-6);
-        mesh.dyntopo(cx, cy, cz, radius, detail, st.maxTriangles);
+        var detail = this.detailSize(worldPoint, radius);
+        /*
+         * Refine a little wider than the brush. Refining exactly the
+         * footprint leaves a dense island inside a ring of untouched
+         * triangles, and the seam between them is where slivers and torn
+         * shading come from; a wider ring grades the change instead.
+         */
+        mesh.dyntopo(cx, cy, cz, radius * 1.25, detail, st.maxTriangles);
       }
 
       var verts;
@@ -908,6 +991,21 @@
 
       computeWeights(ctx);
       this.history.captureVerts(verts, ctx.count);
+
+      // remember where these vertices were when the stroke first touched
+      // them, so the limit below has something to measure against
+      var origins = this.strokeOrigins;
+      if (origins) {
+        var opos = mesh.positions.array;
+        for (var oi = 0; oi < ctx.count; oi++) {
+          var ov = verts[oi];
+          if (!origins.has(ov)) {
+            var oo = ov * 3;
+            origins.set(ov, [opos[oo], opos[oo + 1], opos[oo + 2]]);
+          }
+        }
+      }
+
       brush.fn(ctx);
 
       // `crisp` brushes (the trims) skip auto-smoothing: rounding the edge
@@ -918,6 +1016,8 @@
       if (autoSmooth > 0) {
         mesh.smoothVerts(verts, ctx.count, autoSmooth * 0.5, true, ctx.weights);
       }
+
+      if (origins) limitStrokeReach(mesh, verts, ctx.count, origins, radius * STROKE_REACH);
 
       var arr = verts;
       mesh.computeNormals(arr, ctx.count);
@@ -1048,13 +1148,11 @@
       // a sphere covering both ends of the pull
       var reach = base + pulled * 0.6;
       if (reach > 1e-6) {
-        var detail = st.detailMode === 'constant'
-          ? st.detailSize
-          : base * S.clamp(st.detailPercent / 100, 0.02, 1);
+        var detail = this.detailSize(this._anchorWorld, base);
         mesh.dyntopo(this._anchorLocal[0] + (total ? total[0] * 0.5 : 0),
                      this._anchorLocal[1] + (total ? total[1] * 0.5 : 0),
                      this._anchorLocal[2] + (total ? total[2] * 0.5 : 0),
-                     reach, Math.max(detail, 1e-6), st.maxTriangles);
+                     reach, detail, st.maxTriangles);
         mesh.computeNormals();
       }
     }
@@ -1063,6 +1161,7 @@
     this.grabTotal = null;
     this.rotateAngle = 0;
     this.ctx.origin = null;
+    this.strokeOrigins = null;
     this.grabVerts = null;
     mesh.gridMaybeRebuild();
     var committed = this.history.endStroke();
@@ -1077,6 +1176,7 @@
     this.grabTotal = null;
     this.rotateAngle = 0;
     this.ctx.origin = null;
+    this.strokeOrigins = null;
     this.grabVerts = null;
     var reverted = this.history.revertStroke();
     this.obj.mesh.gridMaybeRebuild();

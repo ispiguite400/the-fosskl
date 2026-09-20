@@ -346,10 +346,21 @@
    * (a target edge length in local units): long edges split, short edges
    * collapse. Returns {split, collapsed}.
    */
-  P.dyntopo = function (cx, cy, cz, radius, detail, maxTris, mode) {
+  P.dyntopo = function (cx, cy, cz, radius, detail, maxTris, mode, maxSplits) {
     var splitLen = detail * 1.34, collapseLen = detail * 0.66;
     var splitSq = splitLen * splitLen, collapseSq = collapseLen * collapseLen;
     var doSplit = mode !== 'collapse', doCollapse = mode !== 'split';
+    /*
+     * A ceiling on how much refining one call may do.
+     *
+     * A big brush at full strength moves the surface several triangle widths
+     * in a single stamp, so the next stamp finds everything stretched and
+     * refines it again — and again, stamp after stamp, until a single stroke
+     * has eaten the whole triangle budget and taken ten seconds doing it.
+     * With a ceiling, the same stroke simply refines a little less each
+     * stamp and stays responsive.
+     */
+    var splitBudget = maxSplits === undefined ? 600 : maxSplits;
     var r2 = radius * radius;
     var nSplit = 0, nCollapse = 0;
     var pos, T;
@@ -357,16 +368,38 @@
     // vertices, so edges anchored in a masked area are left as they are.
     var msk = this.masks.array;
 
+    /*
+     * Refinement happens in two tiers, and the second one exists because of
+     * a specific, ugly failure.
+     *
+     * A triangle much bigger than the brush has its longest edge far outside
+     * it, so a strict "the split must land inside the brush" rule refuses to
+     * refine at all. The brush then drags one lone vertex of a huge triangle
+     * and leaves a star of stretched fins — which looks exactly like the
+     * tool breaking.
+     *
+     * So: inside the brush, split down to the detail size, as always.
+     * Reaching a little further out, split only what is still coarser than
+     * the brush itself. That breaks a big triangle down to roughly brush
+     * size so the first rule has something to work with, and stops there —
+     * refining a wide ring down to the detail size would add tens of
+     * thousands of triangles for a single dab.
+     */
+    var outerSq = (radius * 2.2) * (radius * 2.2);
+    var coarseLen = Math.max(splitLen, radius * 0.7);
+    var outerSplitSq = coarseLen * coarseLen;
+
     if (doSplit && this.liveTris < maxTris) {
       // Several passes: a split shortens the edge it acts on, but the two
       // triangles it leaves behind may still hold edges above the threshold.
-      for (var pass = 0; pass < 4; pass++) {
+      for (var pass = 0; pass < 6; pass++) {
         var tris = this.trisInSphere(cx, cy, cz, radius).slice();
         var did = 0;
         for (var i = 0; i < tris.length; i++) {
           var t = tris[i];
           if (this.triDead.array[t]) continue;
           if (this.liveTris >= maxTris) break;
+          if (nSplit >= splitBudget) break;
           pos = this.positions.array; T = this.tris.array;
           var t3 = t * 3;
 
@@ -385,13 +418,20 @@
             bmy = (pos[o0 + 1] + pos[o1 + 1]) * 0.5;
             bmz = (pos[o0 + 2] + pos[o1 + 2]) * 0.5;
           }
-          if (ba < 0 || bestSq <= splitSq) continue;
+          if (ba < 0) continue;
           if (msk[ba] >= 0.5 || msk[bb] >= 0.5) continue;
           var ddx = bmx - cx, ddy = bmy - cy, ddz = bmz - cz;
-          if (ddx * ddx + ddy * ddy + ddz * ddz > r2) continue;
+          var midSq = ddx * ddx + ddy * ddy + ddz * ddz;
+          if (midSq <= r2) {
+            if (bestSq <= splitSq) continue;                 // fine enough here
+          } else if (midSq <= outerSq) {
+            if (bestSq <= outerSplitSq) continue;            // only the coarse ones
+          } else {
+            continue;                                        // too far away to matter
+          }
           if (this.splitEdge(ba, bb) >= 0) { nSplit++; did++; }
         }
-        if (!did) break;
+        if (!did || nSplit >= splitBudget) break;
       }
     }
 
@@ -865,6 +905,168 @@
   };
 
   /** Smooth the whole mesh (Mesh > Smooth All). */
+  /**
+   * Find the spikes: vertices sitting far off the surface their own ring
+   * describes.
+   *
+   * The measure is the distance from the middle of the ring, against how far
+   * apart the ring's own vertices are — deliberately not against the edges
+   * that reach the vertex itself, because a spike stretches those and would
+   * then hide behind them.
+   *
+   * With `out`, appends [vertex, x, y, z] for each one, where x,y,z is where
+   * it should go. Returns how many were found.
+   */
+  function scanSpikes(mesh, factor, strength, out) {
+    var pos = mesh.positions.array;
+    var ring = [];
+    var found = 0;
+    for (var v = 0; v < mesh.masks.length; v++) {
+      if (mesh.vertDead.array[v]) continue;
+      ring.length = 0;
+      mesh.ringVerts(v, ring);
+      if (ring.length < 3) continue;
+      var o = v * 3;
+      var cx = 0, cy = 0, cz = 0;
+      for (var i = 0; i < ring.length; i++) {
+        var ro = ring[i] * 3;
+        cx += pos[ro]; cy += pos[ro + 1]; cz += pos[ro + 2];
+      }
+      var inv = 1 / ring.length;
+      cx *= inv; cy *= inv; cz *= inv;
+
+      // how far apart the ring's own neighbours are — the local scale
+      var span = 0;
+      for (var k = 0; k < ring.length; k++) {
+        var a = ring[k] * 3, b = ring[(k + 1) % ring.length] * 3;
+        span += Math.sqrt((pos[b] - pos[a]) * (pos[b] - pos[a]) +
+                          (pos[b + 1] - pos[a + 1]) * (pos[b + 1] - pos[a + 1]) +
+                          (pos[b + 2] - pos[a + 2]) * (pos[b + 2] - pos[a + 2]));
+      }
+      span *= inv;
+      if (span < 1e-12) continue;
+
+      var dx = pos[o] - cx, dy = pos[o + 1] - cy, dz = pos[o + 2] - cz;
+      var off = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (off <= span * factor) continue;
+      found++;
+      if (out) {
+        out.push(v, cx + dx * (1 - strength), cy + dy * (1 - strength), cz + dz * (1 - strength));
+      }
+    }
+    return found;
+  }
+
+  /*
+   * Where the threshold comes from.
+   *
+   * A cone's apex sits about five times its ring spacing off that ring's
+   * middle — and it is a feature, not a fault. Measured spikes left by a
+   * stroke that piled up in one place score under two. So a threshold that
+   * catches "spikes" from sculpting would blunt every cone, pyramid and
+   * horn tip in the scene, which is worse than the problem.
+   *
+   * The default is therefore set well above a cone: it catches the genuine
+   * needles — a vertex flung out of an imported mesh, or left behind by a
+   * boolean — and leaves sharp features that were made on purpose alone.
+   * Prevention is what deals with sculpting spikes: the stroke reach limit
+   * in the brush engine.
+   */
+  var SPIKE_FACTOR = 6;
+
+  /**
+   * Pull needle vertices back onto the surface. Returns how many moved.
+   *
+   * Runs a few passes, because pulling a needle most of the way back can
+   * leave it just over the threshold still.
+   */
+  P.relaxSpikes = function (factor, strength) {
+    factor = factor === undefined ? SPIKE_FACTOR : factor;
+    strength = strength === undefined ? 0.85 : strength;
+    var pos = this.positions.array;
+    var moved = 0;
+    var ring = [];
+    for (var pass = 0; pass < 4; pass++) {
+      var targets = [];
+      scanSpikes(this, factor, strength, targets);
+      if (!targets.length) break;
+      // collect first, apply after: moving as we go would let one needle drag
+      // its neighbour's idea of the surface with it
+      var touched = [];
+      for (var k = 0; k < targets.length; k += 4) {
+        var v = targets[k], o = v * 3;
+        pos[o] = targets[k + 1];
+        pos[o + 1] = targets[k + 2];
+        pos[o + 2] = targets[k + 3];
+        this.markVertDirty(v);
+        touched.push(v);
+      }
+      moved += touched.length;
+
+      /*
+       * Then relax the ring around each one. Where two needles were
+       * neighbours, each has distorted the other's ring, so pulling one back
+       * leaves the other measuring against a surface that is still wrong —
+       * and the scan stops flagging it while it is plainly still out. A light
+       * pass over the neighbourhood settles that.
+       */
+      var near = [];
+      var seen = {};
+      for (var i = 0; i < touched.length; i++) {
+        var tv = touched[i];
+        if (!seen[tv]) { seen[tv] = 1; near.push(tv); }
+        ring.length = 0;
+        this.ringVerts(tv, ring);
+        for (var r = 0; r < ring.length; r++) {
+          if (!seen[ring[r]]) { seen[ring[r]] = 1; near.push(ring[r]); }
+        }
+      }
+      if (near.length) this.smoothVerts(Uint32Array.from(near), near.length, 0.5, false);
+    }
+    if (moved) { this._boundsDirty = true; this.computeNormals(); }
+    return moved;
+  };
+
+  /** Count the needle vertices without touching anything. */
+  P.countSpikes = function (factor) {
+    return scanSpikes(this, factor === undefined ? SPIKE_FACTOR : factor, 0.85, null);
+  };
+
+  /**
+   * Relax the vertices of badly shaped triangles.
+   *
+   * Slivers — long, thin, almost-zero-area triangles — are what a torn or
+   * glitchy surface is actually made of, and they read as hard fins under
+   * any shading. Smoothing only the vertices that belong to them cleans that
+   * up without softening anything that is already well formed.
+   *
+   * Returns how many triangles were involved.
+   */
+  P.relaxSlivers = function (quality, amount) {
+    quality = quality === undefined ? 0.12 : quality;
+    amount = amount === undefined ? 0.6 : amount;
+    var T = this.tris.array;
+    var seen = new Uint8Array(this.masks.length);
+    var verts = [];
+    var count = 0;
+    for (var t = 0; t < this.triDead.length; t++) {
+      if (this.triDead.array[t]) continue;
+      if (this.triQuality(t) >= quality) continue;
+      count++;
+      var t3 = t * 3;
+      for (var k = 0; k < 3; k++) {
+        var v = T[t3 + k];
+        if (v < seen.length && !seen[v]) { seen[v] = 1; verts.push(v); }
+      }
+    }
+    if (verts.length) {
+      this.smoothVerts(Uint32Array.from(verts), verts.length, amount, true);
+      this.computeNormals();
+      this._boundsDirty = true;
+    }
+    return count;
+  };
+
   P.smoothAll = function (iterations, amount, tangential) {
     var live = [];
     var nv = this.masks.length;

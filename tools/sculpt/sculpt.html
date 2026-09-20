@@ -506,7 +506,8 @@ input[type=color] {
 }
 #gizmo-object:hover { border-color: var(--accent-dim); }
 #bar-transform .seg { flex: 0 0 auto; }
-.gizmo-join { display: flex; gap: 6px; }
+.gizmo-join { display: flex; gap: 5px; }
+.gizmo-join .btn { padding: 8px 9px; font-size: 12px; }
 .gizmo-tools { display: flex; gap: 6px; align-items: center; }
 .gizmo-tools .btn { padding: 8px 10px; }
 
@@ -2994,10 +2995,21 @@ input[type=color] {
    * (a target edge length in local units): long edges split, short edges
    * collapse. Returns {split, collapsed}.
    */
-  P.dyntopo = function (cx, cy, cz, radius, detail, maxTris, mode) {
+  P.dyntopo = function (cx, cy, cz, radius, detail, maxTris, mode, maxSplits) {
     var splitLen = detail * 1.34, collapseLen = detail * 0.66;
     var splitSq = splitLen * splitLen, collapseSq = collapseLen * collapseLen;
     var doSplit = mode !== 'collapse', doCollapse = mode !== 'split';
+    /*
+     * A ceiling on how much refining one call may do.
+     *
+     * A big brush at full strength moves the surface several triangle widths
+     * in a single stamp, so the next stamp finds everything stretched and
+     * refines it again — and again, stamp after stamp, until a single stroke
+     * has eaten the whole triangle budget and taken ten seconds doing it.
+     * With a ceiling, the same stroke simply refines a little less each
+     * stamp and stays responsive.
+     */
+    var splitBudget = maxSplits === undefined ? 600 : maxSplits;
     var r2 = radius * radius;
     var nSplit = 0, nCollapse = 0;
     var pos, T;
@@ -3005,16 +3017,38 @@ input[type=color] {
     // vertices, so edges anchored in a masked area are left as they are.
     var msk = this.masks.array;
 
+    /*
+     * Refinement happens in two tiers, and the second one exists because of
+     * a specific, ugly failure.
+     *
+     * A triangle much bigger than the brush has its longest edge far outside
+     * it, so a strict "the split must land inside the brush" rule refuses to
+     * refine at all. The brush then drags one lone vertex of a huge triangle
+     * and leaves a star of stretched fins — which looks exactly like the
+     * tool breaking.
+     *
+     * So: inside the brush, split down to the detail size, as always.
+     * Reaching a little further out, split only what is still coarser than
+     * the brush itself. That breaks a big triangle down to roughly brush
+     * size so the first rule has something to work with, and stops there —
+     * refining a wide ring down to the detail size would add tens of
+     * thousands of triangles for a single dab.
+     */
+    var outerSq = (radius * 2.2) * (radius * 2.2);
+    var coarseLen = Math.max(splitLen, radius * 0.7);
+    var outerSplitSq = coarseLen * coarseLen;
+
     if (doSplit && this.liveTris < maxTris) {
       // Several passes: a split shortens the edge it acts on, but the two
       // triangles it leaves behind may still hold edges above the threshold.
-      for (var pass = 0; pass < 4; pass++) {
+      for (var pass = 0; pass < 6; pass++) {
         var tris = this.trisInSphere(cx, cy, cz, radius).slice();
         var did = 0;
         for (var i = 0; i < tris.length; i++) {
           var t = tris[i];
           if (this.triDead.array[t]) continue;
           if (this.liveTris >= maxTris) break;
+          if (nSplit >= splitBudget) break;
           pos = this.positions.array; T = this.tris.array;
           var t3 = t * 3;
 
@@ -3033,13 +3067,20 @@ input[type=color] {
             bmy = (pos[o0 + 1] + pos[o1 + 1]) * 0.5;
             bmz = (pos[o0 + 2] + pos[o1 + 2]) * 0.5;
           }
-          if (ba < 0 || bestSq <= splitSq) continue;
+          if (ba < 0) continue;
           if (msk[ba] >= 0.5 || msk[bb] >= 0.5) continue;
           var ddx = bmx - cx, ddy = bmy - cy, ddz = bmz - cz;
-          if (ddx * ddx + ddy * ddy + ddz * ddz > r2) continue;
+          var midSq = ddx * ddx + ddy * ddy + ddz * ddz;
+          if (midSq <= r2) {
+            if (bestSq <= splitSq) continue;                 // fine enough here
+          } else if (midSq <= outerSq) {
+            if (bestSq <= outerSplitSq) continue;            // only the coarse ones
+          } else {
+            continue;                                        // too far away to matter
+          }
           if (this.splitEdge(ba, bb) >= 0) { nSplit++; did++; }
         }
-        if (!did) break;
+        if (!did || nSplit >= splitBudget) break;
       }
     }
 
@@ -3513,6 +3554,168 @@ input[type=color] {
   };
 
   /** Smooth the whole mesh (Mesh > Smooth All). */
+  /**
+   * Find the spikes: vertices sitting far off the surface their own ring
+   * describes.
+   *
+   * The measure is the distance from the middle of the ring, against how far
+   * apart the ring's own vertices are — deliberately not against the edges
+   * that reach the vertex itself, because a spike stretches those and would
+   * then hide behind them.
+   *
+   * With `out`, appends [vertex, x, y, z] for each one, where x,y,z is where
+   * it should go. Returns how many were found.
+   */
+  function scanSpikes(mesh, factor, strength, out) {
+    var pos = mesh.positions.array;
+    var ring = [];
+    var found = 0;
+    for (var v = 0; v < mesh.masks.length; v++) {
+      if (mesh.vertDead.array[v]) continue;
+      ring.length = 0;
+      mesh.ringVerts(v, ring);
+      if (ring.length < 3) continue;
+      var o = v * 3;
+      var cx = 0, cy = 0, cz = 0;
+      for (var i = 0; i < ring.length; i++) {
+        var ro = ring[i] * 3;
+        cx += pos[ro]; cy += pos[ro + 1]; cz += pos[ro + 2];
+      }
+      var inv = 1 / ring.length;
+      cx *= inv; cy *= inv; cz *= inv;
+
+      // how far apart the ring's own neighbours are — the local scale
+      var span = 0;
+      for (var k = 0; k < ring.length; k++) {
+        var a = ring[k] * 3, b = ring[(k + 1) % ring.length] * 3;
+        span += Math.sqrt((pos[b] - pos[a]) * (pos[b] - pos[a]) +
+                          (pos[b + 1] - pos[a + 1]) * (pos[b + 1] - pos[a + 1]) +
+                          (pos[b + 2] - pos[a + 2]) * (pos[b + 2] - pos[a + 2]));
+      }
+      span *= inv;
+      if (span < 1e-12) continue;
+
+      var dx = pos[o] - cx, dy = pos[o + 1] - cy, dz = pos[o + 2] - cz;
+      var off = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (off <= span * factor) continue;
+      found++;
+      if (out) {
+        out.push(v, cx + dx * (1 - strength), cy + dy * (1 - strength), cz + dz * (1 - strength));
+      }
+    }
+    return found;
+  }
+
+  /*
+   * Where the threshold comes from.
+   *
+   * A cone's apex sits about five times its ring spacing off that ring's
+   * middle — and it is a feature, not a fault. Measured spikes left by a
+   * stroke that piled up in one place score under two. So a threshold that
+   * catches "spikes" from sculpting would blunt every cone, pyramid and
+   * horn tip in the scene, which is worse than the problem.
+   *
+   * The default is therefore set well above a cone: it catches the genuine
+   * needles — a vertex flung out of an imported mesh, or left behind by a
+   * boolean — and leaves sharp features that were made on purpose alone.
+   * Prevention is what deals with sculpting spikes: the stroke reach limit
+   * in the brush engine.
+   */
+  var SPIKE_FACTOR = 6;
+
+  /**
+   * Pull needle vertices back onto the surface. Returns how many moved.
+   *
+   * Runs a few passes, because pulling a needle most of the way back can
+   * leave it just over the threshold still.
+   */
+  P.relaxSpikes = function (factor, strength) {
+    factor = factor === undefined ? SPIKE_FACTOR : factor;
+    strength = strength === undefined ? 0.85 : strength;
+    var pos = this.positions.array;
+    var moved = 0;
+    var ring = [];
+    for (var pass = 0; pass < 4; pass++) {
+      var targets = [];
+      scanSpikes(this, factor, strength, targets);
+      if (!targets.length) break;
+      // collect first, apply after: moving as we go would let one needle drag
+      // its neighbour's idea of the surface with it
+      var touched = [];
+      for (var k = 0; k < targets.length; k += 4) {
+        var v = targets[k], o = v * 3;
+        pos[o] = targets[k + 1];
+        pos[o + 1] = targets[k + 2];
+        pos[o + 2] = targets[k + 3];
+        this.markVertDirty(v);
+        touched.push(v);
+      }
+      moved += touched.length;
+
+      /*
+       * Then relax the ring around each one. Where two needles were
+       * neighbours, each has distorted the other's ring, so pulling one back
+       * leaves the other measuring against a surface that is still wrong —
+       * and the scan stops flagging it while it is plainly still out. A light
+       * pass over the neighbourhood settles that.
+       */
+      var near = [];
+      var seen = {};
+      for (var i = 0; i < touched.length; i++) {
+        var tv = touched[i];
+        if (!seen[tv]) { seen[tv] = 1; near.push(tv); }
+        ring.length = 0;
+        this.ringVerts(tv, ring);
+        for (var r = 0; r < ring.length; r++) {
+          if (!seen[ring[r]]) { seen[ring[r]] = 1; near.push(ring[r]); }
+        }
+      }
+      if (near.length) this.smoothVerts(Uint32Array.from(near), near.length, 0.5, false);
+    }
+    if (moved) { this._boundsDirty = true; this.computeNormals(); }
+    return moved;
+  };
+
+  /** Count the needle vertices without touching anything. */
+  P.countSpikes = function (factor) {
+    return scanSpikes(this, factor === undefined ? SPIKE_FACTOR : factor, 0.85, null);
+  };
+
+  /**
+   * Relax the vertices of badly shaped triangles.
+   *
+   * Slivers — long, thin, almost-zero-area triangles — are what a torn or
+   * glitchy surface is actually made of, and they read as hard fins under
+   * any shading. Smoothing only the vertices that belong to them cleans that
+   * up without softening anything that is already well formed.
+   *
+   * Returns how many triangles were involved.
+   */
+  P.relaxSlivers = function (quality, amount) {
+    quality = quality === undefined ? 0.12 : quality;
+    amount = amount === undefined ? 0.6 : amount;
+    var T = this.tris.array;
+    var seen = new Uint8Array(this.masks.length);
+    var verts = [];
+    var count = 0;
+    for (var t = 0; t < this.triDead.length; t++) {
+      if (this.triDead.array[t]) continue;
+      if (this.triQuality(t) >= quality) continue;
+      count++;
+      var t3 = t * 3;
+      for (var k = 0; k < 3; k++) {
+        var v = T[t3 + k];
+        if (v < seen.length && !seen[v]) { seen[v] = 1; verts.push(v); }
+      }
+    }
+    if (verts.length) {
+      this.smoothVerts(Uint32Array.from(verts), verts.length, amount, true);
+      this.computeNormals();
+      this._boundsDirty = true;
+    }
+    return count;
+  };
+
   P.smoothAll = function (iterations, amount, tangential) {
     var live = [];
     var nv = this.masks.length;
@@ -7645,16 +7848,16 @@ input[type=color] {
 
   P.BUILTIN = [
     { id: 'blockout', label: 'Block out', hint: 'Big soft clay for the first shapes',
-      settings: { brush: 'clay', radius: 140, strength: 0.6, falloff: 'smooth', spacing: 0.16,
+      settings: { brush: 'clay', radius: 95, strength: 0.6, falloff: 'smooth', spacing: 0.16,
                   autoSmooth: 0.35, alpha: 'none', stampMode: false, dyntopo: false } },
     { id: 'refine', label: 'Refine form', hint: 'Smaller clay, gentler, for shaping',
       settings: { brush: 'clay', radius: 70, strength: 0.4, falloff: 'smooth', spacing: 0.12,
                   autoSmooth: 0.3, alpha: 'none', stampMode: false } },
     { id: 'smoothpass', label: 'Smooth pass', hint: 'Relax the surface without losing volume',
-      settings: { brush: 'smooth', radius: 110, strength: 0.5, falloff: 'smooth', spacing: 0.1,
+      settings: { brush: 'smooth', radius: 95, strength: 0.5, falloff: 'smooth', spacing: 0.1,
                   autoSmooth: 0, alpha: 'none', stampMode: false } },
     { id: 'hardsurface', label: 'Hard surface', hint: 'Trim Normal, flat and decisive',
-      settings: { brush: 'trimnormal', radius: 100, strength: 0.85, falloff: 'linear', spacing: 0.08,
+      settings: { brush: 'trimnormal', radius: 95, strength: 0.85, falloff: 'linear', spacing: 0.08,
                   autoSmooth: 0, alpha: 'none', stampMode: false } },
     { id: 'panelcut', label: 'Panel cut', hint: 'A square stamp that presses one panel in',
       settings: { brush: 'trimdynamic', radius: 90, strength: 0.9, falloff: 'linear', spacing: 0.08,
@@ -7673,14 +7876,14 @@ input[type=color] {
       settings: { brush: 'draw', radius: 60, strength: 0.25, falloff: 'smooth', spacing: 0.25,
                   autoSmooth: 0, alpha: 'scratches', stampMode: false, alphaFollowStroke: true } },
     { id: 'cracked', label: 'Cracked', hint: 'Broken, weathered surface',
-      settings: { brush: 'draw', radius: 100, strength: 0.3, falloff: 'smooth', spacing: 0.35,
+      settings: { brush: 'draw', radius: 95, strength: 0.3, falloff: 'smooth', spacing: 0.35,
                   autoSmooth: 0, alpha: 'cracks', stampMode: false, alphaRandomRotate: true } },
     { id: 'dirtpaint', label: 'Dirt paint', hint: 'Dusty brown through a grain stencil',
-      settings: { brush: 'paint', radius: 110, strength: 0.4, falloff: 'smooth', spacing: 0.2,
+      settings: { brush: 'paint', radius: 95, strength: 0.4, falloff: 'smooth', spacing: 0.2,
                   alpha: 'dirt', stampMode: false, alphaRandomRotate: true,
                   paintColorHex: '#6b5238' } },
     { id: 'basecolour', label: 'Base colour', hint: 'Solid paint with no stencil',
-      settings: { brush: 'paint', radius: 120, strength: 0.7, falloff: 'smooth', spacing: 0.12,
+      settings: { brush: 'paint', radius: 95, strength: 0.7, falloff: 'smooth', spacing: 0.12,
                   alpha: 'none', stampMode: false, paintColorHex: '#d94f3d' } }
   ];
 
@@ -7822,6 +8025,20 @@ input[type=color] {
 
   /** How steeply a surface must turn away before the brush fades out. */
   var RIM_FADE = 0.4;
+  /*
+   * How far one stroke may move a vertex from where it started, as a
+   * multiple of the brush radius.
+   *
+   * Without a limit, a brush that builds material up runs away: every stamp
+   * measures against the surface the last stamp left, so stamps landing on
+   * the same few vertices — a slow drag, a tap and hold, a stroke that
+   * doubles back — lift them again and again until they shoot out as a
+   * spike. A limit per vertex per stroke stops that without stopping a long
+   * pull, because a pull walks over fresh vertices as it goes and each of
+   * them starts its own count. Lift your finger and the next stroke starts
+   * again, so material still builds up pass after pass.
+   */
+  var STROKE_REACH = 1.1;
 
   /** How deep one pass of Trim Normal cuts, as a fraction of brush radius. */
   var TRIM_DEPTH = 0.12;
@@ -7996,6 +8213,34 @@ input[type=color] {
     }
     mesh._boundsDirty = true;
   }
+
+  /**
+   * Pull any vertex that has drifted further than `limit` from where this
+   * stroke found it back onto that sphere. This is what keeps a stroke from
+   * growing spikes, and it costs one distance check per touched vertex.
+   */
+  function limitStrokeReach(mesh, verts, count, origins, limit) {
+    if (!(limit > 0)) return 0;
+    var pos = mesh.positions.array;
+    var pulled = 0;
+    for (var i = 0; i < count; i++) {
+      var v = verts[i];
+      var start = origins.get(v);
+      if (!start) continue;
+      var o = v * 3;
+      var dx = pos[o] - start[0], dy = pos[o + 1] - start[1], dz = pos[o + 2] - start[2];
+      var d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (d <= limit || d < 1e-12) continue;
+      var k = limit / d;
+      pos[o] = start[0] + dx * k;
+      pos[o + 1] = start[1] + dy * k;
+      pos[o + 2] = start[2] + dz * k;
+      mesh.markVertDirty(v);
+      pulled++;
+    }
+    return pulled;
+  }
+  S.limitStrokeReach = limitStrokeReach;
 
   var BrushFns = {};
 
@@ -8537,6 +8782,12 @@ input[type=color] {
     if (!this._frameFwd) this._frameFwd = V3.create(0, 0, 1);
     V3.perpendicular(this._frameFwd, this._anchorNormal);
     this.ctx.origin = (brush.grab || brush.id === 'layer') ? new Map() : null;
+    /*
+     * Grab brushes already work from a captured start position, and paint and
+     * mask brushes move nothing, so the reach limit applies to the
+     * displacement brushes — the ones that can pile material up.
+     */
+    this.strokeOrigins = (brush.grab || brush.paint || brush.mask) ? null : new Map();
     this.grabVerts = null;
 
     // grab brushes capture their vertex set once, so the same material moves
@@ -8546,16 +8797,39 @@ input[type=color] {
       // drags the mesh thin, and the whole point of dynamic topology is that
       // it does not have to
       if (this.usesDyntopo()) {
-        var gDetail = st.detailMode === 'constant'
-          ? st.detailSize
-          : this.anchorRadius * S.clamp(st.detailPercent / 100, 0.02, 1);
+        var gDetail = this.detailSize(this._anchorWorld, this.anchorRadius);
         this.obj.mesh.dyntopo(this._anchorLocal[0], this._anchorLocal[1], this._anchorLocal[2],
-                              this.anchorRadius, Math.max(gDetail, 1e-6), st.maxTriangles);
+                              this.anchorRadius, gDetail, st.maxTriangles);
       }
       this.captureGrabSet();
     }
     this.stampAt(this._anchorLocal, this._anchorNormal, true);
     return true;
+  };
+
+  /**
+   * How big the triangles under the brush should be, in the object's local
+   * units.
+   *
+   * Measured in screen pixels by default, rather than as a fraction of the
+   * brush. Tying detail to the brush size is a mistake worth naming: a small
+   * brush then asks for microscopic triangles, and a single dab with a
+   * four-pixel brush can ask for a hundred thousand of them — which is what
+   * turned a tap into a star of stretched fins. In pixels, detail means the
+   * same thing whatever size the brush is, and the triangle count grows with
+   * the area actually painted over.
+   *
+   * The older modes are still here: 'relative' is the fraction-of-the-brush
+   * behaviour and 'constant' is a fixed size in model units.
+   */
+  StrokeEngine.prototype.detailSize = function (worldPoint, localRadius) {
+    var st = this.settings;
+    if (st.detailMode === 'constant') return Math.max(st.detailSize || 0.01, 1e-6);
+    if (st.detailMode === 'relative') {
+      return Math.max(localRadius * S.clamp((st.detailPercent || 20) / 100, 0.02, 1), 1e-6);
+    }
+    var perPixel = this.camera.worldPerPixel(worldPoint) / this.obj.uniformScale();
+    return Math.max(perPixel * S.clamp(st.detailPixels || 12, 3, 60), 1e-6);
   };
 
   StrokeEngine.prototype.usesDyntopo = function () {
@@ -8571,7 +8845,16 @@ input[type=color] {
     var perPixel = this.camera.worldPerPixel(worldPoint);
     var px = st.radius * (st.pressureRadius ? S.lerp(0.35, 1, this.pressure) : 1);
     var world = px * perPixel;
-    return world / this.obj.uniformScale();
+    var local = world / this.obj.uniformScale();
+    /*
+     * A brush wider than the model itself has nothing useful to do: the
+     * surface it averages over is the whole object, so a stroke drags
+     * everything at once and the result is a lopsided blob rather than a
+     * sculpt. Cap it against the model's own size — zoomed out far enough,
+     * the brush stops growing instead of swallowing the thing being made.
+     */
+    var cap = this.obj.mesh.boundsRadius() * 0.8;
+    return (cap > 1e-6 && local > cap) ? cap : local;
   };
 
   StrokeEngine.prototype.captureGrabSet = function () {
@@ -8627,11 +8910,14 @@ input[type=color] {
       var cx = local[0] * m[0], cy = local[1] * m[1], cz = local[2] * m[2];
 
       if (this.usesDyntopo() && !(brush.grab && !brush.follow)) {
-        var detail = st.detailMode === 'constant'
-          ? st.detailSize
-          : radius * S.clamp(st.detailPercent / 100, 0.02, 1);
-        detail = Math.max(detail, 1e-6);
-        mesh.dyntopo(cx, cy, cz, radius, detail, st.maxTriangles);
+        var detail = this.detailSize(worldPoint, radius);
+        /*
+         * Refine a little wider than the brush. Refining exactly the
+         * footprint leaves a dense island inside a ring of untouched
+         * triangles, and the seam between them is where slivers and torn
+         * shading come from; a wider ring grades the change instead.
+         */
+        mesh.dyntopo(cx, cy, cz, radius * 1.25, detail, st.maxTriangles);
       }
 
       var verts;
@@ -8703,6 +8989,21 @@ input[type=color] {
 
       computeWeights(ctx);
       this.history.captureVerts(verts, ctx.count);
+
+      // remember where these vertices were when the stroke first touched
+      // them, so the limit below has something to measure against
+      var origins = this.strokeOrigins;
+      if (origins) {
+        var opos = mesh.positions.array;
+        for (var oi = 0; oi < ctx.count; oi++) {
+          var ov = verts[oi];
+          if (!origins.has(ov)) {
+            var oo = ov * 3;
+            origins.set(ov, [opos[oo], opos[oo + 1], opos[oo + 2]]);
+          }
+        }
+      }
+
       brush.fn(ctx);
 
       // `crisp` brushes (the trims) skip auto-smoothing: rounding the edge
@@ -8713,6 +9014,8 @@ input[type=color] {
       if (autoSmooth > 0) {
         mesh.smoothVerts(verts, ctx.count, autoSmooth * 0.5, true, ctx.weights);
       }
+
+      if (origins) limitStrokeReach(mesh, verts, ctx.count, origins, radius * STROKE_REACH);
 
       var arr = verts;
       mesh.computeNormals(arr, ctx.count);
@@ -8843,13 +9146,11 @@ input[type=color] {
       // a sphere covering both ends of the pull
       var reach = base + pulled * 0.6;
       if (reach > 1e-6) {
-        var detail = st.detailMode === 'constant'
-          ? st.detailSize
-          : base * S.clamp(st.detailPercent / 100, 0.02, 1);
+        var detail = this.detailSize(this._anchorWorld, base);
         mesh.dyntopo(this._anchorLocal[0] + (total ? total[0] * 0.5 : 0),
                      this._anchorLocal[1] + (total ? total[1] * 0.5 : 0),
                      this._anchorLocal[2] + (total ? total[2] * 0.5 : 0),
-                     reach, Math.max(detail, 1e-6), st.maxTriangles);
+                     reach, detail, st.maxTriangles);
         mesh.computeNormals();
       }
     }
@@ -8858,6 +9159,7 @@ input[type=color] {
     this.grabTotal = null;
     this.rotateAngle = 0;
     this.ctx.origin = null;
+    this.strokeOrigins = null;
     this.grabVerts = null;
     mesh.gridMaybeRebuild();
     var committed = this.history.endStroke();
@@ -8872,6 +9174,7 @@ input[type=color] {
     this.grabTotal = null;
     this.rotateAngle = 0;
     this.ctx.origin = null;
+    this.strokeOrigins = null;
     this.grabVerts = null;
     var reverted = this.history.revertStroke();
     this.obj.mesh.gridMaybeRebuild();
@@ -11142,6 +11445,16 @@ input[type=color] {
   var el = UI.el;
   var V3 = S.V3, M4 = S.M4, Q4 = S.Q4;
 
+  /*
+   * The ceilings for the two sliders. Kept low on purpose: a brush wider
+   * than a fifth of the screen averages over so much surface that a stroke
+   * drags the whole form around, and strength above 1 moves the surface
+   * further than the brush is wide in a single stamp — both of which end in
+   * a mess rather than a model.
+   */
+  var MAX_RADIUS = 95;
+  var MAX_STRENGTH = 1;
+
   var STORAGE_KEY = 'sculptfree.settings.v1';
   var DB_NAME = 'sculptfree';
   var DB_STORE = 'projects';
@@ -11189,7 +11502,15 @@ input[type=color] {
      *                 reduces a copy to it. The sculpt keeps its detail.
      */
     dyntopo: true,
-    detailMode: 'relative',
+    /*
+     * Detail is measured in screen pixels: triangles under the brush are
+     * kept about this big on screen. Measuring it as a fraction of the brush
+     * instead (the old 'relative' mode, still available) means a small brush
+     * asks for microscopic triangles, which is how a single tap could ask
+     * for a hundred thousand of them and leave a spike behind.
+     */
+    detailMode: 'pixels',
+    detailPixels: 12,
     detailPercent: 20,
     detailSize: 0.01,
     maxTriangles: 150000,
@@ -11304,8 +11625,9 @@ input[type=color] {
    * would hand a returning user the very behaviour that was fixed. So those
    * keys are dropped on the way in, once, and everything else is kept.
    */
-  var SETTINGS_SCHEMA = 2;
-  var STALE_ON_UPGRADE = ['dyntopo', 'maxTriangles', 'detailPercent', 'detailMode', 'detailSize'];
+  var SETTINGS_SCHEMA = 3;
+  var STALE_ON_UPGRADE = ['dyntopo', 'maxTriangles', 'detailPercent', 'detailMode', 'detailSize',
+                          'detailPixels'];
 
   A.loadSettings = function () {
     var out = {};
@@ -11325,6 +11647,8 @@ input[type=color] {
         if (upgrading && saved.brush === 'clay') out.brush = DEFAULTS.brush;
       }
     } catch (e) { /* private mode, or corrupt: defaults are fine */ }
+    out.radius = S.clamp(out.radius, 4, MAX_RADIUS);
+    out.strength = S.clamp(out.strength, 0, MAX_STRENGTH);
     out.paintColor = new Float32Array(UI.hexToRgb(out.paintColorHex));
     return out;
   };
@@ -11338,6 +11662,12 @@ input[type=color] {
   };
 
   A.set = function (key, value, opts) {
+    // the two ceilings are enforced here rather than in every caller, so a
+    // preset, a project or a settings file from an older build cannot bring
+    // an unusable brush back
+    if (key === 'radius') value = S.clamp(value, 4, MAX_RADIUS);
+    if (key === 'strength') value = S.clamp(value, 0, MAX_STRENGTH);
+    if (key === 'detailPixels') value = S.clamp(value, 4, 40);
     this.settings[key] = value;
     if (key === 'paintColorHex') this.settings.paintColor = new Float32Array(UI.hexToRgb(value));
     if (key === 'historyBudgetMB') this.history.budget = value * 1024 * 1024;
@@ -11412,11 +11742,11 @@ input[type=color] {
     var rightBar = el('div#bar-right', null, [this.moveBtn, this.symBtn, this.frameBtn, this.lookBtn]);
 
     /* bottom: size and strength, the only two numbers that matter */
-    this.sizePill = this.makePill('radius', 'Size', 4, 400, 1, this.settings.radius, function (v) {
+    this.sizePill = this.makePill('radius', 'Size', 4, MAX_RADIUS, 1, this.settings.radius, function (v) {
       self.set('radius', v);
       self.refreshStatus();
     }, function (v) { return Math.round(v); });
-    this.strengthPill = this.makePill('strength', 'Strength', 0, 2, 0.01, this.settings.strength, function (v) {
+    this.strengthPill = this.makePill('strength', 'Strength', 0, MAX_STRENGTH, 0.01, this.settings.strength, function (v) {
       self.set('strength', v);
       self.refreshStatus();
     }, function (v) { return Number(v).toFixed(2); });
@@ -11705,6 +12035,8 @@ input[type=color] {
         { icon: 'mirror', label: 'Make symmetrical', hint: 'Mirror the +X half onto the other side',
           onclick: function () { self.symmetrize(0, true); } },
         { icon: 'smooth', label: 'Smooth everything', onclick: function () { self.smoothAll(); } },
+        { icon: 'reset', label: 'Fix glitches', hint: 'Pull out spikes, drop bad triangles, close hairline splits',
+          onclick: function () { self.repairSurface(); } },
         { icon: 'mask', label: 'Mask', hint: 'Clear, invert or blur the locked area',
           chevron: true, onclick: function () { self.openMaskSheet(); } },
         { icon: 'texture', label: 'Texture', hint: 'Bake the paint into an image and export it',
@@ -11925,7 +12257,7 @@ input[type=color] {
       { id: 'join', label: 'Join', title: 'Keep both meshes, one object' },
       { id: 'union', label: 'Union', title: 'Fuse into one surface' },
       { id: 'subtract', label: 'Subtract', title: 'Cut B out of A' },
-      { id: 'intersect', label: 'Overlap', title: 'Keep only the overlap' }
+      { id: 'intersect', label: 'Intersect', title: 'Keep only the part where the two overlap' }
     ], onchange: function (v) {
       mode = v;
       if (v !== 'join') self.set('booleanMode', v);
@@ -12171,10 +12503,19 @@ input[type=color] {
       options: S.Gizmo.MODES.map(function (m) { return { id: m.id, label: m.label, title: m.hint }; }),
       onchange: function (v) { self.setGizmoMode(v); }
     });
+    /*
+     * All four ways of combining, right where the shape was added: union to
+     * weld it on, subtract to cut it out (a socket, a window, a bite),
+     * intersect to keep only the overlap, join to leave both surfaces alone.
+     */
     this.transformJoin = el('div.gizmo-join', { hidden: true }, [
       UI.button('Union', { class: 'accent', title: 'Weld the shape into the sculpt as one surface',
         onclick: function () { self.joinPendingShape('union'); } }),
-      UI.button('Join', { title: 'Put the shape in the same mesh without welding — instant',
+      UI.button('Subtract', { title: 'Cut the shape out of the sculpt',
+        onclick: function () { self.joinPendingShape('subtract'); } }),
+      UI.button('Intersect', { title: 'Keep only the part where the two overlap',
+        onclick: function () { self.joinPendingShape('intersect'); } }),
+      UI.button('Join', { title: 'Put both surfaces in one mesh without welding, which is instant',
         onclick: function () { self.joinPendingShape('join'); } })
     ]);
     var bar = el('div#bar-transform', { hidden: true }, [
@@ -12457,7 +12798,8 @@ input[type=color] {
     this.scene.selected = targetIndex;
     t.pending = null;
     this.refreshTransformBar();
-    this.applyCombine(mode === 'union' ? 'union' : 'join', shapeIndex, {
+    var known = { union: 1, subtract: 1, intersect: 1, join: 1 };
+    this.applyCombine(known[mode] ? mode : 'union', shapeIndex, {
       resolution: this.settings.booleanResolution,
       smooth: this.settings.booleanSmooth,
       keep: false,
@@ -12510,7 +12852,8 @@ input[type=color] {
       ]),
       rows: [
         { group: 'This shape' },
-        { icon: 'boolean', label: 'Union with the sculpt', hint: 'Weld it into the selected sculpt as one surface',
+        { icon: 'boolean', label: 'Combine with another shape', hint: 'Union, subtract, intersect or join',
+          chevron: true,
           onclick: function () { self.openCombineSheet(); } },
         { icon: 'copy', label: 'Duplicate', onclick: function () { self.duplicateObject(); } },
         { icon: 'reset', label: 'Reset the transform', hint: 'Back to no move, no turn, original size',
@@ -12923,9 +13266,9 @@ input[type=color] {
     var st = this.settings;
     var brush = S.brushById(st.brush);
 
-    var detailRow = UI.slider({ label: 'Detail', min: 2, max: 100, step: 1, value: st.detailPercent, suffix: '%',
-      title: 'Triangle size under the brush, as a percentage of the brush size',
-      onchange: function (v) { self.set('detailPercent', v); } });
+    var detailRow = UI.slider({ label: 'Detail', min: 4, max: 40, step: 1, value: st.detailPixels, suffix: ' px',
+      title: 'How big the new triangles are on screen. Smaller means finer detail and more of them',
+      onchange: function (v) { self.set('detailPixels', v); } });
     var maxRow = UI.slider({ label: 'Limit', min: 25000, max: 2000000, step: 25000, value: st.maxTriangles,
       format: function (v) { return S.formatCount(Number(v)); },
       title: 'Dynamic topology stops adding triangles here',
@@ -13315,7 +13658,7 @@ input[type=color] {
     var obj = this.scene.current();
     var live = obj ? obj.mesh.liveTris : 0;
     this.set('maxTriangles', Math.max(n * 6, 150000, live));
-    this.set('detailPercent', n <= 2000 ? 26 : (n <= 10000 ? 20 : (n <= 50000 ? 14 : 9)));
+    this.set('detailPixels', n <= 2000 ? 18 : (n <= 10000 ? 14 : (n <= 50000 ? 10 : 8)));
     this.refreshStatus();
     this.updateHud();
     UI.toast('Export budget ' + S.formatCount(n) + ' triangles \u2014 sculpt as dense as you like, ' +
@@ -13408,7 +13751,7 @@ input[type=color] {
   };
 
   A.nudgeRadius = function (delta) {
-    var v = S.clamp(this.settings.radius + delta, 4, 400);
+    var v = S.clamp(this.settings.radius + delta, 4, MAX_RADIUS);
     this.set('radius', v);
     if (this.panelRefs.radius) this.panelRefs.radius.set(v);
     this.showRadiusPreview();
@@ -13416,7 +13759,7 @@ input[type=color] {
   };
 
   A.nudgeStrength = function (delta) {
-    var v = S.clamp(this.settings.strength + delta, 0, 2);
+    var v = S.clamp(this.settings.strength + delta, 0, MAX_STRENGTH);
     this.set('strength', v);
     if (this.panelRefs.strength) this.panelRefs.strength.set(v);
     UI.toast('Strength ' + v.toFixed(2), null, 900);
@@ -13731,6 +14074,48 @@ input[type=color] {
       mesh.subdivide(!!smooth);
       return { message: 'Subdivided ' + S.formatCount(before) + ' → ' + S.formatCount(mesh.liveTris) + ' triangles' };
     }, 'Subdividing');
+  };
+
+  /**
+   * Fix glitches.
+   *
+   * A way out when a sculpt has gone wrong: pull spikes back onto the
+   * surface, collapse the slivers, drop triangles that have shrunk to
+   * nothing, close hairline splits, and rebuild the normals. Nothing here
+   * changes the shape that was meant — it removes the parts that are not
+   * really surface.
+   */
+  A.repairSurface = function () {
+    this.withMesh('Fix glitches', function (obj, mesh) {
+      var beforeTris = mesh.liveTris;
+      var beforeBorder = mesh.countBorderEdges();
+      var beforeNon = mesh.countNonManifoldEdges();
+
+      // needles first: every other measurement here is thrown off by them
+      var spikes = mesh.relaxSpikes();
+      // then the slivers, which is what a torn surface is actually made of
+      var slivers = mesh.relaxSlivers();
+
+      var avg = mesh.averageEdgeLength() || 1e-4;
+      mesh.collapseTinyEdges(avg * 0.02);
+      mesh.removeDegenerateTriangles(avg * avg * 1e-6);
+      if (mesh.countNonManifoldEdges() > 0 || mesh.countBorderEdges() > 0) {
+        // welding rebuilds the mesh from its triangle list, which is also
+        // what separates the pinched vertices behind a non-manifold edge
+        mesh.weld(avg * 0.02);
+      }
+      mesh.computeNormals();
+      mesh.gridRebuild();
+
+      var bits = [];
+      if (spikes) bits.push(spikes + (spikes === 1 ? ' spike' : ' spikes') + ' pulled back');
+      if (slivers) bits.push(slivers + ' sliver' + (slivers === 1 ? '' : 's') + ' relaxed');
+      if (beforeTris - mesh.liveTris > 0) bits.push((beforeTris - mesh.liveTris) + ' bad triangles removed');
+      if (beforeBorder - mesh.countBorderEdges() > 0) bits.push('holes closed');
+      if (beforeNon - mesh.countNonManifoldEdges() > 0) bits.push('pinches separated');
+      return { message: bits.length ? bits.join(', ') : 'Nothing to fix \u2014 the surface is clean',
+               spikes: spikes, slivers: slivers };
+    }, 'Looking for spikes, slivers and splits');
   };
 
   A.smoothAll = function () {

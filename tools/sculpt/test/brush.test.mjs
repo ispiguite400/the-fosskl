@@ -816,4 +816,169 @@ function drag(engine, steps = 10, from = [340, 300], to = [460, 300], pressure =
   }
 }
 
+/* ---- a stroke cannot run away with itself --------------------------- */
+{
+  /*
+   * The glitch this prevents, in the words of the person who hit it: "it can
+   * come out glitchy and break very easily". A brush that builds material up
+   * measures each stamp against the surface the last stamp left, so stamps
+   * landing on the same few vertices — a slow drag, a tap and hold, a stroke
+   * that doubles back — lifted them again and again until they shot out as a
+   * spike. One stroke may now move a vertex about one brush radius, and no
+   * further.
+   */
+  function pileUp(over = {}) {
+    const { obj, engine } = setup(Object.assign({
+      brush: 'add', radius: 25, strength: 1, dyntopo: true, maxTriangles: 150000
+    }, over), 'sphere', 3);
+    const mesh = obj.mesh;
+    const before = mesh.positions.copy();
+    // barely move: 40 stamps land on the same handful of vertices
+    engine.begin({ x: 400, y: 300, pressure: 1 });
+    for (let i = 1; i <= 40; i++) engine.move({ x: 400 + i * 0.4, y: 300, pressure: 1 });
+    engine.end();
+    const perPixel = 2 * Math.tan(22.5 * Math.PI / 180) * 3 / 600;
+    const radius = (over.radius || 25) * perPixel;
+    let worst = 0;
+    for (let v = 0; v < mesh.liveVerts && v * 3 < before.length; v++) {
+      const o = v * 3;
+      worst = Math.max(worst, Math.hypot(mesh.positions.array[o] - before[o],
+                                        mesh.positions.array[o + 1] - before[o + 1],
+                                        mesh.positions.array[o + 2] - before[o + 2]));
+    }
+    return { mesh, engine, worst, radius, ratio: worst / radius };
+  }
+
+  const piled = pileUp();
+  check('a stroke that stays in one place still does something', piled.worst > piled.radius * 0.2,
+    `${piled.ratio.toFixed(2)} radii`);
+  check('but it cannot pile up into a spike', piled.ratio < 1.6,
+    `moved ${piled.ratio.toFixed(2)} brush radii in one stroke`);
+  check('and the surface stays sound',
+    piled.mesh.countBorderEdges() === 0 && piled.mesh.countNonManifoldEdges() === 0);
+  audit(piled.mesh, 'after a pile-up');
+  eq('no needles were left behind', piled.mesh.countSpikes(), 0);
+
+  const strong = pileUp({ strength: 1, spacing: 0.04 });
+  check('tighter spacing cannot get around the limit', strong.ratio < 1.8,
+    `${strong.ratio.toFixed(2)} radii`);
+
+  // material still builds up pass after pass, which is the point of Add
+  {
+    const { obj, engine } = setup({ brush: 'add', radius: 40, strength: 1, dyntopo: true,
+                                    maxTriangles: 150000 }, 'sphere', 3);
+    const mesh = obj.mesh;
+    function reach() {
+      let far = 0;
+      for (let v = 0; v < mesh.masks.length; v++) {
+        if (mesh.vertDead.array[v]) continue;
+        const o = v * 3;
+        far = Math.max(far, Math.hypot(mesh.positions.array[o], mesh.positions.array[o + 1],
+                                       mesh.positions.array[o + 2]));
+      }
+      return far;
+    }
+    const marks = [];
+    for (let k = 0; k < 4; k++) {
+      engine.begin({ x: 400, y: 300, pressure: 1 });
+      for (let i = 1; i <= 6; i++) engine.move({ x: 400 + i * 4, y: 300, pressure: 1 });
+      engine.end();
+      marks.push(reach());
+    }
+    check('separate strokes still build the form up',
+      marks[1] > marks[0] && marks[2] > marks[1] && marks[3] > marks[2],
+      marks.map((m) => m.toFixed(3)).join(' -> '));
+  }
+
+  // grab brushes are exempt: they work from their own captured start
+  {
+    const { obj, engine } = setup({ brush: 'move', radius: 40, strength: 1, dyntopo: false },
+      'sphere', 4);
+    const mesh = obj.mesh;
+    const before = mesh.positions.copy();
+    drag(engine, 20, [400, 300], [560, 300]);
+    let worst = 0;
+    for (let v = 0; v < mesh.liveVerts; v++) {
+      const o = v * 3;
+      worst = Math.max(worst, Math.hypot(mesh.positions.array[o] - before[o],
+                                        mesh.positions.array[o + 1] - before[o + 1],
+                                        mesh.positions.array[o + 2] - before[o + 2]));
+    }
+    const perPixel = 2 * Math.tan(22.5 * Math.PI / 180) * 3 / 600;
+    check('a grab can still drag as far as the pointer goes', worst > 40 * perPixel * 1.5,
+      `${(worst / (40 * perPixel)).toFixed(2)} radii`);
+  }
+}
+
+/* ---- detail size is measured on screen, not against the brush ------- */
+{
+  /*
+   * Detail used to be a fraction of the brush size, which meant a small
+   * brush asked for microscopic triangles: a single dab with a four-pixel
+   * brush could spend minutes adding a hundred thousand of them and leave a
+   * star of stretched fins behind. In pixels, detail means the same thing
+   * whatever size the brush is.
+   */
+  function stroke(over, moves = 20, step = 2) {
+    const { obj, engine } = setup(Object.assign({
+      brush: 'add', radius: 4, strength: 0.41, dyntopo: true, maxTriangles: 150000
+    }, over), 'sphere', over.detail === undefined ? 2 : over.detail);
+    const mesh = obj.mesh;
+    const t0 = Date.now();
+    engine.begin({ x: 400, y: 300, pressure: 1 });
+    for (let i = 1; i <= moves; i++) engine.move({ x: 400 + i * step, y: 300, pressure: 1 });
+    engine.end();
+    return { mesh, ms: Date.now() - t0, tris: mesh.liveTris, engine };
+  }
+
+  const small = stroke({ radius: 4 });
+  check('a tiny brush stays cheap', small.tris < 2000, `${small.tris} triangles`);
+  check('and fast', small.ms < 1500, `${small.ms} ms`);
+  eq('with no needles', small.mesh.countSpikes(), 0);
+  audit(small.mesh, 'tiny brush on a coarse mesh');
+
+  const long = stroke({ radius: 4 }, 60);
+  check('and a long tiny-brush stroke is still cheap', long.tris < 4000, `${long.tris} triangles`);
+  check('and still fast', long.ms < 3000, `${long.ms} ms`);
+
+  const big = stroke({ radius: 95, strength: 1, detail: 3 }, 30, 5);
+  check('a full-size brush refines without exploding', big.tris < 60000, `${big.tris} triangles`);
+  check('and in reasonable time', big.ms < 6000, `${big.ms} ms`);
+  eq('the surface is closed', big.mesh.countBorderEdges(), 0);
+  eq('and manifold', big.mesh.countNonManifoldEdges(), 0);
+
+  // the three modes, read straight off the engine
+  const { obj, engine } = setup({ brush: 'add', radius: 40, detailPixels: 12,
+                                  detailMode: 'pixels' }, 'sphere', 3);
+  engine.begin({ x: 400, y: 300, pressure: 1 });
+  const world = S.V3.create(0, 0, 0.5);
+  const pixels = engine.detailSize(world, 0.1);
+  engine.settings.detailMode = 'relative';
+  engine.settings.detailPercent = 25;
+  const relative = engine.detailSize(world, 0.1);
+  engine.settings.detailMode = 'constant';
+  engine.settings.detailSize = 0.02;
+  const constant = engine.detailSize(world, 0.1);
+  engine.end();
+  eq('constant detail is exactly what was asked for', constant, 0.02);
+  check('relative detail is a fraction of the brush', Math.abs(relative - 0.025) < 1e-6, `${relative}`);
+  check('pixel detail does not depend on the brush size',
+    Math.abs(engine.detailSize(world, 0.9) - pixels) < 1e-9 ||
+    engine.settings.detailMode !== 'pixels', `${pixels}`);
+  check('pixel detail is a sane size in model units', pixels > 1e-4 && pixels < 0.2, `${pixels}`);
+}
+
+/* ---- a brush never grows past the model ----------------------------- */
+{
+  const { obj, engine } = setup({ brush: 'add', radius: 95, strength: 1, dyntopo: false },
+    'sphere', 3);
+  engine.begin({ x: 400, y: 300, pressure: 1 });
+  const radius = engine.localRadius(S.V3.create(0, 0, 0.5));
+  engine.end();
+  const bounds = obj.mesh.boundsRadius();
+  check('the brush is capped against the model it is on', radius <= bounds * 0.8 + 1e-6,
+    `${radius.toFixed(3)} against a model radius of ${bounds.toFixed(3)}`);
+  check('and is still usefully large', radius > bounds * 0.3, `${radius.toFixed(3)}`);
+}
+
 report('brush');

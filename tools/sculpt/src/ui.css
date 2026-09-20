@@ -488,7 +488,8 @@ input[type=color] {
 }
 #gizmo-object:hover { border-color: var(--accent-dim); }
 #bar-transform .seg { flex: 0 0 auto; }
-.gizmo-join { display: flex; gap: 6px; }
+.gizmo-join { display: flex; gap: 5px; }
+.gizmo-join .btn { padding: 8px 9px; font-size: 12px; }
 .gizmo-tools { display: flex; gap: 6px; align-items: center; }
 .gizmo-tools .btn { padding: 8px 10px; }
 

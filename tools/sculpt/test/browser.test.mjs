@@ -205,7 +205,7 @@ async function stroke(from, to, steps = 18, opts = {}) {
     dyntopo: window.SCULPT_APP.settings.dyntopo,
     budget: window.SCULPT_APP.settings.triBudget,
     cap: window.SCULPT_APP.settings.maxTriangles,
-    detail: window.SCULPT_APP.settings.detailPercent,
+    detail: window.SCULPT_APP.settings.detailPixels,
     tris: window.SCULPT_APP.scene.current().mesh.liveTris
   }));
   eq('the default brush is Add', defaults.brush, 'add');
@@ -300,10 +300,10 @@ async function stroke(from, to, steps = 18, opts = {}) {
     const app = window.SCULPT_APP;
     app.setBudget(1000);
     const low = { budget: app.settings.triBudget, cap: app.settings.maxTriangles,
-                  dyntopo: app.settings.dyntopo, detail: app.settings.detailPercent };
+                  dyntopo: app.settings.dyntopo, detail: app.settings.detailPixels };
     app.setBudget(250000);
     const high = { budget: app.settings.triBudget, cap: app.settings.maxTriangles,
-                   dyntopo: app.settings.dyntopo, detail: app.settings.detailPercent };
+                   dyntopo: app.settings.dyntopo, detail: app.settings.detailPixels };
     app.setBudget(2000);
     return { low, high, suggested: app.detailForBudget(window.SCULPT.Prim.byId('sphere')) };
   });
@@ -311,7 +311,7 @@ async function stroke(from, to, steps = 18, opts = {}) {
   check('a 1k budget still leaves room to sculpt', applied.low.cap >= 150000, `${applied.low.cap}`);
   eq('picking a budget never switches adding off', applied.low.dyntopo, true);
   check('a small budget uses coarser triangles', applied.low.detail > applied.high.detail,
-    `${applied.low.detail}% vs ${applied.high.detail}%`);
+    `${applied.low.detail} px vs ${applied.high.detail} px`);
   check('a big budget raises the ceiling to match', applied.high.cap >= 250000 * 6,
     `${applied.high.cap}`);
   eq('a 2k budget suggests a 1.3k starting sphere', applied.suggested, 3);
@@ -734,7 +734,7 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     const app = window.SCULPT_APP;
     app.newScene('sphere', 4, true);
     app.settings.dyntopo = true;
-    app.settings.detailPercent = 20;
+    app.settings.detailPixels = 12;
     app.settings.maxTriangles = 400000;
   });
   await page.waitForTimeout(150);
@@ -841,7 +841,7 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     // stroke engine throughput, measured in-page so browser input latency
     // does not hide the real cost: 120 stamps with dyntopo on
     app.settings.dyntopo = true;
-    app.settings.detailPercent = 25;
+    app.settings.detailPixels = 12;
     const t2 = performance.now();
     app.engine.begin({ x: w / 2 - 120, y: h / 2, pressure: 1 });
     for (let i = 1; i <= 120; i++) {
@@ -1047,7 +1047,7 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     app.set('dyntopo', false);
     app.set('maxTriangles', 400000);
     app.selectBrush('draw');
-    app.set('radius', 120);
+    app.set('radius', 90);
     app.set('strength', 0.8);
   });
 
@@ -1899,6 +1899,292 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   await page.waitForTimeout(200);
 }
 
+/* ---- the brush cannot be set past its limits ------------------------ */
+{
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.setTransformMode(false);
+    app.closeSheet();
+    app.newScene('sphere', null, true);
+  });
+  await page.waitForTimeout(200);
+  const limits = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    const ranges = Array.from(document.querySelectorAll('#bar-bottom .pill input[type=range]'));
+    app.set('radius', 400);
+    const radiusAfter = app.settings.radius;
+    app.set('strength', 2);
+    const strengthAfter = app.settings.strength;
+    app.nudgeRadius(500);
+    const nudgedRadius = app.settings.radius;
+    app.nudgeStrength(5);
+    const nudgedStrength = app.settings.strength;
+    app.set('radius', 62);
+    app.set('strength', 0.55);
+    return {
+      sliderMax: ranges.map((r) => Number(r.max)),
+      radiusAfter: radiusAfter, strengthAfter: strengthAfter,
+      nudgedRadius: nudgedRadius, nudgedStrength: nudgedStrength
+    };
+  });
+  eq('the size slider stops at 95', limits.sliderMax[0], 95);
+  eq('the strength slider stops at 1', limits.sliderMax[1], 1);
+  eq('asking for a bigger brush is clamped', limits.radiusAfter, 95);
+  eq('asking for more strength is clamped', limits.strengthAfter, 1);
+  eq('and the keyboard cannot get past it either', limits.nudgedRadius, 95);
+  eq('nor for strength', limits.nudgedStrength, 1);
+
+  // a preset cannot bring an oversized brush back
+  const viaPreset = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    const fake = { id: 'test-big', label: 'Too big', user: true,
+                   settings: { brush: 'add', radius: 400, strength: 2 } };
+    app.userPresets.push(fake);
+    app.applyPreset('test-big');
+    const got = { radius: app.settings.radius, strength: app.settings.strength };
+    app.userPresets.pop();
+    return got;
+  });
+  eq('a preset cannot exceed the size limit', viaPreset.radius, 95);
+  eq('nor the strength limit', viaPreset.strength, 1);
+}
+
+/* ---- a stroke that stays in one place does not grow a spike --------- */
+{
+  /*
+   * The glitch from the video: a small brush at high strength, worked over
+   * the same spot, used to shoot a star of stretched fins out of the
+   * surface. Driven here with real input, on the same kind of coarse mesh.
+   */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('sphere', 2, true);          // a coarse 320-triangle ball
+    app.selectBrush('add');
+    app.set('radius', 8);
+    app.set('strength', 1);
+    app.set('dyntopo', true);
+    const m = app.scene.current().mesh;
+    window.__before = { tris: m.liveTris, radius: m.boundsRadius() };
+  });
+  await page.waitForTimeout(200);
+  const t0 = Date.now();
+  // scrub back and forth over one spot, the gesture that used to break it
+  for (let i = 0; i < 5; i++) await stroke([cx - 6, cy], [cx + 6, cy], 8);
+  const scrubMs = Date.now() - t0;
+  const scrubbed = await page.evaluate(() => {
+    const m = window.SCULPT_APP.scene.current().mesh;
+    return { tris: m.liveTris, radius: m.boundsRadius(), spikes: m.countSpikes(),
+             border: m.countBorderEdges(), nonManifold: m.countNonManifoldEdges(),
+             before: window.__before };
+  });
+  eq('scrubbing one spot leaves no needles', scrubbed.spikes, 0);
+  eq('and the surface is still closed', scrubbed.border, 0);
+  eq('and still manifold', scrubbed.nonManifold, 0);
+  check('a small brush does not blow the triangle count up',
+    scrubbed.tris < scrubbed.before.tris + 4000,
+    `${scrubbed.before.tris} -> ${scrubbed.tris}`);
+  check('and the shape does not balloon',
+    scrubbed.radius < scrubbed.before.radius * 1.5,
+    `${scrubbed.before.radius.toFixed(3)} -> ${scrubbed.radius.toFixed(3)}`);
+  check('five strokes with a tiny brush stay responsive', scrubMs < 20000, `${scrubMs} ms`);
+  await page.screenshot({ path: path.join(screens, '29-no-spikes.png') });
+}
+
+/* ---- Fix glitches ---------------------------------------------------- */
+{
+  const damaged = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('sphere', 3, true);
+    const mesh = app.scene.current().mesh;
+    // fling a few vertices out, the way a broken import or an old bug would
+    const pos = mesh.positions.array;
+    let poked = 0;
+    for (let v = 5; v < mesh.liveVerts && poked < 6; v += 97) {
+      const o = v * 3;
+      pos[o] *= 9; pos[o + 1] *= 9; pos[o + 2] *= 9;
+      poked++;
+    }
+    mesh.computeNormals();
+    mesh._boundsDirty = true;
+    app.needsRender = true;
+    app.draw();
+    return { poked: poked, spikes: mesh.countSpikes(), radius: mesh.boundsRadius(),
+             undo: app.history.undoStack.length };
+  });
+  check('the test damage registers as needles', damaged.spikes >= 3, `${damaged.spikes}`);
+  await page.screenshot({ path: path.join(screens, '30-damaged.png') });
+
+  await page.evaluate(() => window.SCULPT_APP.repairSurface());
+  await page.waitForFunction(() => document.getElementById('busy').hidden, null, { timeout: 30000 });
+  await page.waitForTimeout(300);
+  const repaired = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    const mesh = app.scene.current().mesh;
+    return { spikes: mesh.countSpikes(), radius: mesh.boundsRadius(),
+             border: mesh.countBorderEdges(), nonManifold: mesh.countNonManifoldEdges(),
+             undo: app.history.undoStack.length,
+             label: app.history.undoStack.length
+               ? app.history.undoStack[app.history.undoStack.length - 1].label : '' };
+  });
+  eq('Fix glitches removes the needles', repaired.spikes, 0);
+  check('and brings the shape back', repaired.radius < damaged.radius * 0.4,
+    `${damaged.radius.toFixed(2)} -> ${repaired.radius.toFixed(2)}`);
+  eq('leaving it closed', repaired.border, 0);
+  eq('and manifold', repaired.nonManifold, 0);
+  eq('the repair is one undo step', repaired.label, 'Fix glitches');
+  await page.screenshot({ path: path.join(screens, '31-repaired.png') });
+
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(300);
+  const undone = await page.evaluate(() => window.SCULPT_APP.scene.current().mesh.countSpikes());
+  check('and undo brings the damage back, so it is not a trap', undone >= 3, `${undone}`);
+  await page.keyboard.press('Control+Shift+z');
+  await page.waitForTimeout(300);
+}
+
+/* ---- subtract and intersect, from the shape strip ------------------- */
+{
+  async function combineWith(mode) {
+    await page.evaluate(() => {
+      const app = window.SCULPT_APP;
+      app.setTransformMode(false);
+      app.newScene('sphere', 3, true);
+      app.set('booleanResolution', 96);
+    });
+    await page.waitForTimeout(200);
+    const before = await page.evaluate(() => {
+      const m = window.SCULPT_APP.scene.current().mesh;
+      return { tris: m.liveTris, radius: m.boundsRadius() };
+    });
+    // a box, moved so it overlaps half the ball
+    await page.evaluate(() => {
+      const app = window.SCULPT_APP;
+      app.insertShape('box', 2);
+      const shape = app.scene.current();
+      const target = app.scene.objects[0];
+      const mn = [0, 0, 0], mx = [0, 0, 0];
+      target.worldBounds(mn, mx);
+      const span = Math.max(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]);
+      window.SCULPT.Gizmo.keepPivot(shape,
+        window.SCULPT.V3.create((mn[0] + mx[0]) / 2 + span * 0.3, (mn[1] + mx[1]) / 2, (mn[2] + mx[2]) / 2),
+        window.SCULPT.Gizmo.localCentre(shape, window.SCULPT.V3.create(0, 0, 0)));
+      app.needsRender = true;
+    });
+    await page.waitForTimeout(200);
+    const buttons = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('.gizmo-join .btn span')).map((b) => b.textContent));
+    await page.locator('.gizmo-join .btn', { hasText: mode }).click();
+    await page.waitForFunction(() => document.getElementById('busy').hidden, null, { timeout: 60000 });
+    await page.waitForTimeout(400);
+    const after = await page.evaluate(() => {
+      const app = window.SCULPT_APP;
+      const m = app.scene.current().mesh;
+      // rough volume, by the divergence theorem
+      const T = m.tris.array, p = m.positions.array;
+      let vol = 0;
+      for (let t = 0; t < m.triDead.length; t++) {
+        if (m.triDead.array[t]) continue;
+        const t3 = t * 3, a = T[t3] * 3, b = T[t3 + 1] * 3, c = T[t3 + 2] * 3;
+        vol += (p[a] * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1])
+              - p[a + 1] * (p[b] * p[c + 2] - p[b + 2] * p[c])
+              + p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c])) / 6;
+      }
+      return { objects: app.scene.objects.length, tris: m.liveTris, volume: Math.abs(vol),
+               border: m.countBorderEdges(), nonManifold: m.countNonManifoldEdges() };
+    });
+    return { before, after, buttons };
+  }
+
+  const sub = await combineWith('Subtract');
+  eq('the strip offers all four ways to combine', sub.buttons.join(','),
+    'Union,Subtract,Intersect,Join');
+  eq('subtract leaves one object', sub.after.objects, 1);
+  // a ball is 4/3 pi r^3 = 0.524 at r=0.5; taking a bite has to remove volume
+  check('subtract cuts material out of the sculpt', sub.after.volume < 0.45,
+    `volume ${sub.after.volume.toFixed(3)} of about 0.524`);
+  check('and leaves something behind', sub.after.volume > 0.15, `${sub.after.volume.toFixed(3)}`);
+  eq('the result is closed', sub.after.border, 0);
+  eq('and manifold', sub.after.nonManifold, 0);
+  await page.screenshot({ path: path.join(screens, '32-subtract.png') });
+
+  const inter = await combineWith('Intersect');
+  eq('intersect leaves one object', inter.after.objects, 1);
+  check('intersect keeps only the overlap', inter.after.volume < 0.3,
+    `volume ${inter.after.volume.toFixed(3)}`);
+  check('and it is not empty', inter.after.volume > 0.02, `${inter.after.volume.toFixed(3)}`);
+  eq('the overlap is closed', inter.after.border, 0);
+  eq('and manifold', inter.after.nonManifold, 0);
+  await page.screenshot({ path: path.join(screens, '33-intersect.png') });
+
+  // and the combine sheet says Intersect, not something else
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('sphere', 2, true);
+    app.addPrimitive('box', 2);
+    app.scene.selected = 0;
+    app.openCombineSheet();
+  });
+  await page.waitForTimeout(300);
+  const sheetModes = await page.evaluate(() =>
+    Array.from(document.querySelectorAll('.sheet .seg button')).map((b) => b.textContent));
+  eq('the combine sheet lists every mode by name', sheetModes.join(','),
+    'Join,Union,Subtract,Intersect');
+
+  /*
+   * And the sheet's own Apply has to work for them, not just the strip —
+   * that is the path someone following the menu takes.
+   */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    const box = app.scene.objects[1];
+    // overlap the ball so there is something to cut
+    window.SCULPT.V3.set(box.position, 0.25, 0, 0);
+    box.touch();
+    app.set('booleanResolution', 96);
+  });
+  await page.locator('.sheet .seg button', { hasText: 'Subtract' }).click();
+  await page.waitForTimeout(200);
+  const sheetVolBefore = await page.evaluate(() => {
+    const m = window.SCULPT_APP.scene.objects[0].mesh;
+    return m.boundsRadius();
+  });
+  await page.locator('.sheet .btn.accent').first().click();
+  await page.waitForFunction(() => document.getElementById('busy').hidden, null, { timeout: 60000 });
+  await page.waitForTimeout(400);
+  const fromSheet = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    const m = app.scene.current().mesh;
+    const T = m.tris.array, p = m.positions.array;
+    let vol = 0;
+    for (let t = 0; t < m.triDead.length; t++) {
+      if (m.triDead.array[t]) continue;
+      const t3 = t * 3, a = T[t3] * 3, b = T[t3 + 1] * 3, c = T[t3 + 2] * 3;
+      vol += (p[a] * (p[b + 1] * p[c + 2] - p[b + 2] * p[c + 1])
+            - p[a + 1] * (p[b] * p[c + 2] - p[b + 2] * p[c])
+            + p[a + 2] * (p[b] * p[c + 1] - p[b + 1] * p[c])) / 6;
+    }
+    return { objects: app.scene.objects.length, volume: Math.abs(vol),
+             border: m.countBorderEdges(), nonManifold: m.countNonManifoldEdges(),
+             label: app.history.undoStack[app.history.undoStack.length - 1].label };
+  });
+  // a unit box centred a quarter out from the middle swallows most of a
+  // half-unit ball, so what is left is a crescent: much smaller than the
+  // ball, and not nothing
+  check('subtracting from the combine sheet works too',
+    fromSheet.volume < 0.45 && fromSheet.volume > 0.02,
+    `volume ${fromSheet.volume.toFixed(3)} left of about 0.524, radius was ${sheetVolBefore.toFixed(2)}`);
+  eq('it leaves one object', fromSheet.objects, 1);
+  eq('closed', fromSheet.border, 0);
+  eq('manifold', fromSheet.nonManifold, 0);
+  eq('and it is undoable under its own name', fromSheet.label, 'Boolean subtract');
+
+  await page.evaluate(() => {
+    window.SCULPT_APP.closeSheet();
+    window.SCULPT_APP.newScene('sphere', null, true);
+  });
+  await page.waitForTimeout(200);
+}
+
 /* ---- settings saved by the old build are migrated ------------------- */
 {
   /*
@@ -1910,7 +2196,8 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   await page.evaluate(() => {
     window.localStorage.setItem('sculptfree.settings.v1', JSON.stringify({
       brush: 'clay', dyntopo: false, maxTriangles: 2000, detailPercent: 45,
-      radius: 123, strength: 0.42, matcap: 'skin', triBudget: 5000, cavity: 0.9
+      detailMode: 'relative', radius: 380, strength: 1.8, matcap: 'skin',
+      triBudget: 5000, cavity: 0.9
     }));
   });
   await page.reload();
@@ -1921,16 +2208,19 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     const st = window.SCULPT_APP.settings;
     let stored = null;
     try { stored = JSON.parse(window.localStorage.getItem('sculptfree.settings.v1')); } catch (e) { /* ignore */ }
-    return { brush: st.brush, dyntopo: st.dyntopo, cap: st.maxTriangles, detail: st.detailPercent,
+    return { brush: st.brush, dyntopo: st.dyntopo, cap: st.maxTriangles,
+             detail: st.detailPixels, detailMode: st.detailMode,
              radius: st.radius, strength: st.strength, matcap: st.matcap, budget: st.triBudget,
              cavity: st.cavity, schema: stored && stored.schema };
   });
   eq('an old settings file no longer switches adding off', migrated.dyntopo, true);
   eq('the old 2k ceiling is replaced with real headroom', migrated.cap, 150000);
-  eq('the old coarse detail is replaced', migrated.detail, 20);
+  eq('the old coarse detail is replaced', migrated.detail, 12);
   eq('the old default brush moves across to Add', migrated.brush, 'add');
-  eq('the brush size is kept', migrated.radius, 123);
-  eq('the strength is kept', migrated.strength, 0.42);
+  eq('detail goes back to being measured in pixels', migrated.detailMode, 'pixels');
+  // the old file asked for a 380px brush at 1.8 strength; neither is allowed now
+  eq('an oversized brush is brought back inside the limit', migrated.radius, 95);
+  eq('and so is an over-strength one', migrated.strength, 1);
   eq('the material is kept', migrated.matcap, 'skin');
   eq('the export budget is kept', migrated.budget, 5000);
   eq('other look settings are kept', migrated.cavity, 0.9);
@@ -1941,7 +2231,7 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     try { return JSON.parse(window.localStorage.getItem('sculptfree.settings.v1')).schema; }
     catch (e) { return null; }
   });
-  eq('the migration stamps the file so it runs once', stamped, 2);
+  eq('the migration stamps the file so it runs once', stamped, 3);
 
   await page.evaluate(() => {
     try { window.localStorage.removeItem('sculptfree.settings.v1'); } catch (e) { /* ignore */ }

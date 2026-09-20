@@ -57,6 +57,11 @@ orbit. That is the whole interface.
 - One finger sculpts, two fingers orbit and pinch, three fingers pan
 - `A` Add, `S` smooth, `T` / `E` the trims, `C` paint, `M` mask
 - `V` the move/turn/resize handles · `Shift+A` add a shape
+- **Size** goes up to 95 and **Strength** up to 1. Both are capped on purpose:
+  a wider brush averages over so much surface that a stroke drags the whole
+  form around, and past full strength a single stamp moves the surface
+  further than the brush is wide. The brush is also capped against the model
+  itself, so zooming out cannot make it wider than the thing you are making.
 - `[` `]` size, `{` `}` strength, `X` `Y` `Z` mirror, `D` adding on/off,
   `F` frame, `W` wireframe, `?` for the full list
 
@@ -91,6 +96,35 @@ Adding respects masks, and stops at the **Limit** in Brush settings (150,000
 by default) — the counter turns red there, because that is the number that
 stops the brushes adding, not the export budget.
 
+**Detail** is measured in screen pixels (12 by default): new triangles come
+out about that big on screen, whatever size the brush is. Smaller means finer
+work and more of them.
+
+### What keeps a stroke from going wrong
+
+Three rules, each of them there because of a specific way the tool used to
+break:
+
+- **One stroke can move a vertex about one brush radius, and no further.** A
+  brush that builds up measures each stamp against the surface the last stamp
+  left, so stamps landing on the same few vertices — a slow drag, a tap and
+  hold, a stroke that doubles back — used to lift them again and again until
+  they shot out as a spike. Lift your finger and the next stroke starts
+  again, so material still builds up pass after pass.
+- **Detail is in pixels, not a fraction of the brush.** A four-pixel brush
+  asking for triangles a fifth of its size asks for microscopic ones: one dab
+  could spend minutes adding a hundred thousand triangles and leave a star of
+  stretched fins behind.
+- **Refinement has a ceiling per stamp.** A big brush at full strength moves
+  the surface several triangle widths at a time, so the next stamp finds
+  everything stretched and refines it again. With a ceiling, a stroke refines
+  a little less instead of eating the whole budget.
+
+And when something does go wrong: **☰ → Fix glitches** pulls needle vertices
+back onto the surface, relaxes the slivers a torn surface is made of, drops
+triangles that have collapsed to nothing, and closes hairline splits. It is
+one undo step, so you can always look and change your mind.
+
 ### The trims
 
 Both shave the surface flat against a plane, and both only ever *remove*
@@ -119,10 +153,17 @@ or plane, and choose:
   sized to about half of it and touching its side, and the move/turn/resize
   handles come up straight away. Place it, then:
   - **Union** welds it into the sculpt as one continuous surface, which is
-    what you want for a body, a limb, a horn or a socket. It runs through the
-    same distance field the booleans use, so the result is watertight.
+    what you want for a body, a limb or a horn. It runs through the same
+    distance field the booleans use, so the result is watertight.
+  - **Subtract** cuts the shape out of the sculpt — a socket, a window, a
+    bite, a bolt hole.
+  - **Intersect** keeps only the part where the two overlap, which is how you
+    trim a form down to a box, a cylinder or a sphere.
   - **Join** puts it in the same mesh without welding — instant, and right
     when the parts do not need to merge (a bolt sitting on a plate).
+
+  All four are on the strip while the shape is still loose, and in
+  ☰ → Combine for any two objects at any time.
 - **Separate object** — keep it as its own object, to sculpt and export on its
   own. One Roblox MeshPart is one object, so a character built as head, body
   and arms exports as three parts.
@@ -349,6 +390,12 @@ A few decisions worth knowing about:
   already had, so sculpting felt like stretching rubber instead of adding
   clay. Now you sculpt at whatever density the shape needs and the count comes
   down on export.
+- **Spikes are prevented, not repaired.** A needle vertex left by a runaway
+  stroke scores *lower* on every "is this a spike" measure than a cone's apex
+  does — so a repair pass aggressive enough to catch it would blunt every
+  point anyone made on purpose. The stroke reach limit stops it happening;
+  Fix glitches only touches the genuinely extreme cases, well above anything
+  a primitive contains.
 - **The handles turn and resize about the middle of the shape.** A shape's
   origin is wherever it happened to be built, which is usually not inside it;
   rotating around a point outside the shape is not what anyone means by
@@ -371,19 +418,19 @@ A few decisions worth knowing about:
 ## Tests
 
 ```bash
-node test/topology.test.mjs     # 81   mesh invariants, split/collapse/flip, subdivide, decimate
+node test/topology.test.mjs     # 111  mesh invariants, split/collapse/flip, spikes, slivers, decimate
 node test/remesh.test.mjs       # 76   watertight and manifold output, volume, colour transfer
 node test/io.test.mjs           # 120  round trips for every format, GLB structure, transforms
-node test/brush.test.mjs        # 323  every brush, adding vs stretching, symmetry, masking, undo
+node test/brush.test.mjs        # 347  every brush, adding vs stretching, the stroke limits, masking, undo
 node test/camera.test.mjs       # 18   projection, framing, ray casting
 node test/boolean.test.mjs      # 51   union / subtract / intersect against analytic volumes
 node test/texture.test.mjs      # 362  PNG writer, unwrap, bake, textured export, stencils, presets
 node test/gizmo.test.mjs        # 52   handle layout, hit testing, move/turn/resize maths
-node build.js && node test/browser.test.mjs   # 328 end-to-end in a real browser
+node build.js && node test/browser.test.mjs   # 367 end-to-end in a real browser
 node test/shots.mjs             # renders the screenshots in test/screens
 ```
 
-1,411 checks in total. Some of them are worth naming, because they are the
+1,504 checks in total. Some of them are worth naming, because they are the
 ones that catch a regression you would otherwise ship:
 
 - **Brushes have to add, not stretch.** The same pull is run with dynamic
@@ -408,6 +455,11 @@ ones that catch a regression you would otherwise ship:
 - **The handles are checked as geometry**: a drag on an arrow has to land the
   shape under the finger, a quarter turn around a ring has to be 90°, and the
   middle of a shape must not wander while it turns or resizes.
+- **The gesture that used to break it is a test.** A small brush at full
+  strength, scrubbed over one spot on a coarse mesh, driven with real input:
+  it fails if that leaves a needle, a hole, a non-manifold edge, a runaway
+  triangle count or a ballooned shape. So are both slider ceilings — from the
+  slider, the keyboard, a preset and an old settings file.
 
 Every mesh test runs a structural audit: adjacency agreeing with the triangle
 list, no triangle referencing a dead vertex, no edge with more than two faces,
