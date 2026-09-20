@@ -1,5 +1,5 @@
 import { load, check, eq, report, cameraTests } from './harness.mjs';
-const S = load(['07-scene', '08-brush', '09-camera']);
+const S = load();
 cameraTests(S, { check, eq });
 
 /* the stroke engine must work when driven by the real camera */

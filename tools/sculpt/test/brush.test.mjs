@@ -1,6 +1,6 @@
 import { load, check, eq, report, audit, volume } from './harness.mjs';
 import { makeCamera, defaultSettings } from './stubcam.mjs';
-const S = load(['07-scene', '08-brush']);
+const S = load();
 
 function setup(over = {}, primitive = 'sphere', detail = 4) {
   const scene = new S.Scene();
@@ -663,6 +663,156 @@ function drag(engine, steps = 10, from = [340, 300], to = [460, 300], pressure =
     check('trim respects symmetry', plus > 10 && minus > 10, `+x ${plus}, -x ${minus}`);
     audit(mesh, 'trim with symmetry');
     eq('mesh still closed', mesh.countBorderEdges(), 0);
+  }
+}
+
+/* ---- brushes add material, they do not stretch the mesh ------------- */
+{
+  /*
+   * The whole feel of the tool. With dynamic topology on, a stroke has to
+   * *build* — new triangles where the volume grows — and the triangles it
+   * leaves behind have to stay near the detail size. A brush that can only
+   * push the vertices it started with turns a ball into a stretched ball,
+   * which is not sculpting.
+   */
+  function longestEdgeNear(mesh, cx, cy, cz, radius) {
+    const T = mesh.tris.array, p = mesh.positions.array;
+    let longest = 0;
+    for (let t = 0; t < mesh.triDead.length; t++) {
+      if (mesh.triDead.array[t]) continue;
+      const t3 = t * 3;
+      for (let k = 0; k < 3; k++) {
+        const a = T[t3 + k] * 3, b = T[t3 + (k + 1) % 3] * 3;
+        const mx = (p[a] + p[b]) / 2 - cx, my = (p[a + 1] + p[b + 1]) / 2 - cy, mz = (p[a + 2] + p[b + 2]) / 2 - cz;
+        if (mx * mx + my * my + mz * mz > radius * radius) continue;
+        const len = Math.hypot(p[b] - p[a], p[b + 1] - p[a + 1], p[b + 2] - p[a + 2]);
+        if (len > longest) longest = len;
+      }
+    }
+    return longest;
+  }
+  function reachOf(mesh) {
+    let far = 0;
+    for (let v = 0; v < mesh.masks.length; v++) {
+      if (mesh.vertDead.array[v]) continue;
+      const o = v * 3;
+      far = Math.max(far, Math.hypot(mesh.positions.array[o], mesh.positions.array[o + 1], mesh.positions.array[o + 2]));
+    }
+    return far;
+  }
+  /** Pull outwards across the screen, the gesture that makes a horn. */
+  function pull(brush, over = {}) {
+    const { obj, engine } = setup(Object.assign({
+      brush, radius: 55, strength: 1, dyntopo: true, detailPercent: 20, maxTriangles: 300000
+    }, over), 'sphere', 3);
+    const mesh = obj.mesh;
+    const startTris = mesh.liveTris;
+    const startReach = reachOf(mesh);
+    engine.begin({ x: 400, y: 300, pressure: 1 });
+    for (let i = 1; i <= 30; i++) engine.move({ x: 400 + i * 7, y: 300 - i * 2, pressure: 1 });
+    engine.end();
+    return { mesh, obj, engine, startTris, startReach, reach: reachOf(mesh) / startReach };
+  }
+
+  for (const brush of ['add', 'clay', 'draw', 'inflate', 'snakehook']) {
+    const r = pull(brush);
+    check(`${brush}: dynamic topology adds triangles`, r.mesh.liveTris > r.startTris * 1.15,
+      `${r.startTris} -> ${r.mesh.liveTris}`);
+    check(`${brush}: the stroke builds volume outwards`, r.reach > 1.3, `reach ${r.reach.toFixed(2)}x`);
+    eq(`${brush}: still a closed surface`, r.mesh.countBorderEdges(), 0);
+    eq(`${brush}: still manifold`, r.mesh.countNonManifoldEdges(), 0);
+    audit(r.mesh, `${brush} with dyntopo`);
+  }
+
+  /* the same pull with a fixed mesh stretches instead: prove the difference */
+  {
+    const on = pull('add');
+    const off = pull('add', { dyntopo: false });
+    check('a fixed mesh cannot add triangles', off.mesh.liveTris === off.startTris,
+      `${off.startTris} -> ${off.mesh.liveTris}`);
+    const detail = 0.2 * 55 * (2 * Math.tan(22.5 * Math.PI / 180) * 3) / 600;   // detail size in local units
+    const onEdge = longestEdgeNear(on.mesh, 0, 0, 0, 4);
+    const offEdge = longestEdgeNear(off.mesh, 0, 0, 0, 4);
+    check('adding keeps the triangles near the detail size', onEdge < offEdge,
+      `with ${onEdge.toFixed(3)} vs without ${offEdge.toFixed(3)}`);
+    check('adding reaches further than stretching does', on.reach > off.reach,
+      `${on.reach.toFixed(2)}x vs ${off.reach.toFixed(2)}x`);
+    check('the detail size is what bounds the new triangles', onEdge < detail * 6,
+      `longest ${onEdge.toFixed(4)}, detail ${detail.toFixed(4)}`);
+  }
+
+  /* Add accumulates: the same spot, twice, is thicker */
+  {
+    function dabs(n) {
+      const { obj, engine } = setup({
+        brush: 'add', radius: 55, strength: 1, dyntopo: true, detailPercent: 20, maxTriangles: 300000
+      }, 'sphere', 3);
+      for (let i = 0; i < n; i++) {
+        engine.begin({ x: 400, y: 300, pressure: 1 });
+        engine.end();
+      }
+      return reachOf(obj.mesh);
+    }
+    const one = dabs(1), three = dabs(3), eight = dabs(8);
+    check('Add builds up with every pass', three > one + 1e-4 && eight > three + 1e-4,
+      `${one.toFixed(4)} -> ${three.toFixed(4)} -> ${eight.toFixed(4)}`);
+  }
+
+  /* Add only adds; inverted, it only digs */
+  {
+    const { obj, engine } = setup({ brush: 'add', strength: 1, radius: 55, dyntopo: false }, 'sphere', 4);
+    const mesh = obj.mesh;
+    const before = mesh.positions.copy();
+    drag(engine, 12);
+    let outward = 0, inward = 0;
+    for (let v = 0; v < mesh.liveVerts; v++) {
+      const o = v * 3;
+      const r0 = Math.hypot(before[o], before[o + 1], before[o + 2]);
+      const r1 = Math.hypot(mesh.positions.array[o], mesh.positions.array[o + 1], mesh.positions.array[o + 2]);
+      if (r1 > r0 + 1e-5) outward++;
+      else if (r1 < r0 - 1e-5) inward++;
+    }
+    check('Add pushes material out', outward > 20, `${outward} out, ${inward} in`);
+    // auto smoothing can pull a few vertices back, but the stroke must not dig
+    check('Add does not cut in while adding', inward < outward * 0.2, `${outward} out, ${inward} in`);
+
+    const dug = setup({ brush: 'add', strength: 1, radius: 55, dyntopo: false }, 'sphere', 4);
+    const dm = dug.obj.mesh;
+    const dBefore = dm.positions.copy();
+    dug.engine.begin({ x: 400, y: 300, pressure: 1, invert: true });
+    for (let i = 1; i <= 12; i++) dug.engine.move({ x: 400 + i * 5, y: 300, pressure: 1, invert: true });
+    dug.engine.end();
+    let din = 0, dout = 0;
+    for (let v = 0; v < dm.liveVerts; v++) {
+      const o = v * 3;
+      const r0 = Math.hypot(dBefore[o], dBefore[o + 1], dBefore[o + 2]);
+      const r1 = Math.hypot(dm.positions.array[o], dm.positions.array[o + 1], dm.positions.array[o + 2]);
+      if (r1 < r0 - 1e-5) din++; else if (r1 > r0 + 1e-5) dout++;
+    }
+    check('inverted Add digs in instead', din > 20 && dout < din * 0.2, `${din} in, ${dout} out`);
+  }
+
+  /* a grab stroke re-tessellates what it pulled, instead of leaving slivers */
+  {
+    const on = pull('move');
+    const off = pull('move', { dyntopo: false });
+    check('a pull with dynamic topology gains triangles', on.mesh.liveTris > on.startTris * 1.15,
+      `${on.startTris} -> ${on.mesh.liveTris}`);
+    const onEdge = longestEdgeNear(on.mesh, 0, 0, 0, 4);
+    const offEdge = longestEdgeNear(off.mesh, 0, 0, 0, 4);
+    check('a pull no longer leaves the mesh stretched thin', onEdge < offEdge * 0.9,
+      `with ${onEdge.toFixed(3)} vs without ${offEdge.toFixed(3)}`);
+    eq('a re-tessellated pull is still closed', on.mesh.countBorderEdges(), 0);
+    eq('a re-tessellated pull is still manifold', on.mesh.countNonManifoldEdges(), 0);
+    audit(on.mesh, 'move with dyntopo');
+  }
+
+  /* painting and masking never change topology, whatever dyntopo says */
+  {
+    for (const brush of ['paint', 'mask']) {
+      const r = pull(brush);
+      eq(`${brush} leaves the triangle count alone`, r.mesh.liveTris, r.startTris);
+    }
   }
 }
 

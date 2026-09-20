@@ -11,7 +11,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>SculptFree — sculpt in 3D, export for free</title>
-<meta name="description" content="A digital sculpting app that runs in one HTML file. Dynamic topology, voxel remeshing, 18 brushes, vertex painting, and OBJ / STL / PLY / GLB import and export with nothing locked.">
+<meta name="description" content="A digital sculpting app that runs in one HTML file. Dynamic topology, voxel remeshing, 21 brushes with stencils, booleans, baked textures, and OBJ / STL / PLY / GLB import and export with nothing locked.">
 <meta name="theme-color" content="#0d1014">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ff8a4c' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M12 2.6 20.4 12 12 21.4 3.6 12Z'/%3E%3Cpath d='M12 2.6v18.8M3.6 12h16.8'/%3E%3C/svg%3E">
@@ -460,6 +460,104 @@ input[type=color] {
 }
 .swatch.on { box-shadow: 0 0 0 2px var(--accent); }
 
+/* ------------------------------------------------- stencils */
+
+.alpha-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 4px 10px 6px; }
+.alpha-cell {
+  position: relative;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 4px 3px 3px;
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  color: var(--text);
+  overflow: hidden;
+}
+.alpha-cell canvas {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  display: block;
+  background: #0b0d10;
+}
+.alpha-cell .alpha-none {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  background: var(--panel-3);
+  color: var(--text-faint);
+}
+.alpha-cell .alpha-none svg { width: 15px; height: 15px; }
+.alpha-cell small {
+  font-size: 9.5px;
+  color: var(--text-faint);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.alpha-cell.on { border-color: var(--accent); background: var(--accent-soft); }
+.alpha-cell.on small { color: var(--accent); }
+.alpha-x {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  background: rgba(8, 10, 13, 0.78);
+  display: grid;
+  place-items: center;
+  color: var(--text-dim);
+}
+.alpha-x svg { width: 11px; height: 11px; }
+.alpha-x:hover { color: var(--red); }
+
+.check-row { display: flex; flex-wrap: wrap; gap: 10px 16px; padding: 8px 10px 4px; }
+
+/* ------------------------------------------------- presets */
+
+.preset-list { padding: 4px 0 2px; }
+.preset-row {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--text);
+  text-align: left;
+}
+.preset-row > svg { width: 20px; height: 20px; flex: none; color: var(--text-dim); }
+.preset-label { display: grid; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.preset-label b { font-size: 13px; font-weight: 550; }
+.preset-label small { font-size: 11px; color: var(--text-faint); }
+.preset-row:hover { background: var(--panel-2); }
+.preset-row:hover > svg { color: var(--accent); }
+.preset-x { width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; color: var(--text-faint); flex: none; }
+.preset-x svg { width: 14px; height: 14px; }
+.preset-x:hover { color: var(--red); background: var(--panel-3); }
+
+/* ------------------------------------------------- texture */
+
+.tex-wrap { display: grid; place-items: center; padding: 10px 10px 2px; }
+.tex-preview {
+  width: 200px;
+  max-width: 100%;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #0b0d10;
+  image-rendering: pixelated;
+}
+
 .matcaps { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; padding: 4px 10px 6px; }
 .matcap {
   aspect-ratio: 1;
@@ -694,6 +792,7 @@ input[type=color] {
 @media (max-width: 560px) {
   #title-chip { font-size: 11px; padding: 6px 11px; }
   .brush-grid { grid-template-columns: repeat(3, 1fr); }
+  .alpha-grid { grid-template-columns: repeat(4, 1fr); }
   .shortcut-grid { grid-template-columns: 1fr; }
   .prim-grid { grid-template-columns: repeat(2, 1fr); }
 }
@@ -4131,7 +4230,11 @@ input[type=color] {
    */
   Remesh.plan = function (mesh, resolution, padVoxels) {
     mesh.bounds();
-    var mn = mesh.boundsMin(), mx = mesh.boundsMax();
+    return Remesh.planFromBounds(mesh.boundsMin(), mesh.boundsMax(), resolution, padVoxels);
+  };
+
+  /** The same, for an explicit box — booleans grid two meshes together. */
+  Remesh.planFromBounds = function (mn, mx, resolution, padVoxels) {
     var sx = mx[0] - mn[0], sy = mx[1] - mn[1], sz = mx[2] - mn[2];
     var maxSide = Math.max(sx, sy, sz, 1e-6);
     var res = Math.max(8, Math.min(1024, Math.round(resolution)));
@@ -4753,11 +4856,16 @@ input[type=color] {
     var out = [];
     out.push('# Exported by SculptFree ' + S.VERSION);
     out.push('# ' + new Date().toISOString());
+    if (opts.mtlName) out.push('mtllib ' + opts.mtlName);
     var vertBase = 1;
+    // OBJ counts texture coordinates in their own namespace, so an object
+    // without UVs must not advance it
+    var uvBase = 1;
     for (var i = 0; i < geoms.length; i++) {
       var g = geoms[i];
       var n = g.vertCount;
       out.push('o ' + g.name.replace(/\s+/g, '_'));
+      if (opts.mtlName) out.push('usemtl ' + materialName(g, i));
       var p = g.positions, c = g.colors, nor = g.normals;
       var v, o;
       if (opts.includeColors && c) {
@@ -4772,24 +4880,74 @@ input[type=color] {
           out.push('v ' + p[o].toPrecision(7) + ' ' + p[o + 1].toPrecision(7) + ' ' + p[o + 2].toPrecision(7));
         }
       }
-      if (opts.includeNormals !== false) {
+      /*
+       * Texture coordinates, when the geometry has been unwrapped. There is
+       * one per vertex (the unwrap duplicates any vertex that lands on two
+       * charts), so the vt list runs parallel to the v list and one index
+       * serves both.
+       */
+      var withUV = !!g.uvs;
+      if (withUV) {
+        for (v = 0; v < n; v++) {
+          out.push('vt ' + g.uvs[v * 2].toFixed(6) + ' ' + g.uvs[v * 2 + 1].toFixed(6));
+        }
+      }
+      var withNormals = opts.includeNormals !== false;
+      if (withNormals) {
         for (v = 0; v < n; v++) {
           o = v * 3;
           out.push('vn ' + nor[o].toFixed(6) + ' ' + nor[o + 1].toFixed(6) + ' ' + nor[o + 2].toFixed(6));
         }
       }
       var idx = g.indices;
-      if (opts.includeNormals !== false) {
-        for (var t = 0; t < idx.length; t += 3) {
-          var a = idx[t] + vertBase, b = idx[t + 1] + vertBase, cc = idx[t + 2] + vertBase;
+      for (var t = 0; t < idx.length; t += 3) {
+        var a = idx[t] + vertBase, b = idx[t + 1] + vertBase, cc = idx[t + 2] + vertBase;
+        if (withUV && withNormals) {
+          var ua = idx[t] + uvBase, ub = idx[t + 1] + uvBase, uc = idx[t + 2] + uvBase;
+          out.push('f ' + a + '/' + ua + '/' + a + ' ' + b + '/' + ub + '/' + b +
+                   ' ' + cc + '/' + uc + '/' + cc);
+        } else if (withUV) {
+          out.push('f ' + a + '/' + (idx[t] + uvBase) + ' ' + b + '/' + (idx[t + 1] + uvBase) +
+                   ' ' + cc + '/' + (idx[t + 2] + uvBase));
+        } else if (withNormals) {
           out.push('f ' + a + '//' + a + ' ' + b + '//' + b + ' ' + cc + '//' + cc);
-        }
-      } else {
-        for (var t2 = 0; t2 < idx.length; t2 += 3) {
-          out.push('f ' + (idx[t2] + vertBase) + ' ' + (idx[t2 + 1] + vertBase) + ' ' + (idx[t2 + 2] + vertBase));
+        } else {
+          out.push('f ' + a + ' ' + b + ' ' + cc);
         }
       }
       vertBase += n;
+      if (withUV) uvBase += n;
+    }
+    return out.join('\n') + '\n';
+  };
+
+  function materialName(g, i) {
+    var name = (g.name || ('object_' + (i + 1))).replace(/\s+/g, '_');
+    return name + '_mat';
+  }
+  IO.materialName = materialName;
+
+  /**
+   * The companion .mtl file. One material per object, pointing at the baked
+   * texture when there is one — which is all Roblox Studio, Blender or Unity
+   * need to show the paint straight after import.
+   */
+  IO.exportMTL = function (geoms, opts) {
+    opts = opts || {};
+    var out = ['# Exported by SculptFree ' + S.VERSION];
+    for (var i = 0; i < geoms.length; i++) {
+      var g = geoms[i];
+      var base = g.color || [0.85, 0.85, 0.85];
+      out.push('');
+      out.push('newmtl ' + materialName(g, i));
+      out.push('Ka 0.000 0.000 0.000');
+      out.push('Kd ' + (g.textureName ? '1.000 1.000 1.000' :
+        base[0].toFixed(3) + ' ' + base[1].toFixed(3) + ' ' + base[2].toFixed(3)));
+      out.push('Ks 0.050 0.050 0.050');
+      out.push('Ns 20.0');
+      out.push('d 1.0');
+      out.push('illum 2');
+      if (g.textureName) out.push('map_Kd ' + g.textureName);
     }
     return out.join('\n') + '\n';
   };
@@ -5387,6 +5545,7 @@ input[type=color] {
       scenes: [{ nodes: [] }],
       nodes: [], meshes: [], materials: [], accessors: [], bufferViews: [], buffers: []
     };
+    var textureIndex = {};              // png byte length + name -> texture id
 
     // lay out the binary blob first so byte offsets are known
     var chunks = [];
@@ -5425,8 +5584,40 @@ input[type=color] {
       json.accessors.push({ bufferView: norView, componentType: 5126, count: n, type: 'VEC3' });
       var norAcc = json.accessors.length - 1;
 
+      /*
+       * Texture coordinates. glTF's v axis runs down from the top-left while
+       * ours runs up from the bottom-left (the OBJ convention), so flip it
+       * here rather than keeping two sets of coordinates around.
+       */
+      var uvAcc = -1;
+      if (g.uvs) {
+        var flipped = new Float32Array(n * 2);
+        for (var u = 0; u < n; u++) {
+          flipped[u * 2] = g.uvs[u * 2];
+          flipped[u * 2 + 1] = 1 - g.uvs[u * 2 + 1];
+        }
+        var uvView = addView(flipped, 34962);
+        json.accessors.push({ bufferView: uvView, componentType: 5126, count: n, type: 'VEC2' });
+        uvAcc = json.accessors.length - 1;
+      }
+
+      /* the baked image, embedded in the same binary chunk */
+      var texAcc = -1;
+      if (g.texturePNG && uvAcc >= 0) {
+        var key = g.name + ':' + g.texturePNG.length;
+        if (textureIndex[key] === undefined) {
+          var imgView = addView(g.texturePNG, 0);
+          if (!json.images) { json.images = []; json.samplers = []; json.textures = []; }
+          json.images.push({ name: (g.name || 'texture') + '_colour', bufferView: imgView, mimeType: 'image/png' });
+          json.samplers.push({ magFilter: 9729, minFilter: 9987, wrapS: 33071, wrapT: 33071 });
+          json.textures.push({ source: json.images.length - 1, sampler: json.samplers.length - 1 });
+          textureIndex[key] = json.textures.length - 1;
+        }
+        texAcc = textureIndex[key];
+      }
+
       var colAcc = -1;
-      if (withColors && g.colors) {
+      if (withColors && g.colors && texAcc < 0) {
         // VEC4 with opaque alpha is the most widely supported colour layout
         var rgba = new Float32Array(n * 4);
         for (var v2 = 0; v2 < n; v2++) {
@@ -5447,18 +5638,21 @@ input[type=color] {
       var idxAcc = json.accessors.length - 1;
 
       var base = g.color || [0.85, 0.85, 0.85];
+      var pbr = {
+        baseColorFactor: (texAcc >= 0 || (withColors && g.colors)) ? [1, 1, 1, 1] : [base[0], base[1], base[2], 1],
+        metallicFactor: opts.metallic === undefined ? 0 : opts.metallic,
+        roughnessFactor: opts.roughness === undefined ? 0.65 : opts.roughness
+      };
+      if (texAcc >= 0) pbr.baseColorTexture = { index: texAcc, texCoord: 0 };
       json.materials.push({
         name: g.name + '_material',
-        pbrMetallicRoughness: {
-          baseColorFactor: withColors && g.colors ? [1, 1, 1, 1] : [base[0], base[1], base[2], 1],
-          metallicFactor: opts.metallic === undefined ? 0 : opts.metallic,
-          roughnessFactor: opts.roughness === undefined ? 0.65 : opts.roughness
-        },
+        pbrMetallicRoughness: pbr,
         doubleSided: true
       });
       var matIdx = json.materials.length - 1;
 
       var attributes = { POSITION: posAcc, NORMAL: norAcc };
+      if (uvAcc >= 0) attributes.TEXCOORD_0 = uvAcc;
       if (colAcc >= 0) attributes.COLOR_0 = colAcc;
       json.meshes.push({ name: g.name, primitives: [{ attributes: attributes, indices: idxAcc, material: matIdx, mode: 4 }] });
       json.nodes.push({ name: g.name, mesh: json.meshes.length - 1 });
@@ -5639,6 +5833,59 @@ input[type=color] {
     }
   };
 
+  /**
+   * Export with a baked texture.
+   *
+   * The paint lives on the mesh, so it has to become an image before another
+   * program can see it: every object is unwrapped by box projection, its
+   * colour is rasterised into an atlas, and the result is written as a real
+   * PNG. OBJ gets a .mtl and the image beside it (which is exactly what
+   * Roblox Studio wants: upload the mesh, upload the image, set it as the
+   * TextureID); GLB carries the image inside the one file.
+   *
+   * opts adds: { textureSize, cavity, baseName }
+   */
+  IO.exportTextured = function (format, geoms, opts) {
+    opts = opts || {};
+    var size = opts.textureSize || 1024;
+    var baseName = (opts.baseName || 'sculpt').replace(/\.[a-z0-9]+$/i, '');
+    var files = [];
+    var textured = [];
+    var totalPixels = 0;
+    for (var i = 0; i < geoms.length; i++) {
+      var built = S.Texture.build(geoms[i], { size: size, cavity: opts.cavity || 0 });
+      var g = built.geom;
+      g.color = geoms[i].color;
+      var png = built.png();
+      totalPixels += built.coverage;
+      var suffix = geoms.length > 1
+        ? '_' + String(geoms[i].name || ('object_' + (i + 1))).replace(/\s+/g, '_')
+        : '';
+      var pngName = baseName + suffix + '.png';
+      if (format === 'glb') {
+        g.texturePNG = png;
+      } else {
+        g.textureName = pngName;
+        files.push({ name: pngName, data: png, mime: 'image/png' });
+      }
+      textured.push(g);
+    }
+    if (format === 'glb') {
+      files.push({ name: baseName + '.glb', data: IO.exportGLB(textured, opts), mime: 'model/gltf-binary' });
+    } else {
+      var objOpts = {};
+      for (var k in opts) objOpts[k] = opts[k];
+      objOpts.mtlName = baseName + '.mtl';
+      files.unshift({ name: objOpts.mtlName, data: IO.exportMTL(textured, opts), mime: 'text/plain' });
+      files.unshift({ name: baseName + '.obj', data: IO.exportOBJ(textured, objOpts), mime: 'text/plain' });
+    }
+    return {
+      files: files,
+      geoms: textured,
+      coverage: geoms.length ? totalPixels / geoms.length : 0
+    };
+  };
+
   IO.exportGeoms = function (format, geoms, opts) {
     switch (format) {
       case 'obj': return { data: IO.exportOBJ(geoms, opts), mime: 'text/plain', ext: 'obj' };
@@ -5651,7 +5898,685 @@ input[type=color] {
 
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
-/* ===== src/07-scene.js ===== */
+/* ===== src/07-texture.js ===== */
+/*
+ * SculptFree — texturing: an unwrap, a bake, and a PNG writer.
+ *
+ * A game engine wants a low-poly mesh with a texture on it, not a million
+ * coloured vertices. So painting happens on the mesh (fast, no seams, no
+ * unwrap to think about) and this module turns the result into a real image:
+ *
+ *   unwrap()  box projection — every triangle goes to whichever of the six
+ *             axis directions it faces, and the six charts are packed into
+ *             one atlas. Vertices shared between charts are duplicated.
+ *   cavity()  a per-vertex crease term, so the bake can darken the recesses
+ *             the way the viewport does.
+ *   bake()    rasterises the painted colour into the atlas, then grows the
+ *             covered pixels outwards so filtering never pulls in the gaps.
+ *   encodePNG() writes a real, compressed PNG — deflate and all — because a
+ *             single HTML file cannot lean on a library, and Node has to be
+ *             able to read back what the browser wrote.
+ */
+(function (root) {
+  'use strict';
+
+  var S = root.SCULPT;
+  var Tex = S.Texture = {};
+
+  /* ================================================================ *
+   * checksums
+   * ================================================================ */
+
+  var CRC = null;
+  function crcTable() {
+    if (CRC) return CRC;
+    CRC = new Int32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      CRC[n] = c;
+    }
+    return CRC;
+  }
+
+  function crc32(bytes, from, to) {
+    var t = crcTable();
+    var c = -1;
+    for (var i = from; i < to; i++) c = t[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ -1) >>> 0;
+  }
+
+  function adler32(bytes) {
+    var a = 1, b = 0;
+    // 5552 is the largest block that cannot overflow the accumulators
+    for (var i = 0; i < bytes.length;) {
+      var end = Math.min(i + 5552, bytes.length);
+      for (; i < end; i++) { a += bytes[i]; b += a; }
+      a %= 65521; b %= 65521;
+    }
+    return ((b << 16) | a) >>> 0;
+  }
+
+  /* ================================================================ *
+   * deflate — LZ77 with the fixed Huffman tables
+   *
+   * Fixed tables mean no tree to build or transmit, which keeps this short,
+   * and the match finder still does the real work: a texture full of flat
+   * runs compresses to a few percent of its size.
+   * ================================================================ */
+
+  function BitWriter(hint) {
+    this.bytes = new Uint8Array(Math.max(1024, hint | 0));
+    this.len = 0;
+    this.acc = 0;                       // pending bits, low end first
+    this.nbits = 0;
+  }
+
+  BitWriter.prototype.room = function (extra) {
+    if (this.len + extra <= this.bytes.length) return;
+    var cap = this.bytes.length * 2;
+    while (cap < this.len + extra) cap *= 2;
+    var next = new Uint8Array(cap);
+    next.set(this.bytes.subarray(0, this.len));
+    this.bytes = next;
+  };
+
+  /** Write `count` bits of `value`, least significant first. count <= 16. */
+  BitWriter.prototype.put = function (value, count) {
+    this.acc |= (value & ((1 << count) - 1)) << this.nbits;
+    this.nbits += count;
+    if (this.nbits >= 8) {
+      this.room(4);
+      while (this.nbits >= 8) {
+        this.bytes[this.len++] = this.acc & 0xFF;
+        this.acc >>>= 8;
+        this.nbits -= 8;
+      }
+    }
+  };
+
+  BitWriter.prototype.finish = function () {
+    if (this.nbits) {
+      this.room(1);
+      this.bytes[this.len++] = this.acc & 0xFF;
+      this.acc = 0; this.nbits = 0;
+    }
+    return this.bytes.subarray(0, this.len);
+  };
+
+  function reverse(code, bits) {
+    var r = 0;
+    for (var i = 0; i < bits; i++) r |= ((code >>> i) & 1) << (bits - 1 - i);
+    return r;
+  }
+
+  /*
+   * Huffman codes travel most-significant bit first, everything else travels
+   * least-significant first. Pre-reversing every code lets the writer stay
+   * one-directional.
+   */
+  var LIT_REV = new Uint16Array(288), LIT_BITS = new Uint8Array(288);
+  (function () {
+    var i;
+    for (i = 0; i <= 143; i++) { LIT_REV[i] = reverse(0x30 + i, 8); LIT_BITS[i] = 8; }
+    for (i = 144; i <= 255; i++) { LIT_REV[i] = reverse(0x190 + i - 144, 9); LIT_BITS[i] = 9; }
+    for (i = 256; i <= 279; i++) { LIT_REV[i] = reverse(i - 256, 7); LIT_BITS[i] = 7; }
+    for (i = 280; i <= 287; i++) { LIT_REV[i] = reverse(0xC0 + i - 280, 8); LIT_BITS[i] = 8; }
+  })();
+
+  var LEN_BASE = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23, 27, 31, 35, 43, 51, 59,
+                  67, 83, 99, 115, 131, 163, 195, 227, 258];
+  var LEN_EXTRA = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3,
+                   4, 4, 4, 4, 5, 5, 5, 5, 0];
+  var DIST_BASE = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129, 193, 257, 385, 513,
+                   769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289, 16385, 24577];
+  var DIST_EXTRA = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8,
+                    9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+
+  /* length 3..258 -> its code index, built once */
+  var LEN_CODE = new Uint8Array(259);
+  (function () {
+    var c = 0;
+    for (var l = 3; l <= 258; l++) {
+      while (c < 28 && LEN_BASE[c + 1] <= l) c++;
+      LEN_CODE[l] = c;
+    }
+  })();
+
+  function distCode(d) {
+    var c = 0;
+    while (c < 29 && DIST_BASE[c + 1] <= d) c++;
+    return c;
+  }
+
+  var MIN_MATCH = 3, MAX_MATCH = 258, WINDOW = 32768, CHAIN = 32;
+
+  /** Raw deflate stream (one final block, fixed Huffman). */
+  function deflateRaw(src) {
+    var n = src.length;
+    var bw = new BitWriter(Math.max(1024, n >> 2));
+    bw.put(1, 1);                       // BFINAL
+    bw.put(1, 2);                       // BTYPE = fixed Huffman
+
+    var HBITS = 15, HSIZE = 1 << HBITS, HMASK = HSIZE - 1;
+    var head = new Int32Array(HSIZE).fill(-1);
+    var prev = n ? new Int32Array(n).fill(-1) : new Int32Array(0);
+
+    function hash(i) { return (((src[i] << 10) ^ (src[i + 1] << 5) ^ src[i + 2]) >>> 0) & HMASK; }
+    function insert(i) { var h = hash(i); prev[i] = head[h]; head[h] = i; }
+
+    var pos = 0;
+    while (pos < n) {
+      var bestLen = 0, bestDist = 0;
+      if (pos + MIN_MATCH <= n) {
+        var cand = head[hash(pos)];
+        var chain = 0;
+        var limit = Math.min(MAX_MATCH, n - pos);
+        while (cand >= 0 && chain++ < CHAIN) {
+          var dist = pos - cand;
+          if (dist > WINDOW) break;
+          // a cheap reject: the byte that would extend the current best
+          if (src[cand + bestLen] === src[pos + bestLen]) {
+            var len = 0;
+            while (len < limit && src[cand + len] === src[pos + len]) len++;
+            if (len > bestLen) {
+              bestLen = len; bestDist = dist;
+              if (len >= 128) break;    // long enough; stop hunting
+            }
+          }
+          cand = prev[cand];
+        }
+        insert(pos);
+      }
+      if (bestLen >= MIN_MATCH) {
+        var lc = LEN_CODE[bestLen];
+        bw.put(LIT_REV[257 + lc], LIT_BITS[257 + lc]);
+        if (LEN_EXTRA[lc]) bw.put(bestLen - LEN_BASE[lc], LEN_EXTRA[lc]);
+        var dc = distCode(bestDist);
+        bw.put(reverse(dc, 5), 5);
+        if (DIST_EXTRA[dc]) bw.put(bestDist - DIST_BASE[dc], DIST_EXTRA[dc]);
+        // keep the index honest across the bytes the match covered
+        for (var k = 1; k < bestLen; k++) {
+          var p = pos + k;
+          if (p + MIN_MATCH <= n) insert(p);
+        }
+        pos += bestLen;
+      } else {
+        bw.put(LIT_REV[src[pos]], LIT_BITS[src[pos]]);
+        pos++;
+      }
+    }
+    bw.put(LIT_REV[256], LIT_BITS[256]);   // end of block
+    return bw.finish();
+  }
+
+  Tex.deflate = function (bytes) { return deflateRaw(bytes); };
+
+  /** zlib container: two header bytes, the deflate stream, then adler32. */
+  Tex.zlib = function (bytes) {
+    var body = deflateRaw(bytes);
+    var out = new Uint8Array(body.length + 6);
+    out[0] = 0x78; out[1] = 0x01;       // deflate, 32K window, no preset dict
+    out.set(body, 2);
+    var sum = adler32(bytes);
+    var o = body.length + 2;
+    out[o] = (sum >>> 24) & 0xFF; out[o + 1] = (sum >>> 16) & 0xFF;
+    out[o + 2] = (sum >>> 8) & 0xFF; out[o + 3] = sum & 0xFF;
+    return out;
+  };
+
+  /* ================================================================ *
+   * PNG
+   * ================================================================ */
+
+  function paeth(a, b, c) {
+    var p = a + b - c;
+    var pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+    if (pa <= pb && pa <= pc) return a;
+    return pb <= pc ? b : c;
+  }
+
+  /**
+   * Filter one row with each candidate and keep the cheapest, which is what
+   * every real encoder does and costs nothing here.
+   */
+  function filterRows(pixels, width, height, channels) {
+    var stride = width * channels;
+    var out = new Uint8Array((stride + 1) * height);
+    var cand = [new Uint8Array(stride), new Uint8Array(stride), new Uint8Array(stride), new Uint8Array(stride)];
+    var types = [0, 1, 2, 4];
+    for (var y = 0; y < height; y++) {
+      var row = y * stride, up = row - stride;
+      var best = 0, bestCost = Infinity;
+      for (var c = 0; c < types.length; c++) {
+        var buf = cand[c], cost = 0;
+        for (var x = 0; x < stride; x++) {
+          var raw = pixels[row + x];
+          var left = x >= channels ? pixels[row + x - channels] : 0;
+          var above = y > 0 ? pixels[up + x] : 0;
+          var corner = (y > 0 && x >= channels) ? pixels[up + x - channels] : 0;
+          var v;
+          switch (types[c]) {
+            case 1: v = (raw - left) & 0xFF; break;
+            case 2: v = (raw - above) & 0xFF; break;
+            case 4: v = (raw - paeth(left, above, corner)) & 0xFF; break;
+            default: v = raw;
+          }
+          buf[x] = v;
+          cost += v < 128 ? v : 256 - v;
+        }
+        if (cost < bestCost) { bestCost = cost; best = c; }
+      }
+      out[y * (stride + 1)] = types[best];
+      out.set(cand[best], y * (stride + 1) + 1);
+    }
+    return out;
+  }
+
+  function chunk(parts, type, data) {
+    var head = new Uint8Array(8);
+    var len = data.length;
+    head[0] = (len >>> 24) & 0xFF; head[1] = (len >>> 16) & 0xFF;
+    head[2] = (len >>> 8) & 0xFF; head[3] = len & 0xFF;
+    for (var i = 0; i < 4; i++) head[4 + i] = type.charCodeAt(i);
+    var body = new Uint8Array(4 + len);
+    body.set(head.subarray(4, 8), 0);
+    body.set(data, 4);
+    var c = crc32(body, 0, body.length);
+    var tail = new Uint8Array(4);
+    tail[0] = (c >>> 24) & 0xFF; tail[1] = (c >>> 16) & 0xFF;
+    tail[2] = (c >>> 8) & 0xFF; tail[3] = c & 0xFF;
+    parts.push(head, data, tail);
+  }
+
+  /**
+   * Write an 8-bit PNG. `pixels` is RGBA; a fully opaque image is written as
+   * RGB, which is a quarter smaller and is what a game engine wants anyway.
+   */
+  Tex.encodePNG = function (pixels, width, height, opts) {
+    opts = opts || {};
+    var i, opaque = opts.rgb !== false;
+    if (opaque && opts.rgb === undefined) {
+      for (i = 3; i < pixels.length; i += 4) { if (pixels[i] !== 255) { opaque = false; break; } }
+    }
+    var channels = opaque ? 3 : 4;
+    var data = pixels;
+    if (channels === 3) {
+      data = new Uint8Array(width * height * 3);
+      for (i = 0; i < width * height; i++) {
+        data[i * 3] = pixels[i * 4];
+        data[i * 3 + 1] = pixels[i * 4 + 1];
+        data[i * 3 + 2] = pixels[i * 4 + 2];
+      }
+    }
+    var raw = filterRows(data, width, height, channels);
+    var idat = Tex.zlib(raw);
+
+    var ihdr = new Uint8Array(13);
+    ihdr[0] = (width >>> 24) & 0xFF; ihdr[1] = (width >>> 16) & 0xFF;
+    ihdr[2] = (width >>> 8) & 0xFF; ihdr[3] = width & 0xFF;
+    ihdr[4] = (height >>> 24) & 0xFF; ihdr[5] = (height >>> 16) & 0xFF;
+    ihdr[6] = (height >>> 8) & 0xFF; ihdr[7] = height & 0xFF;
+    ihdr[8] = 8;                        // bit depth
+    ihdr[9] = channels === 3 ? 2 : 6;   // colour type: truecolour, +alpha
+    ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0;
+
+    var parts = [new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])];
+    chunk(parts, 'IHDR', ihdr);
+    chunk(parts, 'IDAT', idat);
+    chunk(parts, 'IEND', new Uint8Array(0));
+
+    var total = 0;
+    for (i = 0; i < parts.length; i++) total += parts[i].length;
+    var out = new Uint8Array(total);
+    var at = 0;
+    for (i = 0; i < parts.length; i++) { out.set(parts[i], at); at += parts[i].length; }
+    return out;
+  };
+
+  /* ================================================================ *
+   * box-projection unwrap
+   * ================================================================ */
+
+  /* the six charts, laid out 3 across and 2 down */
+  Tex.AXES = ['+X', '-X', '+Y', '-Y', '+Z', '-Z'];
+
+  function axisOf(nx, ny, nz) {
+    var ax = nx < 0 ? -nx : nx, ay = ny < 0 ? -ny : ny, az = nz < 0 ? -nz : nz;
+    if (ax >= ay && ax >= az) return nx >= 0 ? 0 : 1;
+    if (ay >= az) return ny >= 0 ? 2 : 3;
+    return nz >= 0 ? 4 : 5;
+  }
+  Tex.axisOf = axisOf;
+
+  /* project a point into a chart's 2D frame */
+  function project(axis, x, y, z, out) {
+    switch (axis) {
+      case 0: out[0] = -z; out[1] = y; break;
+      case 1: out[0] = z; out[1] = y; break;
+      case 2: out[0] = x; out[1] = -z; break;
+      case 3: out[0] = x; out[1] = z; break;
+      case 4: out[0] = x; out[1] = y; break;
+      default: out[0] = -x; out[1] = y; break;
+    }
+  }
+  Tex.project = project;
+
+  /**
+   * Give a geometry UVs by box projection.
+   *
+   * Every triangle joins the chart its face normal points at, so a vertex on
+   * the boundary between two charts has to exist twice — the returned
+   * geometry has the same triangles but more vertices, each with one UV, so
+   * it drops straight into OBJ, glTF or a GPU buffer.
+   *
+   * opts: { margin } — texels of gutter between charts, in a `size` atlas.
+   */
+  Tex.unwrap = function (geom, opts) {
+    opts = opts || {};
+    var size = opts.size || 1024;
+    var margin = opts.margin === undefined ? 4 : opts.margin;
+    var idx = geom.indices, pos = geom.positions;
+    var triCount = idx.length / 3;
+
+    /* 1. which chart each triangle belongs to */
+    var faceAxis = new Uint8Array(triCount);
+    for (var t = 0; t < triCount; t++) {
+      var a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
+      var e1x = pos[b] - pos[a], e1y = pos[b + 1] - pos[a + 1], e1z = pos[b + 2] - pos[a + 2];
+      var e2x = pos[c] - pos[a], e2y = pos[c + 1] - pos[a + 1], e2z = pos[c + 2] - pos[a + 2];
+      var nx = e1y * e2z - e1z * e2y;
+      var ny = e1z * e2x - e1x * e2z;
+      var nz = e1x * e2y - e1y * e2x;
+      if (nx === 0 && ny === 0 && nz === 0 && geom.normals) {
+        // a degenerate triangle has no normal of its own; borrow a vertex's
+        nx = geom.normals[a]; ny = geom.normals[a + 1]; nz = geom.normals[a + 2];
+      }
+      faceAxis[t] = axisOf(nx, ny, nz);
+    }
+
+    /* 2. split vertices so each copy belongs to one chart */
+    var map = new Map();
+    var newIdx = new Uint32Array(idx.length);
+    var srcVert = [];                   // new vertex -> old vertex
+    var vertAxis = [];
+    for (var t2 = 0; t2 < triCount; t2++) {
+      var ax = faceAxis[t2];
+      for (var k = 0; k < 3; k++) {
+        var v = idx[t2 * 3 + k];
+        var key = v * 8 + ax;
+        var to = map.get(key);
+        if (to === undefined) {
+          to = srcVert.length;
+          map.set(key, to);
+          srcVert.push(v);
+          vertAxis.push(ax);
+        }
+        newIdx[t2 * 3 + k] = to;
+      }
+    }
+
+    var n = srcVert.length;
+    var outPos = new Float32Array(n * 3);
+    var outNor = geom.normals ? new Float32Array(n * 3) : null;
+    var outCol = geom.colors ? new Float32Array(n * 3) : null;
+    var uvs = new Float32Array(n * 2);
+    var flat = [0, 0];
+    /* chart bounds in projected space */
+    var lo = [], hi = [];
+    for (var a2 = 0; a2 < 6; a2++) { lo.push([Infinity, Infinity]); hi.push([-Infinity, -Infinity]); }
+
+    for (var i = 0; i < n; i++) {
+      var s = srcVert[i] * 3, d = i * 3;
+      outPos[d] = pos[s]; outPos[d + 1] = pos[s + 1]; outPos[d + 2] = pos[s + 2];
+      if (outNor) { outNor[d] = geom.normals[s]; outNor[d + 1] = geom.normals[s + 1]; outNor[d + 2] = geom.normals[s + 2]; }
+      if (outCol) { outCol[d] = geom.colors[s]; outCol[d + 1] = geom.colors[s + 1]; outCol[d + 2] = geom.colors[s + 2]; }
+      var ax2 = vertAxis[i];
+      project(ax2, pos[s], pos[s + 1], pos[s + 2], flat);
+      uvs[i * 2] = flat[0]; uvs[i * 2 + 1] = flat[1];
+      if (flat[0] < lo[ax2][0]) lo[ax2][0] = flat[0];
+      if (flat[1] < lo[ax2][1]) lo[ax2][1] = flat[1];
+      if (flat[0] > hi[ax2][0]) hi[ax2][0] = flat[0];
+      if (flat[1] > hi[ax2][1]) hi[ax2][1] = flat[1];
+    }
+
+    /* 3. fit each chart into its cell, keeping the aspect ratio */
+    var mu = margin / size;
+    var cellW = 1 / 3, cellH = 1 / 2;
+    var fit = [];
+    for (var a3 = 0; a3 < 6; a3++) {
+      var spanX = hi[a3][0] - lo[a3][0], spanY = hi[a3][1] - lo[a3][1];
+      if (!isFinite(spanX)) { fit.push(null); continue; }
+      spanX = Math.max(spanX, 1e-9); spanY = Math.max(spanY, 1e-9);
+      var availW = cellW - 2 * mu, availH = cellH - 2 * mu;
+      var scale = Math.min(availW / spanX, availH / spanY);
+      var col = a3 % 3, rowIndex = Math.floor(a3 / 3);
+      fit.push({
+        scale: scale,
+        u0: col * cellW + mu + (availW - spanX * scale) * 0.5 - lo[a3][0] * scale,
+        v0: rowIndex * cellH + mu + (availH - spanY * scale) * 0.5 - lo[a3][1] * scale
+      });
+    }
+    for (var j = 0; j < n; j++) {
+      var f = fit[vertAxis[j]];
+      if (!f) { uvs[j * 2] = 0; uvs[j * 2 + 1] = 0; continue; }
+      uvs[j * 2] = uvs[j * 2] * f.scale + f.u0;
+      uvs[j * 2 + 1] = uvs[j * 2 + 1] * f.scale + f.v0;
+    }
+
+    return {
+      name: geom.name,
+      positions: outPos,
+      normals: outNor || new Float32Array(n * 3),
+      colors: outCol,
+      uvs: uvs,
+      indices: newIdx,
+      vertCount: n,
+      triCount: triCount,
+      color: geom.color,
+      sourceVerts: srcVert,
+      faceAxis: faceAxis
+    };
+  };
+
+  /* ================================================================ *
+   * crease term
+   * ================================================================ */
+
+  /**
+   * A per-vertex 0..1 shade: 1 where the surface is flat or convex, lower in
+   * the recesses. Measured as how far the one-ring sits above the tangent
+   * plane, which is cheap, stable, and reads the way creases look on screen.
+   */
+  Tex.cavity = function (geom, strength) {
+    var k = strength === undefined ? 1 : strength;
+    var n = geom.vertCount, idx = geom.indices, pos = geom.positions, nor = geom.normals;
+    var sum = new Float32Array(n), count = new Uint32Array(n);
+    function pair(a, b) {
+      var ao = a * 3, bo = b * 3;
+      var dx = pos[bo] - pos[ao], dy = pos[bo + 1] - pos[ao + 1], dz = pos[bo + 2] - pos[ao + 2];
+      var len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (len < 1e-12) return;
+      var d = (dx * nor[ao] + dy * nor[ao + 1] + dz * nor[ao + 2]) / len;
+      sum[a] += d; count[a]++;
+    }
+    for (var t = 0; t < idx.length; t += 3) {
+      var a = idx[t], b = idx[t + 1], c = idx[t + 2];
+      pair(a, b); pair(b, a);
+      pair(b, c); pair(c, b);
+      pair(c, a); pair(a, c);
+    }
+    var out = new Float32Array(n);
+    for (var v = 0; v < n; v++) {
+      var mean = count[v] ? sum[v] / count[v] : 0;
+      // positive mean: neighbours rise above the tangent plane, so it is a pit
+      var occl = S.clamp(mean * 5.5, 0, 1) * k;
+      out[v] = S.clamp(1 - occl * 0.75, 0, 1);
+    }
+    return out;
+  };
+
+  /* ================================================================ *
+   * the bake
+   * ================================================================ */
+
+  /**
+   * Rasterise vertex colour into the atlas. `geom` must carry uvs (so it has
+   * been through unwrap). Anything not covered by a triangle is filled by
+   * growing the covered pixels outwards, so a filtered texture never pulls
+   * the background in across a seam.
+   *
+   * opts: { size, shade (per-vertex 0..1), background, dilate }
+   */
+  Tex.bake = function (geom, opts) {
+    opts = opts || {};
+    var size = opts.size || 1024;
+    var W = size, H = size;
+    var pixels = new Uint8Array(W * H * 4);
+    var covered = new Uint8Array(W * H);
+    var uvs = geom.uvs, idx = geom.indices, col = geom.colors;
+    var shade = opts.shade || null;
+    var base = opts.background || geom.color || [0.85, 0.85, 0.85];
+    var i;
+
+    function colorAt(v, out) {
+      if (col) { out[0] = col[v * 3]; out[1] = col[v * 3 + 1]; out[2] = col[v * 3 + 2]; }
+      else { out[0] = base[0]; out[1] = base[1]; out[2] = base[2]; }
+      if (shade) { var s = shade[v]; out[0] *= s; out[1] *= s; out[2] *= s; }
+    }
+
+    var ca = [0, 0, 0], cb = [0, 0, 0], cc = [0, 0, 0];
+    for (var t = 0; t < idx.length; t += 3) {
+      var ia = idx[t], ib = idx[t + 1], ic = idx[t + 2];
+      // UV origin is bottom-left (the OBJ convention); image rows run down
+      var ax = uvs[ia * 2] * W - 0.5, ay = (1 - uvs[ia * 2 + 1]) * H - 0.5;
+      var bx = uvs[ib * 2] * W - 0.5, by = (1 - uvs[ib * 2 + 1]) * H - 0.5;
+      var cx = uvs[ic * 2] * W - 0.5, cy = (1 - uvs[ic * 2 + 1]) * H - 0.5;
+      colorAt(ia, ca); colorAt(ib, cb); colorAt(ic, cc);
+
+      var minX = Math.max(0, Math.floor(Math.min(ax, bx, cx)) - 1);
+      var maxX = Math.min(W - 1, Math.ceil(Math.max(ax, bx, cx)) + 1);
+      var minY = Math.max(0, Math.floor(Math.min(ay, by, cy)) - 1);
+      var maxY = Math.min(H - 1, Math.ceil(Math.max(ay, by, cy)) + 1);
+      var area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+      if (area === 0) continue;
+      var inv = 1 / area;
+      var wrote = false;
+
+      for (var y = minY; y <= maxY; y++) {
+        for (var x = minX; x <= maxX; x++) {
+          var px = x, py = y;
+          var w0 = ((bx - px) * (cy - py) - (by - py) * (cx - px)) * inv;
+          var w1 = ((cx - px) * (ay - py) - (cy - py) * (ax - px)) * inv;
+          var w2 = 1 - w0 - w1;
+          // a sliver of slack, so neighbouring triangles leave no hairline
+          if (w0 < -0.002 || w1 < -0.002 || w2 < -0.002) continue;
+          var o = (y * W + x);
+          var r = ca[0] * w0 + cb[0] * w1 + cc[0] * w2;
+          var g = ca[1] * w0 + cb[1] * w1 + cc[1] * w2;
+          var b = ca[2] * w0 + cb[2] * w1 + cc[2] * w2;
+          pixels[o * 4] = Math.round(S.clamp(r, 0, 1) * 255);
+          pixels[o * 4 + 1] = Math.round(S.clamp(g, 0, 1) * 255);
+          pixels[o * 4 + 2] = Math.round(S.clamp(b, 0, 1) * 255);
+          pixels[o * 4 + 3] = 255;
+          covered[o] = 1;
+          wrote = true;
+        }
+      }
+
+      if (!wrote) {
+        // a triangle smaller than a pixel still deserves one
+        var mx = Math.round((ax + bx + cx) / 3), my = Math.round((ay + by + cy) / 3);
+        if (mx >= 0 && my >= 0 && mx < W && my < H) {
+          var mo = my * W + mx;
+          pixels[mo * 4] = Math.round(S.clamp((ca[0] + cb[0] + cc[0]) / 3, 0, 1) * 255);
+          pixels[mo * 4 + 1] = Math.round(S.clamp((ca[1] + cb[1] + cc[1]) / 3, 0, 1) * 255);
+          pixels[mo * 4 + 2] = Math.round(S.clamp((ca[2] + cb[2] + cc[2]) / 3, 0, 1) * 255);
+          pixels[mo * 4 + 3] = 255;
+          covered[mo] = 1;
+        }
+      }
+    }
+
+    var filled = 0;
+    for (i = 0; i < covered.length; i++) if (covered[i]) filled++;
+
+    /* grow the covered area outwards to cover the gutter */
+    var rounds = opts.dilate === undefined ? Math.max(2, Math.round(size / 128)) : opts.dilate;
+    var work = covered;
+    for (var pass = 0; pass < rounds; pass++) {
+      var added = 0;
+      var next = new Uint8Array(work);
+      for (var yy = 0; yy < H; yy++) {
+        for (var xx = 0; xx < W; xx++) {
+          var o2 = yy * W + xx;
+          if (work[o2]) continue;
+          var sr = 0, sg = 0, sb = 0, cnt = 0;
+          for (var dy = -1; dy <= 1; dy++) {
+            var ny = yy + dy;
+            if (ny < 0 || ny >= H) continue;
+            for (var dx = -1; dx <= 1; dx++) {
+              var nx = xx + dx;
+              if (nx < 0 || nx >= W) continue;
+              var no = ny * W + nx;
+              if (!work[no]) continue;
+              sr += pixels[no * 4]; sg += pixels[no * 4 + 1]; sb += pixels[no * 4 + 2];
+              cnt++;
+            }
+          }
+          if (!cnt) continue;
+          pixels[o2 * 4] = Math.round(sr / cnt);
+          pixels[o2 * 4 + 1] = Math.round(sg / cnt);
+          pixels[o2 * 4 + 2] = Math.round(sb / cnt);
+          pixels[o2 * 4 + 3] = 255;
+          next[o2] = 1;
+          added++;
+        }
+      }
+      work = next;
+      if (!added) break;
+    }
+
+    /* whatever is still empty gets the base colour, never black */
+    var br = Math.round(S.clamp(base[0], 0, 1) * 255);
+    var bg = Math.round(S.clamp(base[1], 0, 1) * 255);
+    var bb = Math.round(S.clamp(base[2], 0, 1) * 255);
+    for (i = 0; i < W * H; i++) {
+      if (work[i]) continue;
+      pixels[i * 4] = br; pixels[i * 4 + 1] = bg; pixels[i * 4 + 2] = bb; pixels[i * 4 + 3] = 255;
+    }
+
+    return { width: W, height: H, pixels: pixels, coverage: filled / (W * H) };
+  };
+
+  /**
+   * Unwrap and bake in one go, and hand back everything an exporter needs.
+   * opts: { size, cavity (0..1), margin }
+   */
+  Tex.build = function (geom, opts) {
+    opts = opts || {};
+    var size = opts.size || 1024;
+    var uvGeom = Tex.unwrap(geom, { size: size, margin: opts.margin });
+    var shade = null;
+    if (opts.cavity) {
+      var perSource = Tex.cavity(geom, opts.cavity);
+      shade = new Float32Array(uvGeom.vertCount);
+      for (var i = 0; i < uvGeom.vertCount; i++) shade[i] = perSource[uvGeom.sourceVerts[i]];
+    }
+    var baked = Tex.bake(uvGeom, { size: size, shade: shade, background: geom.color });
+    return {
+      geom: uvGeom,
+      width: baked.width,
+      height: baked.height,
+      pixels: baked.pixels,
+      coverage: baked.coverage,
+      png: function () { return Tex.encodePNG(baked.pixels, baked.width, baked.height); }
+    };
+  };
+
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+/* ===== src/08-scene.js ===== */
 /*
  * SculptFree — scene objects, the scene itself, and undo history.
  *
@@ -6208,7 +7133,593 @@ input[type=color] {
 
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
-/* ===== src/08-brush.js ===== */
+/* ===== src/09-alpha.js ===== */
+/*
+ * SculptFree — brush alphas: the greyscale stencil a brush works through.
+ *
+ * Without one, a brush is a smooth round dab. With one, it becomes a stamp:
+ * the image's brightness scales the effect across the brush footprint, so a
+ * photograph of gravel becomes gravel, a drawing of a rivet becomes a rivet,
+ * and a scan of cracked paint becomes cracked paint. Same for painting —
+ * the alpha decides where the colour lands.
+ *
+ * The image is stored as a single Float32 grid in 0..1, so sampling it is
+ * one bilinear read per vertex and it costs nothing to keep a few loaded.
+ *
+ * There are procedural ones built in (no files to ship, works offline) and
+ * any image can be loaded from disk.
+ */
+(function (root) {
+  'use strict';
+
+  var S = root.SCULPT;
+  var Alpha = S.Alpha = {};
+
+  var SIZE = 128;                     // built-ins are generated at this size
+
+  /**
+   * An alpha is { id, label, size, data } where data is size*size floats in
+   * 0..1, row 0 at the bottom (matching the brush's tangent frame).
+   */
+  Alpha.make = function (id, label, size, data) {
+    return { id: id, label: label, size: size, data: data };
+  };
+
+  /* ---------------------------------------------------------------- *
+   * a small deterministic noise, so the built-ins look the same every
+   * time and need no assets
+   * ---------------------------------------------------------------- */
+
+  /**
+   * A 32-bit integer hash. Math.imul and unsigned shifts matter here: with
+   * plain float multiplies and arithmetic shifts the top bit never survives,
+   * the result only spans 0..0.5, and every generated stencil comes out
+   * nearly blank.
+   */
+  function hash2(x, y, seed) {
+    var h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(seed | 0, 69069);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    h = (h ^ (h >>> 16)) >>> 0;
+    return h / 4294967296;
+  }
+
+  function valueNoise(x, y, seed) {
+    var xi = Math.floor(x), yi = Math.floor(y);
+    var xf = x - xi, yf = y - yi;
+    var u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    var a = hash2(xi, yi, seed), b = hash2(xi + 1, yi, seed);
+    var c = hash2(xi, yi + 1, seed), d = hash2(xi + 1, yi + 1, seed);
+    return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+  }
+
+  function fbm(x, y, seed, octaves, gain) {
+    var sum = 0, amp = 1, norm = 0, freq = 1;
+    for (var o = 0; o < octaves; o++) {
+      sum += valueNoise(x * freq, y * freq, seed + o * 17) * amp;
+      norm += amp;
+      amp *= gain === undefined ? 0.5 : gain;
+      freq *= 2;
+    }
+    return sum / norm;
+  }
+
+  /* ---------------------------------------------------------------- *
+   * the built-in stencils
+   * ---------------------------------------------------------------- */
+
+  var GENERATORS = [
+    { id: 'dirt', label: 'Dirt', build: function (u, v) {
+      // clumpy grain: fine noise with a soft large-scale mask over it
+      var n = fbm(u * 9, v * 9, 3, 5);
+      var mask = fbm(u * 2.5, v * 2.5, 91, 3);
+      var d = Math.max(0, n * 0.75 + mask * 0.45 - 0.42) * 2.4;
+      return S.clamp(d, 0, 1);
+    } },
+    { id: 'gravel', label: 'Gravel', build: function (u, v) {
+      // rounded lumps: cellular-ish, from the distance to scattered points
+      var best = 1e9, second = 1e9;
+      var cell = 5;
+      var cx = Math.floor(u * cell), cy = Math.floor(v * cell);
+      for (var oy = -1; oy <= 1; oy++) {
+        for (var ox = -1; ox <= 1; ox++) {
+          var gx = cx + ox, gy = cy + oy;
+          var px = (gx + hash2(gx, gy, 7)) / cell;
+          var py = (gy + hash2(gx, gy, 19)) / cell;
+          var d = (u - px) * (u - px) + (v - py) * (v - py);
+          if (d < best) { second = best; best = d; } else if (d < second) second = d;
+        }
+      }
+      var edge = Math.sqrt(second) - Math.sqrt(best);
+      return S.clamp(1 - edge * cell * 0.9, 0, 1);
+    } },
+    { id: 'cracks', label: 'Cracks', build: function (u, v) {
+      // the ridges between noise cells read as cracks
+      var n = fbm(u * 6, v * 6, 41, 4);
+      var ridge = 1 - Math.abs(n - 0.5) * 4;
+      return S.clamp((ridge - 0.45) * 2.2, 0, 1);
+    } },
+    { id: 'scratches', label: 'Scratches', build: function (u, v) {
+      // stretched noise, so the grain runs one way
+      var n = fbm(u * 26, v * 2.2, 13, 4);
+      return S.clamp((n - 0.52) * 4.5, 0, 1);
+    } },
+    { id: 'bumps', label: 'Bumps', build: function (u, v) {
+      var n = fbm(u * 7, v * 7, 61, 3, 0.6);
+      return S.clamp((n - 0.45) * 3.2, 0, 1);
+    } },
+    { id: 'cloth', label: 'Weave', build: function (u, v) {
+      var warp = Math.sin(u * Math.PI * 14) * 0.5 + 0.5;
+      var weft = Math.sin(v * Math.PI * 14) * 0.5 + 0.5;
+      var grain = fbm(u * 18, v * 18, 5, 2) * 0.35;
+      return S.clamp(Math.max(warp, weft) * 0.85 + grain - 0.25, 0, 1);
+    } },
+    { id: 'rivet', label: 'Rivet', build: function (u, v) {
+      // a single dome, for stamping one detail at a time
+      var dx = (u - 0.5) * 2, dy = (v - 0.5) * 2;
+      var r = Math.sqrt(dx * dx + dy * dy);
+      if (r > 0.82) return 0;
+      var dome = Math.sqrt(Math.max(0, 1 - (r / 0.82) * (r / 0.82)));
+      return S.clamp(dome, 0, 1);
+    } },
+    { id: 'square', label: 'Square', build: function (u, v) {
+      // a hard-edged square, for blocking in panels
+      var d = Math.max(Math.abs(u - 0.5), Math.abs(v - 0.5)) * 2;
+      return d > 0.84 ? 0 : S.clamp((0.84 - d) * 9, 0, 1);
+    } }
+  ];
+
+  var cache = {};
+
+  /** Build (and remember) a built-in stencil. */
+  Alpha.builtin = function (id) {
+    if (cache[id]) return cache[id];
+    var gen = null;
+    for (var i = 0; i < GENERATORS.length; i++) if (GENERATORS[i].id === id) gen = GENERATORS[i];
+    if (!gen) return null;
+    var data = new Float32Array(SIZE * SIZE);
+    var x, y, i;
+    var lo = Infinity, hi = -Infinity;
+    for (y = 0; y < SIZE; y++) {
+      for (x = 0; x < SIZE; x++) {
+        var value = gen.build((x + 0.5) / SIZE, (y + 0.5) / SIZE);
+        data[y * SIZE + x] = value;
+        if (value < lo) lo = value;
+        if (value > hi) hi = value;
+      }
+    }
+    // Stretch to the full range before anything else. The generators are
+    // hand-tuned thresholds over noise; normalising means a stencil is
+    // always usable even where a guess was off.
+    if (hi - lo > 1e-6) {
+      var scale = 1 / (hi - lo);
+      for (i = 0; i < data.length; i++) data[i] = (data[i] - lo) * scale;
+    }
+    // then fade the border, so a stamp never leaves a hard rectangle
+    for (y = 0; y < SIZE; y++) {
+      for (x = 0; x < SIZE; x++) {
+        var u = (x + 0.5) / SIZE, v = (y + 0.5) / SIZE;
+        var edge = Math.min(u, v, 1 - u, 1 - v);
+        if (edge < 0.06) data[y * SIZE + x] *= edge / 0.06;
+      }
+    }
+    cache[id] = Alpha.make(id, gen.label, SIZE, data);
+    return cache[id];
+  };
+
+  Alpha.BUILTIN_IDS = GENERATORS.map(function (g) { return g.id; });
+  Alpha.builtinLabel = function (id) {
+    for (var i = 0; i < GENERATORS.length; i++) if (GENERATORS[i].id === id) return GENERATORS[i].label;
+    return id;
+  };
+
+  /* ---------------------------------------------------------------- *
+   * loading an image
+   * ---------------------------------------------------------------- */
+
+  /**
+   * Turn RGBA pixels into a stencil. Brightness becomes strength, and a
+   * transparent pixel counts as nothing at all, so a PNG cut-out works as
+   * you would expect. Oversized images are box-filtered down.
+   */
+  Alpha.fromPixels = function (id, label, pixels, width, height, opts) {
+    opts = opts || {};
+    var target = Math.min(256, Math.max(16, opts.size || 256));
+    var size = Math.min(target, Math.max(width, height));
+    var data = new Float32Array(size * size);
+    var sx = width / size, sy = height / size;
+    for (var y = 0; y < size; y++) {
+      for (var x = 0; x < size; x++) {
+        // average the source pixels covered by this cell
+        var x0 = Math.floor(x * sx), x1 = Math.max(x0 + 1, Math.floor((x + 1) * sx));
+        var y0 = Math.floor(y * sy), y1 = Math.max(y0 + 1, Math.floor((y + 1) * sy));
+        var sum = 0, n = 0;
+        for (var yy = y0; yy < y1 && yy < height; yy++) {
+          for (var xx = x0; xx < x1 && xx < width; xx++) {
+            // images arrive with row 0 at the top; flip so v runs upwards
+            var o = ((height - 1 - yy) * width + xx) * 4;
+            var lum = (pixels[o] * 0.299 + pixels[o + 1] * 0.587 + pixels[o + 2] * 0.114) / 255;
+            sum += lum * (pixels[o + 3] / 255);
+            n++;
+          }
+        }
+        data[y * size + x] = n ? S.clamp(sum / n, 0, 1) : 0;
+      }
+    }
+    if (opts.invert) {
+      for (var i = 0; i < data.length; i++) data[i] = 1 - data[i];
+    }
+    if (opts.normalize !== false) {
+      var lo = 1, hi = 0;
+      for (var k = 0; k < data.length; k++) {
+        if (data[k] < lo) lo = data[k];
+        if (data[k] > hi) hi = data[k];
+      }
+      if (hi - lo > 1e-6 && (lo > 0.02 || hi < 0.98)) {
+        var scale = 1 / (hi - lo);
+        for (var j = 0; j < data.length; j++) data[j] = (data[j] - lo) * scale;
+      }
+    }
+    return Alpha.make(id, label, size, data);
+  };
+
+  /* ---------------------------------------------------------------- *
+   * sampling
+   * ---------------------------------------------------------------- */
+
+  /** Bilinear read at (u,v) in 0..1. Outside that range reads as nothing. */
+  Alpha.sample = function (alpha, u, v) {
+    if (u < 0 || u > 1 || v < 0 || v > 1) return 0;
+    var n = alpha.size;
+    var x = u * (n - 1), y = v * (n - 1);
+    var x0 = x | 0, y0 = y | 0;
+    var x1 = x0 + 1 < n ? x0 + 1 : x0;
+    var y1 = y0 + 1 < n ? y0 + 1 : y0;
+    var fx = x - x0, fy = y - y0;
+    var d = alpha.data;
+    var a = d[y0 * n + x0], b = d[y0 * n + x1];
+    var c = d[y1 * n + x0], e = d[y1 * n + x1];
+    return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + e * fx) * fy;
+  };
+
+  /* ---------------------------------------------------------------- *
+   * the live set: built-ins plus whatever has been loaded
+   * ---------------------------------------------------------------- */
+
+  Alpha.loaded = {};                 // id -> alpha, for images from disk
+
+  Alpha.add = function (alpha) {
+    Alpha.loaded[alpha.id] = alpha;
+    return alpha;
+  };
+
+  Alpha.remove = function (id) { delete Alpha.loaded[id]; };
+
+  /** Look up a stencil by id, built-in or loaded. */
+  S.alphaById = function (id) {
+    if (!id || id === 'none') return null;
+    if (Alpha.loaded[id]) return Alpha.loaded[id];
+    return Alpha.builtin(id);
+  };
+
+  /** Every stencil available right now, for the picker. */
+  Alpha.list = function () {
+    var out = [];
+    for (var i = 0; i < Alpha.BUILTIN_IDS.length; i++) {
+      out.push({ id: Alpha.BUILTIN_IDS[i], label: Alpha.builtinLabel(Alpha.BUILTIN_IDS[i]), builtin: true });
+    }
+    for (var id in Alpha.loaded) {
+      out.push({ id: id, label: Alpha.loaded[id].label, builtin: false });
+    }
+    return out;
+  };
+
+  /** A small RGBA preview, for the thumbnails in the interface. */
+  Alpha.toRGBA = function (alpha, size) {
+    size = size || 48;
+    var out = new Uint8Array(size * size * 4);
+    for (var y = 0; y < size; y++) {
+      for (var x = 0; x < size; x++) {
+        var v = Alpha.sample(alpha, (x + 0.5) / size, 1 - (y + 0.5) / size);
+        var o = (y * size + x) * 4;
+        var g = Math.round(24 + v * 210);
+        out[o] = g; out[o + 1] = g; out[o + 2] = g; out[o + 3] = 255;
+      }
+    }
+    return out;
+  };
+
+
+  /** The name to show for a stencil id, whether built in or loaded. */
+  Alpha.labelOf = function (id) {
+    if (!id || id === 'none') return 'None';
+    if (Alpha.loaded[id]) return Alpha.loaded[id].label;
+    return Alpha.builtinLabel(id);
+  };
+
+  /* ---------------------------------------------------------------- *
+   * keeping loaded images between sessions
+   *
+   * An uploaded stencil is worth keeping — nobody wants to find their dirt
+   * texture again every time they open the app. The grid is quantised to a
+   * byte per pixel and base64'd, which is a sixteenth of the float data and
+   * visually identical for a mask.
+   * ---------------------------------------------------------------- */
+
+  var B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  var B64_REV = null;
+
+  function toBase64(bytes) {
+    var out = '', i;
+    for (i = 0; i + 2 < bytes.length; i += 3) {
+      var n = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+      out += B64[(n >>> 18) & 63] + B64[(n >>> 12) & 63] + B64[(n >>> 6) & 63] + B64[n & 63];
+    }
+    var left = bytes.length - i;
+    if (left === 1) {
+      var a = bytes[i] << 16;
+      out += B64[(a >>> 18) & 63] + B64[(a >>> 12) & 63] + '==';
+    } else if (left === 2) {
+      var b = (bytes[i] << 16) | (bytes[i + 1] << 8);
+      out += B64[(b >>> 18) & 63] + B64[(b >>> 12) & 63] + B64[(b >>> 6) & 63] + '=';
+    }
+    return out;
+  }
+
+  function fromBase64(text) {
+    if (!B64_REV) {
+      B64_REV = new Int8Array(128).fill(-1);
+      for (var c = 0; c < B64.length; c++) B64_REV[B64.charCodeAt(c)] = c;
+    }
+    var clean = String(text).replace(/[^A-Za-z0-9+/]/g, '');
+    var bytes = new Uint8Array(Math.floor(clean.length * 3 / 4));
+    var at = 0, acc = 0, bits = 0;
+    for (var i = 0; i < clean.length; i++) {
+      var v = B64_REV[clean.charCodeAt(i)];
+      if (v < 0) continue;
+      acc = (acc << 6) | v;
+      bits += 6;
+      if (bits >= 8) {
+        bits -= 8;
+        bytes[at++] = (acc >>> bits) & 0xFF;
+      }
+    }
+    return bytes.subarray(0, at);
+  }
+
+  Alpha.toBase64 = toBase64;
+  Alpha.fromBase64 = fromBase64;
+
+  Alpha.serialize = function (alpha) {
+    var bytes = new Uint8Array(alpha.data.length);
+    for (var i = 0; i < alpha.data.length; i++) {
+      bytes[i] = Math.round(S.clamp(alpha.data[i], 0, 1) * 255);
+    }
+    return { id: alpha.id, label: alpha.label, size: alpha.size, data: toBase64(bytes) };
+  };
+
+  Alpha.deserialize = function (entry) {
+    if (!entry || !entry.size || !entry.data) return null;
+    var bytes = fromBase64(entry.data);
+    var need = entry.size * entry.size;
+    if (bytes.length < need) return null;
+    var data = new Float32Array(need);
+    for (var i = 0; i < need; i++) data[i] = bytes[i] / 255;
+    return Alpha.make(String(entry.id), String(entry.label || 'Stencil'), entry.size, data);
+  };
+
+  var STORAGE_KEY = 'sculptfree.alphas.v1';
+  Alpha.STORAGE_KEY = STORAGE_KEY;
+  Alpha.MAX_SAVED = 16;
+
+  /** Put every loaded stencil in the store. Returns false if it would not fit. */
+  Alpha.saveAll = function (storage) {
+    try {
+      var list = [];
+      for (var id in Alpha.loaded) list.push(Alpha.serialize(Alpha.loaded[id]));
+      if (list.length > Alpha.MAX_SAVED) list = list.slice(list.length - Alpha.MAX_SAVED);
+      storage.setItem(STORAGE_KEY, JSON.stringify(list));
+      return true;
+    } catch (e) {
+      return false;                     // out of quota, or private browsing
+    }
+  };
+
+  /** Bring saved stencils back. Returns how many were restored. */
+  Alpha.loadAll = function (storage) {
+    var n = 0;
+    try {
+      var raw = storage && storage.getItem(STORAGE_KEY);
+      if (!raw) return 0;
+      var list = JSON.parse(raw);
+      if (!Array.isArray(list)) return 0;
+      for (var i = 0; i < list.length; i++) {
+        var alpha = Alpha.deserialize(list[i]);
+        if (alpha) { Alpha.add(alpha); n++; }
+      }
+    } catch (e) { /* corrupt store: carry on with the built-ins */ }
+    return n;
+  };
+
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+/* ===== src/10-preset.js ===== */
+/*
+ * SculptFree — brush presets.
+ *
+ * A preset is a named bundle of brush settings: which brush, how big, how
+ * strong, which stencil, whether it stamps once or draws. The built-in ones
+ * are the setups a game model actually needs — block out the form, cut a
+ * panel, scatter rivets, dust dirt into the recesses — and anything you dial
+ * in yourself can be saved beside them and comes back next time.
+ *
+ * Presets are just settings, so applying one is a handful of assignments and
+ * nothing here needs to know about meshes or the interface.
+ */
+(function (root) {
+  'use strict';
+
+  var S = root.SCULPT;
+  var P = S.Presets = {};
+
+  /* The settings a preset carries. Anything outside this list (the triangle
+   * budget, mirroring, the camera) belongs to the model, not to the brush,
+   * and is deliberately left alone. */
+  P.KEYS = [
+    'brush', 'radius', 'strength', 'falloff', 'spacing', 'autoSmooth', 'strokeSmoothing',
+    'clayOffset', 'alpha', 'stampMode', 'alphaFollowStroke', 'alphaRandomRotate',
+    'paintColorHex', 'frontFacing', 'dyntopo'
+  ];
+
+  P.BUILTIN = [
+    { id: 'blockout', label: 'Block out', hint: 'Big soft clay for the first shapes',
+      settings: { brush: 'clay', radius: 140, strength: 0.6, falloff: 'smooth', spacing: 0.16,
+                  autoSmooth: 0.35, alpha: 'none', stampMode: false, dyntopo: false } },
+    { id: 'refine', label: 'Refine form', hint: 'Smaller clay, gentler, for shaping',
+      settings: { brush: 'clay', radius: 70, strength: 0.4, falloff: 'smooth', spacing: 0.12,
+                  autoSmooth: 0.3, alpha: 'none', stampMode: false } },
+    { id: 'smoothpass', label: 'Smooth pass', hint: 'Relax the surface without losing volume',
+      settings: { brush: 'smooth', radius: 110, strength: 0.5, falloff: 'smooth', spacing: 0.1,
+                  autoSmooth: 0, alpha: 'none', stampMode: false } },
+    { id: 'hardsurface', label: 'Hard surface', hint: 'Trim Normal, flat and decisive',
+      settings: { brush: 'trimnormal', radius: 100, strength: 0.85, falloff: 'linear', spacing: 0.08,
+                  autoSmooth: 0, alpha: 'none', stampMode: false } },
+    { id: 'panelcut', label: 'Panel cut', hint: 'A square stamp that presses one panel in',
+      settings: { brush: 'trimdynamic', radius: 90, strength: 0.9, falloff: 'linear', spacing: 0.08,
+                  autoSmooth: 0, alpha: 'square', stampMode: true, alphaFollowStroke: false,
+                  alphaRandomRotate: false } },
+    { id: 'sharpcrease', label: 'Sharp crease', hint: 'Cut a hard line — seams, mouths, panel gaps',
+      settings: { brush: 'crease', radius: 34, strength: 0.6, falloff: 'sharp', spacing: 0.06,
+                  autoSmooth: 0, alpha: 'none', stampMode: false } },
+    { id: 'rocks', label: 'Rocky detail', hint: 'Gravel stamped along the stroke',
+      settings: { brush: 'draw', radius: 90, strength: 0.4, falloff: 'smooth', spacing: 0.3,
+                  autoSmooth: 0, alpha: 'gravel', stampMode: false, alphaRandomRotate: true } },
+    { id: 'rivets', label: 'Rivets', hint: 'One dome per tap, for bolts and studs',
+      settings: { brush: 'draw', radius: 26, strength: 0.7, falloff: 'smooth', spacing: 0.5,
+                  autoSmooth: 0, alpha: 'rivet', stampMode: true, alphaFollowStroke: false } },
+    { id: 'scratches', label: 'Scratches', hint: 'Fine scraped lines',
+      settings: { brush: 'draw', radius: 60, strength: 0.25, falloff: 'smooth', spacing: 0.25,
+                  autoSmooth: 0, alpha: 'scratches', stampMode: false, alphaFollowStroke: true } },
+    { id: 'cracked', label: 'Cracked', hint: 'Broken, weathered surface',
+      settings: { brush: 'draw', radius: 100, strength: 0.3, falloff: 'smooth', spacing: 0.35,
+                  autoSmooth: 0, alpha: 'cracks', stampMode: false, alphaRandomRotate: true } },
+    { id: 'dirtpaint', label: 'Dirt paint', hint: 'Dusty brown through a grain stencil',
+      settings: { brush: 'paint', radius: 110, strength: 0.4, falloff: 'smooth', spacing: 0.2,
+                  alpha: 'dirt', stampMode: false, alphaRandomRotate: true,
+                  paintColorHex: '#6b5238' } },
+    { id: 'basecolour', label: 'Base colour', hint: 'Solid paint with no stencil',
+      settings: { brush: 'paint', radius: 120, strength: 0.7, falloff: 'smooth', spacing: 0.12,
+                  alpha: 'none', stampMode: false, paintColorHex: '#d94f3d' } }
+  ];
+
+  P.builtinById = function (id) {
+    for (var i = 0; i < P.BUILTIN.length; i++) if (P.BUILTIN[i].id === id) return P.BUILTIN[i];
+    return null;
+  };
+
+  /** Take the current settings as a preset. */
+  P.capture = function (settings, label) {
+    var out = {};
+    for (var i = 0; i < P.KEYS.length; i++) {
+      var k = P.KEYS[i];
+      if (settings[k] !== undefined) out[k] = settings[k];
+    }
+    return {
+      id: 'user-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1296).toString(36),
+      label: label || 'My preset',
+      user: true,
+      settings: out
+    };
+  };
+
+  /**
+   * Write a preset's settings through `set` (so the app can react to each
+   * one). Returns the keys that actually changed.
+   */
+  P.apply = function (preset, settings, set) {
+    var changed = [];
+    if (!preset || !preset.settings) return changed;
+    for (var i = 0; i < P.KEYS.length; i++) {
+      var k = P.KEYS[i];
+      var v = preset.settings[k];
+      if (v === undefined) continue;
+      if (settings[k] === v) continue;
+      if (set) set(k, v); else settings[k] = v;
+      changed.push(k);
+    }
+    return changed;
+  };
+
+  /** A one-line summary for the interface. */
+  P.describe = function (preset) {
+    if (!preset) return '';
+    var s = preset.settings || {};
+    var bits = [];
+    if (s.brush) {
+      var b = S.brushById ? S.brushById(s.brush) : null;
+      bits.push(b ? b.label : s.brush);
+    }
+    if (s.radius !== undefined) bits.push(Math.round(s.radius) + ' px');
+    if (s.strength !== undefined) bits.push(Math.round(s.strength * 100) + '%');
+    if (s.alpha && s.alpha !== 'none') {
+      bits.push((S.Alpha && S.Alpha.labelOf ? S.Alpha.labelOf(s.alpha) : s.alpha) +
+                (s.stampMode ? ' stamp' : ' stencil'));
+    } else if (s.stampMode) {
+      bits.push('one dab per press');
+    }
+    return bits.join(' · ');
+  };
+
+  /* ---------------------------------------------------------------- *
+   * saving
+   * ---------------------------------------------------------------- */
+
+  var STORAGE_KEY = 'sculptfree.presets.v1';
+  P.STORAGE_KEY = STORAGE_KEY;
+
+  /** Read the saved presets. A missing or corrupt store is simply empty. */
+  P.load = function (storage) {
+    try {
+      var raw = storage && storage.getItem(STORAGE_KEY);
+      if (!raw) return [];
+      var list = JSON.parse(raw);
+      if (!Array.isArray(list)) return [];
+      var out = [];
+      for (var i = 0; i < list.length; i++) {
+        var p = list[i];
+        if (!p || typeof p !== 'object' || !p.settings) continue;
+        var clean = {};
+        for (var k in p.settings) {
+          if (P.KEYS.indexOf(k) >= 0) clean[k] = p.settings[k];
+        }
+        out.push({ id: p.id || ('user-' + i), label: String(p.label || 'Preset'), user: true, settings: clean });
+      }
+      return out;
+    } catch (e) { return []; }
+  };
+
+  P.save = function (storage, list) {
+    try {
+      storage.setItem(STORAGE_KEY, JSON.stringify(list.map(function (p) {
+        return { id: p.id, label: p.label, settings: p.settings };
+      })));
+      return true;
+    } catch (e) { return false; }
+  };
+
+  /** Built-ins first, then anything saved. */
+  P.all = function (userList) {
+    return P.BUILTIN.concat(userList || []);
+  };
+
+  P.byId = function (id, userList) {
+    var all = P.all(userList);
+    for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
+    return null;
+  };
+
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+/* ===== src/11-brush.js ===== */
 /*
  * SculptFree — brushes and the stroke engine.
  *
@@ -6294,6 +7805,10 @@ input[type=color] {
     this.frontFacing = true;
     this.autoSmooth = 0;
     this.clay = 0.2;
+    // the stencil, and the two in-surface axes it is read along
+    this.alpha = null;
+    this.alphaU = V3.create(1, 0, 0);
+    this.alphaV = V3.create(0, 0, 1);
   }
 
   BrushContext.prototype.ensureWeights = function (n) {
@@ -6316,12 +7831,32 @@ input[type=color] {
     var nx = ctx.normal[0], ny = ctx.normal[1], nz = ctx.normal[2];
     var falloff = ctx.falloff;
     var front = ctx.frontFacing;
+    var alpha = ctx.alpha;
+    var au, av;
+    if (alpha) {
+      au = ctx.alphaU; av = ctx.alphaV;
+    }
     for (var i = 0; i < n; i++) {
       var v = verts[i], o = v * 3;
       var dx = pos[o] - cx, dy = pos[o + 1] - cy, dz = pos[o + 2] - cz;
       var d = Math.sqrt(dx * dx + dy * dy + dz * dz) * inv;
       if (d >= 1) { w[i] = 0; continue; }
-      var f = falloff(1 - d);
+      var f;
+      if (alpha) {
+        /*
+         * Reading through a stencil, the pattern has to be what shapes the
+         * dab, so the radial falloff is reduced to a vignette over the outer
+         * fifth of the brush. Applying the usual curve on top would round
+         * the corners off every stamp and wash the pattern out.
+         */
+        var u = ((dx * au[0] + dy * au[1] + dz * au[2]) * inv) * 0.5 + 0.5;
+        var vv = ((dx * av[0] + dy * av[1] + dz * av[2]) * inv) * 0.5 + 0.5;
+        f = S.Alpha.sample(alpha, u, vv);
+        if (f <= 0) { w[i] = 0; continue; }
+        if (d > 0.8) f *= S.smoothstep((1 - d) / 0.2);
+      } else {
+        f = falloff(1 - d);
+      }
       if (front) {
         var dot = nor[o] * nx + nor[o + 1] * ny + nor[o + 2] * nz;
         if (dot <= 0) { w[i] = 0; continue; }
@@ -6399,6 +7934,38 @@ input[type=color] {
       pos[o] += nx * amount * f;
       pos[o + 1] += ny * amount * f;
       pos[o + 2] += nz * amount * f;
+    });
+  };
+
+  /**
+   * Add — the brush everything else hangs off.
+   *
+   * Every stamp raises the surface to a plateau a fixed height above the
+   * local average, so material *accumulates*: draw over a spot twice and it
+   * is twice as thick, drag and it pulls a ridge, keep dragging and it pulls
+   * a limb. With dynamic topology on (the default) the new volume gets its
+   * own triangles as it grows, which is the difference between adding to a
+   * model and stretching the triangles it already had.
+   *
+   * Ctrl (invert) digs the same shape out instead.
+   */
+  BrushFns.add = function (ctx) {
+    areaPlane(ctx);
+    var s = sgn(ctx);
+    var nx = ctx.planeNormal[0], ny = ctx.planeNormal[1], nz = ctx.planeNormal[2];
+    var px = ctx.planePoint[0], py = ctx.planePoint[1], pz = ctx.planePoint[2];
+    // how thick one pass lays down, as a share of the brush size
+    var target = ctx.radius * S.clamp(ctx.clay, 0.02, 0.6) * 1.6 * s;
+    var strength = ctx.strength;
+    eachVert(ctx, function (v, o, f, pos) {
+      var height = (pos[o] - px) * nx + (pos[o + 1] - py) * ny + (pos[o + 2] - pz) * nz;
+      var move = (target - height) * strength * f;
+      // never cut while adding (or add while cutting): that is what makes it
+      // build up rather than drag the whole surface along
+      if (s > 0 ? move < 0 : move > 0) return;
+      pos[o] += nx * move;
+      pos[o + 1] += ny * move;
+      pos[o + 2] += nz * move;
     });
   };
 
@@ -6752,8 +8319,10 @@ input[type=color] {
    * ================================================================ */
 
   S.BRUSHES = [
+    { id: 'add', label: 'Add', group: 'Add', key: 'A', fn: BrushFns.add,
+      strength: 0.6, hint: 'Adds material where you draw. Go over it again and it thickens; drag and it pulls out a ridge or a limb. Ctrl digs in instead.' },
     { id: 'clay', label: 'Clay', group: 'Add', key: '1', fn: BrushFns.clay,
-      strength: 0.55, hint: 'Builds material up towards a plane — the general-purpose brush.' },
+      strength: 0.55, hint: 'Softer than Add: fills towards the average surface, for smoothing volume in.' },
     { id: 'claystrips', label: 'Clay Strips', group: 'Add', key: '2', fn: BrushFns.clayStrips,
       strength: 0.6, hint: 'Clay with a square edge; good for blocking in forms.' },
     { id: 'draw', label: 'Draw', group: 'Add', key: '3', fn: BrushFns.draw,
@@ -6888,12 +8457,28 @@ input[type=color] {
     });
 
     this.anchorRadius = this.localRadius(this._anchorWorld);
+
+    // resolve the stencil once for the stroke
+    this.alpha = (!brush.mask && st.alpha && st.alpha !== 'none') ? S.alphaById(st.alpha) : null;
+    this.stampAngle = (this.alpha && st.alphaRandomRotate) ? Math.random() * Math.PI * 2 : 0;
+    if (!this._frameFwd) this._frameFwd = V3.create(0, 0, 1);
+    V3.perpendicular(this._frameFwd, this._anchorNormal);
     this.ctx.origin = (brush.grab || brush.id === 'layer') ? new Map() : null;
     this.grabVerts = null;
 
     // grab brushes capture their vertex set once, so the same material moves
     // for the whole stroke instead of picking up new vertices as it goes
     if (brush.grab && !brush.follow) {
+      // refine first: a pull with only a handful of vertices under the brush
+      // drags the mesh thin, and the whole point of dynamic topology is that
+      // it does not have to
+      if (this.usesDyntopo()) {
+        var gDetail = st.detailMode === 'constant'
+          ? st.detailSize
+          : this.anchorRadius * S.clamp(st.detailPercent / 100, 0.02, 1);
+        this.obj.mesh.dyntopo(this._anchorLocal[0], this._anchorLocal[1], this._anchorLocal[2],
+                              this.anchorRadius, Math.max(gDetail, 1e-6), st.maxTriangles);
+      }
       this.captureGrabSet();
     }
     this.stampAt(this._anchorLocal, this._anchorNormal, true);
@@ -7016,13 +8601,42 @@ input[type=color] {
       if (st.paintColor) V3.copy(ctx.color, st.paintColor);
       ctx.origin = this.ctx.origin;
 
+      // the stencil, and the two axes it is read along
+      ctx.alpha = this.alpha || null;
+      if (ctx.alpha) {
+        var fwd = this._alphaFwd || (this._alphaFwd = V3.create(0, 0, 1));
+        if (st.alphaFollowStroke !== false && this.strokeDir && V3.lenSq(this.strokeDir) > 1e-12) {
+          V3.set(fwd, this.strokeDir[0] * m[0], this.strokeDir[1] * m[1], this.strokeDir[2] * m[2]);
+        } else {
+          // no direction to follow: hold the frame the stroke started with,
+          // so a stamp does not spin as the surface normal wanders
+          V3.set(fwd, this._frameFwd[0] * m[0], this._frameFwd[1] * m[1], this._frameFwd[2] * m[2]);
+        }
+        var dotN = V3.dot(fwd, ctx.normal);
+        V3.set(fwd, fwd[0] - ctx.normal[0] * dotN, fwd[1] - ctx.normal[1] * dotN, fwd[2] - ctx.normal[2] * dotN);
+        if (V3.lenSq(fwd) < 1e-12) V3.perpendicular(fwd, ctx.normal);
+        else V3.normalize(fwd, fwd);
+        if (this.stampAngle) {
+          // spin the stencil, so repeated dabs of dirt do not tile visibly
+          var ca = Math.cos(this.stampAngle), sa = Math.sin(this.stampAngle);
+          var side0 = V3.cross(V3.create(0, 0, 0), ctx.normal, fwd);
+          V3.set(fwd, fwd[0] * ca + side0[0] * sa, fwd[1] * ca + side0[1] * sa, fwd[2] * ca + side0[2] * sa);
+          V3.normalize(fwd, fwd);
+        }
+        V3.copy(ctx.alphaV, fwd);
+        V3.cross(ctx.alphaU, ctx.normal, fwd);
+        V3.normalize(ctx.alphaU, ctx.alphaU);
+      }
+
       computeWeights(ctx);
       this.history.captureVerts(verts, ctx.count);
       brush.fn(ctx);
 
       // `crisp` brushes (the trims) skip auto-smoothing: rounding the edge
       // off afterwards would undo the hard face they exist to cut
-      var autoSmooth = (brush.paint || brush.mask || brush.crisp) ? 0 : (st.autoSmooth || 0);
+      // A stencil's whole point is the pattern it leaves, so relaxing the
+      // surface behind the stamp would rub it straight back out.
+      var autoSmooth = (brush.paint || brush.mask || brush.crisp || this.alpha) ? 0 : (st.autoSmooth || 0);
       if (autoSmooth > 0) {
         mesh.smoothVerts(verts, ctx.count, autoSmooth * 0.5, true, ctx.weights);
       }
@@ -7044,6 +8658,9 @@ input[type=color] {
   StrokeEngine.prototype.move = function (input) {
     if (!this.active) return false;
     var st = this.settings;
+    // stamp mode lays exactly one dab per press, which is how you place a
+    // rivet or a patch of detail without smearing it
+    if (st.stampMode && !this.brush.grab) return true;
     this.pressure = input.pressure === undefined ? 1 : input.pressure;
 
     // lazy-mouse style path smoothing
@@ -7137,12 +8754,38 @@ input[type=color] {
   StrokeEngine.prototype.end = function () {
     if (!this.active) return false;
     this.active = false;
+    var mesh = this.obj.mesh;
+    var st = this.settings;
+
+    /*
+     * A grab stroke drags the triangles it captured, so it leaves the
+     * surface stretched behind it. With dynamic topology on, rebuild the
+     * region it pulled through: the stretch becomes new triangles, and the
+     * pull ends up looking like added material instead of a thinned mesh.
+     */
+    if (this.usesDyntopo() && this.brush.grab && !this.brush.follow && !this.brush.rotate) {
+      var total = this.grabTotal;
+      var pulled = total ? V3.len(total) : 0;
+      var base = this.grabRadius || this.anchorRadius || 0;
+      // a sphere covering both ends of the pull
+      var reach = base + pulled * 0.6;
+      if (reach > 1e-6) {
+        var detail = st.detailMode === 'constant'
+          ? st.detailSize
+          : base * S.clamp(st.detailPercent / 100, 0.02, 1);
+        mesh.dyntopo(this._anchorLocal[0] + (total ? total[0] * 0.5 : 0),
+                     this._anchorLocal[1] + (total ? total[1] * 0.5 : 0),
+                     this._anchorLocal[2] + (total ? total[2] * 0.5 : 0),
+                     reach, Math.max(detail, 1e-6), st.maxTriangles);
+        mesh.computeNormals();
+      }
+    }
+
     this.strokeDelta = null;
     this.grabTotal = null;
     this.rotateAngle = 0;
     this.ctx.origin = null;
     this.grabVerts = null;
-    var mesh = this.obj.mesh;
     mesh.gridMaybeRebuild();
     var committed = this.history.endStroke();
     return committed;
@@ -7164,7 +8807,7 @@ input[type=color] {
 
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
-/* ===== src/09-camera.js ===== */
+/* ===== src/12-camera.js ===== */
 /*
  * SculptFree — orbit camera.
  *
@@ -7465,7 +9108,7 @@ input[type=color] {
 
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
-/* ===== src/10-render.js ===== */
+/* ===== src/13-render.js ===== */
 /*
  * SculptFree — WebGL2 renderer.
  *
@@ -8258,7 +9901,231 @@ input[type=color] {
 
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
-/* ===== src/11-widgets.js ===== */
+/* ===== src/14-boolean.js ===== */
+/*
+ * SculptFree — booleans and joining.
+ *
+ * Two ways to combine objects:
+ *
+ *   join    — puts the meshes in one object and leaves the geometry alone.
+ *             Instant, exact, and the surfaces still pass through each
+ *             other; what you want for a prop assembled from parts.
+ *
+ *   boolean — union, subtract or intersect, computed through a signed
+ *             distance field on a shared grid and re-extracted with the same
+ *             manifold dual contouring the remesher uses. The result is one
+ *             closed, watertight, sculptable surface with no self
+ *             intersections, which is what a game engine and a 3D printer
+ *             both want.
+ *
+ * Doing booleans in the field rather than by cutting triangles against each
+ * other is a deliberate trade: it cannot fail on touching faces, coplanar
+ * overlaps or self-intersecting input — the cases that make exact mesh
+ * booleans fall over — but it rebuilds the topology, so a sharp edge is only
+ * as sharp as the grid. The resolution setting is that trade, in one number.
+ */
+(function (root) {
+  'use strict';
+
+  var S = root.SCULPT;
+  var Bool = S.Boolean = {};
+  var V3 = S.V3, M4 = S.M4;
+
+  Bool.MODES = [
+    { id: 'union', label: 'Union', symbol: 'A + B',
+      hint: 'Fuse both into one surface' },
+    { id: 'subtract', label: 'Subtract', symbol: 'A − B',
+      hint: 'Cut the second shape out of the first' },
+    { id: 'intersect', label: 'Intersect', symbol: 'A ∩ B',
+      hint: 'Keep only where the two overlap' }
+  ];
+
+  Bool.modeById = function (id) {
+    for (var i = 0; i < Bool.MODES.length; i++) if (Bool.MODES[i].id === id) return Bool.MODES[i];
+    return Bool.MODES[0];
+  };
+
+  /** A world-space copy of an object's mesh, so both sides share one space. */
+  function worldCopy(obj) {
+    var m = obj.mesh.clone();
+    m.applyMatrix(obj.matrix());
+    return m;
+  }
+
+  /**
+   * Work out the grid a boolean needs. Both shapes have to sit inside it:
+   * the inside/outside test walks rays across the whole grid, so a shape
+   * running off the edge would be classified wrongly.
+   */
+  Bool.plan = function (meshA, meshB, resolution) {
+    var mn = V3.create(0, 0, 0), mx = V3.create(0, 0, 0);
+    var aMn = meshA.boundsMin(), aMx = meshA.boundsMax();
+    var bMn = meshB.boundsMin(), bMx = meshB.boundsMax();
+    for (var k = 0; k < 3; k++) {
+      mn[k] = Math.min(aMn[k], bMn[k]);
+      mx[k] = Math.max(aMx[k], bMx[k]);
+    }
+    return S.Remesh.planFromBounds(mn, mx, resolution || 160, 2);
+  };
+
+  /** Do the two shapes overlap at all? Cheap check before the expensive part. */
+  Bool.boundsOverlap = function (meshA, meshB) {
+    var aMn = meshA.boundsMin(), aMx = meshA.boundsMax();
+    var bMn = meshB.boundsMin(), bMx = meshB.boundsMax();
+    for (var k = 0; k < 3; k++) {
+      if (aMx[k] < bMn[k] || bMx[k] < aMn[k]) return false;
+    }
+    return true;
+  };
+
+  function combine(mode, fa, fb) {
+    var n = fa.length;
+    // the field is negative inside, so union is the nearer surface (min),
+    // intersection the further one (max), and subtracting B flips its sign
+    if (mode === 'union') {
+      for (var i = 0; i < n; i++) if (fb[i] < fa[i]) fa[i] = fb[i];
+    } else if (mode === 'intersect') {
+      for (var j = 0; j < n; j++) if (fb[j] > fa[j]) fa[j] = fb[j];
+    } else {
+      for (var k = 0; k < n; k++) { var nb = -fb[k]; if (nb > fa[k]) fa[k] = nb; }
+    }
+    return fa;
+  }
+
+  /**
+   * Colour for the result: whichever source surface is nearer to each new
+   * vertex, so a subtracted pocket keeps the colour of the shape that cut it.
+   */
+  function transferColors(meshA, meshB, positions, count, radius) {
+    var out = new Float32Array(count * 3);
+    var pa = meshA.positions.array, ca = meshA.colors.array;
+    var pb = meshB.positions.array, cb = meshB.colors.array;
+    for (var i = 0; i < count; i++) {
+      var o = i * 3;
+      var x = positions[o], y = positions[o + 1], z = positions[o + 2];
+      var bestA = Infinity, va = -1, bestB = Infinity, vb = -1;
+      var r = radius;
+      for (var attempt = 0; attempt < 4 && va < 0 && vb < 0; attempt++, r *= 2) {
+        var candA = meshA.vertsInSphere(x, y, z, r);
+        for (var k = 0; k < candA.length; k++) {
+          var v = candA[k], v3 = v * 3;
+          var d = (pa[v3] - x) * (pa[v3] - x) + (pa[v3 + 1] - y) * (pa[v3 + 1] - y) + (pa[v3 + 2] - z) * (pa[v3 + 2] - z);
+          if (d < bestA) { bestA = d; va = v; }
+        }
+        var candB = meshB.vertsInSphere(x, y, z, r);
+        for (var j = 0; j < candB.length; j++) {
+          var w = candB[j], w3 = w * 3;
+          var db = (pb[w3] - x) * (pb[w3] - x) + (pb[w3 + 1] - y) * (pb[w3 + 1] - y) + (pb[w3 + 2] - z) * (pb[w3 + 2] - z);
+          if (db < bestB) { bestB = db; vb = w; }
+        }
+      }
+      var useA = va >= 0 && (vb < 0 || bestA <= bestB);
+      if (useA) {
+        var a3 = va * 3;
+        out[o] = ca[a3]; out[o + 1] = ca[a3 + 1]; out[o + 2] = ca[a3 + 2];
+      } else if (vb >= 0) {
+        var b3 = vb * 3;
+        out[o] = cb[b3]; out[o + 1] = cb[b3 + 1]; out[o + 2] = cb[b3 + 2];
+      } else {
+        out[o] = out[o + 1] = out[o + 2] = 1;
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Run a boolean of two scene objects and return the resulting geometry in
+   * `objA`'s local space, without touching either object.
+   *
+   * opts: { mode, resolution, smooth, colors }
+   */
+  Bool.compute = function (objA, objB, opts, onProgress) {
+    opts = opts || {};
+    var mode = opts.mode || 'union';
+    var meshA = worldCopy(objA);
+    var meshB = worldCopy(objB);
+
+    if (!Bool.boundsOverlap(meshA, meshB)) {
+      if (mode === 'intersect') return { ok: false, reason: 'Those two shapes do not overlap, so the intersection is empty.' };
+      if (mode === 'subtract') return { ok: false, reason: 'Those two shapes do not overlap, so there is nothing to subtract.' };
+      // a union of separate shapes is fine; the field handles it
+    }
+
+    var plan = Bool.plan(meshA, meshB, opts.resolution || 160);
+    if (onProgress) onProgress(0.02);
+    var fieldA = S.Remesh.buildField(meshA, plan, {}, onProgress && function (f) { onProgress(0.02 + f * 0.4); });
+    var fieldB = S.Remesh.buildField(meshB, plan, {}, onProgress && function (f) { onProgress(0.42 + f * 0.4); });
+    combine(mode, fieldA, fieldB);
+    if (onProgress) onProgress(0.84);
+
+    var net = S.Remesh.surfaceNets(fieldA, plan.dims);
+    if (!net.indices.length) {
+      return { ok: false, reason: mode === 'intersect'
+        ? 'The overlap is too small for this resolution — raise it, or move the shapes together.'
+        : 'That left nothing behind. Check the shapes overlap the way you meant.' };
+    }
+    if (onProgress) onProgress(0.9);
+
+    // sample space -> world
+    var pos = net.positions, voxel = plan.voxel, org = plan.origin;
+    for (var i = 0; i < pos.length; i += 3) {
+      pos[i] = org[0] + pos[i] * voxel;
+      pos[i + 1] = org[1] + pos[i + 1] * voxel;
+      pos[i + 2] = org[2] + pos[i + 2] * voxel;
+    }
+
+    var colors = null;
+    if (opts.colors !== false && (S.Remesh.hasPaint(meshA) || S.Remesh.hasPaint(meshB))) {
+      colors = transferColors(meshA, meshB, pos, pos.length / 3, voxel * 1.5);
+    }
+
+    var repaired = S.splitNonManifoldVertices(pos, net.indices, colors);
+    pos = repaired.positions;
+    var indices = repaired.indices;
+    colors = repaired.colors;
+
+    // world -> objA's local space, so the object keeps its transform
+    var inv = objA.inverseMatrix();
+    var p = V3.create(0, 0, 0), q = V3.create(0, 0, 0);
+    for (var v = 0; v < pos.length; v += 3) {
+      V3.set(p, pos[v], pos[v + 1], pos[v + 2]);
+      V3.transformMat4(q, p, inv);
+      pos[v] = q[0]; pos[v + 1] = q[1]; pos[v + 2] = q[2];
+    }
+    if (onProgress) onProgress(1);
+
+    return {
+      ok: true, positions: pos, indices: indices, colors: colors,
+      plan: plan, triCount: indices.length / 3
+    };
+  };
+
+  /**
+   * Apply a boolean to `objA` in place. Returns a summary, or {ok:false}.
+   * The caller decides what happens to `objB`.
+   */
+  Bool.apply = function (objA, objB, opts, onProgress) {
+    var res = Bool.compute(objA, objB, opts, onProgress);
+    if (!res.ok) return res;
+    var before = objA.mesh.liveTris;
+    objA.mesh.setFromArrays(res.positions, res.indices, { colors: res.colors, weld: false });
+    var merged = objA.mesh.weld(res.plan.voxel * 1e-5);
+    var health = { border: objA.mesh.countBorderEdges(), nonManifold: objA.mesh.countNonManifoldEdges() };
+    if (health.border || health.nonManifold) {
+      // the weld made it worse; rebuild without it
+      objA.mesh.setFromArrays(res.positions, res.indices, { colors: res.colors, weld: false });
+      merged = 0;
+    }
+    objA.mesh.removeDegenerateTriangles(res.plan.voxel * res.plan.voxel * 1e-7);
+    var passes = opts && opts.smooth !== undefined ? opts.smooth : 1;
+    if (passes > 0) objA.mesh.smoothAll(passes, 0.4, false);
+    objA.mesh.computeNormals();
+    return { ok: true, before: before, after: objA.mesh.liveTris, plan: res.plan, verticesMerged: merged };
+  };
+
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+/* ===== src/15-widgets.js ===== */
 /*
  * SculptFree — DOM helpers, icons and the small widget set the panels are
  * built from. Nothing here knows about sculpting; it is the toolkit the app
@@ -8398,9 +10265,15 @@ input[type=color] {
     hand: 'M8 12V6.5a1.6 1.6 0 0 1 3.2 0V11 M11.2 11V5.6a1.6 1.6 0 0 1 3.2 0V11 M14.4 11V7.2a1.6 1.6 0 0 1 3.2 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-6-6v-3.2a1.6 1.6 0 0 1 3.2 0',
     file: 'M6 3h8l4 4v14H6Z M14 3v4h4',
     menu: 'M4 7h16 M4 12h16 M4 17h16',
+    boolean: 'M9.5 15.5a6 6 0 1 1 0-11 6 6 0 0 1 0 11Z M14.5 4.5a6 6 0 1 1 0 11 6 6 0 0 1 0-11Z',
     radius: 'M12 20a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z M12 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z',
     strength: 'M12 3v9 M8.5 8.5 12 12l3.5-3.5 M5 19h14',
-    reset: 'M3 12a9 9 0 1 0 3-6.7 M3 4v5h5'
+    reset: 'M3 12a9 9 0 1 0 3-6.7 M3 4v5h5',
+    add: 'M12 3.2a8.8 8.8 0 1 0 0 17.6 8.8 8.8 0 0 0 0-17.6Z M12 7.6v8.8 M7.6 12h8.8',
+    stencil: 'M4 4h16v16H4Z M8 8.5v.2 M12 7v.2 M16 9v.2 M9.5 12v.2 M14 12.5v.2 M7.5 16v.2 M12 16.5v.2 M16.5 15.5v.2',
+    star: 'M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9-5.3-2.9-5.3 2.9 1.1-5.9L3.5 9.7l5.9-.8Z',
+    image: 'M3 5h18v14H3Z M3 16l5-5 4 4 3-3 6 6 M15.5 8.5v.2',
+    texture: 'M3 3h18v18H3Z M3 9h18 M3 15h18 M9 3v18 M15 3v18'
   };
   UI.ICONS = ICONS;
 
@@ -8714,7 +10587,7 @@ input[type=color] {
 
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
-/* ===== src/12-app.js ===== */
+/* ===== src/16-app.js ===== */
 /*
  * SculptFree — the application.
  *
@@ -8736,7 +10609,7 @@ input[type=color] {
 
   var DEFAULTS = {
     // brush
-    brush: 'clay',
+    brush: 'add',
     radius: 62,
     strength: 0.55,
     falloff: 'smooth',
@@ -8749,21 +10622,38 @@ input[type=color] {
     pressureStrength: true,
     paintColorHex: '#d94f3d',
     /*
-     * Topology — sized for a game, not for rendering.
-     *
-     * Roblox refuses a MeshPart over 10,000 triangles, but that is a ceiling,
-     * not a target: props in a real game are usually 1k-4k so that hundreds
-     * of them can be on screen at once. So the default budget is 2,000 and
-     * dynamic topology starts switched OFF — the mesh keeps the triangles it
-     * started with and you move them around, which is how low-poly models
-     * are made. Turn it on (D, or Brush settings) when you want the brush to
-     * add detail, and it will still stop at the budget.
+     * Stencils. A brush with a stencil stops being a round dab and becomes a
+     * stamp of whatever the image shows, which is how dirt, gravel, cracks
+     * and rivets get onto a model without sculpting each one by hand.
      */
-    dyntopo: false,
+    alpha: 'none',
+    stampMode: false,
+    alphaFollowStroke: true,
+    alphaRandomRotate: false,
+    /*
+     * Topology.
+     *
+     * Dynamic topology is ON, and that is the whole feel of the tool: a
+     * brush adds material and the new volume gets its own triangles as it
+     * grows. With it off, a stroke can only push the triangles the mesh
+     * already has, so a ball turns into a stretched ball instead of a ball
+     * with a horn on it.
+     *
+     * Two separate numbers, which is easy to mix up:
+     *   maxTriangles  the ceiling while sculpting. Headroom, not a target —
+     *                 150,000 leaves room for any prop and keeps a stroke
+     *                 responsive on a phone, where a mesh in the high
+     *                 hundreds of thousands starts to drag.
+     *   triBudget     what the model is EXPORTED at. Roblox refuses a
+     *                 MeshPart over 10,000 triangles and a real prop is
+     *                 usually 1k-4k, so the default is 2,000 and Export
+     *                 reduces a copy to it. The sculpt keeps its detail.
+     */
+    dyntopo: true,
     detailMode: 'relative',
-    detailPercent: 45,
+    detailPercent: 20,
     detailSize: 0.01,
-    maxTriangles: 2000,
+    maxTriangles: 150000,
     triBudget: 2000,
     remeshResolution: 160,
     remeshSmooth: 2,
@@ -8787,6 +10677,13 @@ input[type=color] {
     renderScale: 1,
     ortho: false,
     fov: 42,
+    // combine
+    booleanMode: 'union',
+    booleanResolution: 160,
+    booleanSmooth: 1,
+    booleanKeep: false,
+    booleanReduce: true,
+    booleanTarget: -1,
     // export
     exportFormat: 'obj',
     exportScale: 1,
@@ -8795,6 +10692,8 @@ input[type=color] {
     exportNormals: true,
     exportAscii: false,
     exportSelectedOnly: false,
+    textureSize: 1024,
+    textureCavity: 0.45,
     // misc
     historyBudgetMB: 384,
     autosave: true,
@@ -8804,6 +10703,21 @@ input[type=color] {
   function App(mount) {
     this.mount = mount || document.body;
     this.settings = this.loadSettings();
+    /*
+     * Uploaded stencils and saved presets live in the same store as the
+     * settings, so a phone that gets closed and reopened still has the dirt
+     * texture and the brush setups that were dialled in.
+     */
+    this.userPresets = [];
+    try {
+      if (root.localStorage) {
+        S.Alpha.loadAll(root.localStorage);
+        this.userPresets = S.Presets.load(root.localStorage);
+      }
+    } catch (e) { /* private browsing: built-ins only */ }
+    if (this.settings.alpha && this.settings.alpha !== 'none' && !S.alphaById(this.settings.alpha)) {
+      this.settings.alpha = 'none';
+    }
     this.scene = new S.Scene();
     this.history = new S.History(this.settings.historyBudgetMB * 1024 * 1024);
     this.camera = new S.Camera();
@@ -8834,6 +10748,18 @@ input[type=color] {
    * settings
    * ================================================================ */
 
+  /*
+   * Settings the tool remembers, with one migration.
+   *
+   * Version 2 is the release where the brushes started adding material. A
+   * settings blob written before that carries the old topology defaults —
+   * dynamic topology off, a 2,000-triangle ceiling — and restoring them
+   * would hand a returning user the very behaviour that was fixed. So those
+   * keys are dropped on the way in, once, and everything else is kept.
+   */
+  var SETTINGS_SCHEMA = 2;
+  var STALE_ON_UPGRADE = ['dyntopo', 'maxTriangles', 'detailPercent', 'detailMode', 'detailSize'];
+
   A.loadSettings = function () {
     var out = {};
     for (var k in DEFAULTS) out[k] = DEFAULTS[k];
@@ -8841,7 +10767,15 @@ input[type=color] {
       var raw = root.localStorage && root.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         var saved = JSON.parse(raw);
-        for (var key in saved) if (key in DEFAULTS) out[key] = saved[key];
+        var upgrading = (saved.schema || 0) < SETTINGS_SCHEMA;
+        for (var key in saved) {
+          if (!(key in DEFAULTS)) continue;
+          if (upgrading && STALE_ON_UPGRADE.indexOf(key) >= 0) continue;
+          out[key] = saved[key];
+        }
+        // the old default brush was Clay; move that one over to Add, but
+        // leave any other choice alone
+        if (upgrading && saved.brush === 'clay') out.brush = DEFAULTS.brush;
       }
     } catch (e) { /* private mode, or corrupt: defaults are fine */ }
     out.paintColor = new Float32Array(UI.hexToRgb(out.paintColorHex));
@@ -8850,7 +10784,7 @@ input[type=color] {
 
   A.saveSettings = function () {
     try {
-      var copy = {};
+      var copy = { schema: SETTINGS_SCHEMA };
       for (var k in DEFAULTS) copy[k] = this.settings[k];
       root.localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
     } catch (e) { /* ignore */ }
@@ -8884,8 +10818,8 @@ input[type=color] {
    * ================================================================ */
 
   /** The brushes that get a permanent button. The rest live under "More". */
-  var PRIMARY_BRUSHES = ['clay', 'draw', 'trimdynamic', 'trimnormal', 'smooth',
-                        'flatten', 'crease', 'move', 'inflate', 'paint'];
+  var PRIMARY_BRUSHES = ['add', 'clay', 'draw', 'trimdynamic', 'trimnormal',
+                        'smooth', 'crease', 'move', 'inflate', 'paint'];
 
   A.buildDom = function () {
     var self = this;
@@ -9019,12 +10953,23 @@ input[type=color] {
   A.refreshStatus = function () {
     var obj = this.scene.current();
     if (this.titleChip) {
+      /*
+       * What the sculpt costs now, and what it will be exported at. Sculpting
+       * past the export budget is normal and expected — Export reduces a
+       * copy — so the chip only turns red at the dynamic-topology ceiling,
+       * which is the number that actually stops the brushes adding.
+       */
       var budget = this.settings.triBudget;
+      var cap = this.settings.maxTriangles;
       var tris = obj ? obj.mesh.liveTris : 0;
-      this.titleChip.textContent = S.formatCount(tris) + ' / ' + S.formatCount(budget);
-      this.titleChip.classList.toggle('over', tris > budget);
-      this.titleChip.classList.toggle('near', tris > budget * 0.85 && tris <= budget);
-      this.titleChip.title = obj ? (obj.name + ' — ' + tris + ' triangles, budget ' + budget) : '';
+      this.titleChip.textContent = S.formatCount(tris) +
+        (budget && tris > budget ? ' \u2192 ' + S.formatCount(budget) : ' / ' + S.formatCount(budget));
+      this.titleChip.classList.toggle('over', this.settings.dyntopo && tris >= cap - 8);
+      this.titleChip.classList.toggle('near', this.settings.dyntopo && tris > cap * 0.85 && tris < cap - 8);
+      this.titleChip.title = obj
+        ? (obj.name + ' \u2014 ' + tris + ' triangles now, exports reduced to ' + budget +
+           '. Tap to change either number.')
+        : '';
     }
     if (this.undoBtn) this.undoBtn.disabled = !this.history.canUndo();
     if (this.redoBtn) this.redoBtn.disabled = !this.history.canRedo();
@@ -9168,6 +11113,8 @@ input[type=color] {
           chevron: true, onclick: function () { self.dialogPrimitive(); } },
         { icon: 'layers', label: 'Objects', hint: 'Switch between, hide, rename, delete',
           chevron: true, onclick: function () { self.openObjectsSheet(); } },
+        { icon: 'boolean', label: 'Combine', hint: 'Join, union, subtract or intersect two objects',
+          chevron: true, onclick: function () { self.openCombineSheet(); } },
 
         { group: 'Files — all free, no limits' },
         { icon: 'upload', label: 'Open a model', hint: 'OBJ, STL, PLY, GLB or a saved project',
@@ -9190,9 +11137,13 @@ input[type=color] {
         { icon: 'smooth', label: 'Smooth everything', onclick: function () { self.smoothAll(); } },
         { icon: 'mask', label: 'Mask', hint: 'Clear, invert or blur the locked area',
           chevron: true, onclick: function () { self.openMaskSheet(); } },
+        { icon: 'texture', label: 'Texture', hint: 'Bake the paint into an image and export it',
+          chevron: true, onclick: function () { self.openTextureSheet(); } },
 
         { group: 'Settings' },
-        { icon: 'sliders', label: 'Brush settings', hint: 'Falloff, spacing, detail, pressure',
+        { icon: 'star', label: 'Presets', hint: 'Ready-made brush setups, and your own',
+          chevron: true, onclick: function () { self.openPresetSheet(); } },
+        { icon: 'sliders', label: 'Brush settings', hint: 'Falloff, spacing, stencils, detail, pressure',
           chevron: true, onclick: function () { self.openBrushSettingsSheet(); } },
         { icon: 'palette', label: 'Look', hint: 'Material, wireframe, background',
           chevron: true, onclick: function () { self.openLookSheet(); } },
@@ -9225,6 +11176,10 @@ input[type=color] {
       title: 'Brushes',
       content: [
         grid,
+        el('div.sheet-buttons', null, [
+          UI.button('Presets', { icon: 'star', onclick: function () { self.openPresetSheet(); } }),
+          UI.button('Brush settings', { icon: 'sliders', onclick: function () { self.openBrushSettingsSheet(); } })
+        ]),
         el('p.sheet-note', { text: 'Hold Shift while sculpting to smooth, Ctrl to invert — with any brush.' })
       ]
     });
@@ -9246,6 +11201,8 @@ input[type=color] {
         { icon: 'cube', label: 'GLB', hint: 'For Three.js, Unity, Godot, Unreal',
           onclick: function () { self.quickExport('glb'); } },
         { icon: 'palette', label: 'PLY', hint: 'Keeps painted colour exactly', onclick: function () { self.quickExport('ply'); } },
+        { icon: 'texture', label: 'With a baked texture', hint: 'OBJ + PNG, or GLB with the image inside',
+          chevron: true, onclick: function () { self.openTextureSheet(); } },
         { icon: 'decimate', label: 'STL', hint: 'For 3D printing', onclick: function () { self.quickExport('stl'); } },
         { group: 'More' },
         { icon: 'sliders', label: 'Export options', hint: 'Scale, up axis, colour, text formats',
@@ -9276,7 +11233,7 @@ input[type=color] {
         el('div.sheet-buttons', null, [
           UI.button('Add', { icon: 'plus', onclick: function () { self.closeSheet(); self.dialogPrimitive(); } }),
           UI.button('Duplicate', { icon: 'copy', onclick: function () { self.duplicateObject(); self.refreshObjects(); } }),
-          UI.button('Merge all', { icon: 'layers', onclick: function () { self.closeSheet(); self.mergeAll(); } }),
+          UI.button('Combine…', { icon: 'boolean', onclick: function () { self.openCombineSheet(); } }),
           UI.button('Delete', { icon: 'trash', class: 'danger', onclick: function () { self.deleteObject(); self.refreshObjects(); } })
         ]),
         el('p.sheet-note', { text: 'Each object has its own mesh. Sculpting only ever touches the selected one.' })
@@ -9342,6 +11299,197 @@ input[type=color] {
         }
       }, [eye, nameInput, el('span.count', { text: S.formatCount(obj.mesh.liveTris) })]);
       host.appendChild(row);
+    });
+  };
+
+  /* ---- combine: join and booleans ---- */
+
+  A.openCombineSheet = function () {
+    var self = this;
+    var st = this.settings;
+    var a = this.scene.current();
+    if (!a) { UI.toast('No object selected', 'bad'); return; }
+
+    var others = [];
+    for (var i = 0; i < this.scene.objects.length; i++) {
+      if (i !== this.scene.selected) others.push(i);
+    }
+    if (!others.length) {
+      this.openSheet({
+        title: 'Combine',
+        content: [
+          el('p.sheet-note', { text: 'Combining needs two objects. Add a second shape (Menu \u2192 Add a shape), position it where you want it, then come back.' }),
+          el('div.sheet-buttons', null, [
+            UI.button('Add a shape', { icon: 'plus', onclick: function () { self.closeSheet(); self.dialogPrimitive(); } })
+          ])
+        ]
+      });
+      return;
+    }
+
+    var mode = st.booleanMode || 'union';
+    var target = others.indexOf(st.booleanTarget) >= 0 ? st.booleanTarget : others[0];
+    var note = el('p.sheet-note');
+    var resRow, smoothRow, keepCheck, reduceCheck, targetHost, applyBtn;
+
+    function refresh() {
+      var entry = mode === 'join'
+        ? { label: 'Join', hint: 'Puts both meshes in one object and leaves the geometry alone. Instant and exact; the surfaces still pass through each other.' }
+        : S.Boolean.modeById(mode);
+      var b = self.scene.objects[target];
+      var total = a.mesh.liveTris + (b ? b.mesh.liveTris : 0);
+      note.innerHTML = '<b>' + entry.label + '</b> \u2014 ' + entry.hint +
+        (mode === 'join'
+          ? '<br>Result: <b>' + S.formatCount(total) + '</b> triangles, the two meshes unchanged.'
+          : '<br>Rebuilds one closed surface on a grid, so a sharp edge is only as sharp as the resolution.');
+      var showBool = mode !== 'join';
+      resRow.style.display = showBool ? '' : 'none';
+      smoothRow.style.display = showBool ? '' : 'none';
+      for (var k = 0; k < targetHost.children.length; k++) {
+        targetHost.children[k].classList.toggle('on', +targetHost.children[k].dataset.index === target);
+      }
+    }
+
+    var modeSeg = UI.segment({ value: mode, options: [
+      { id: 'join', label: 'Join', title: 'Keep both meshes, one object' },
+      { id: 'union', label: 'Union', title: 'Fuse into one surface' },
+      { id: 'subtract', label: 'Subtract', title: 'Cut B out of A' },
+      { id: 'intersect', label: 'Overlap', title: 'Keep only the overlap' }
+    ], onchange: function (v) {
+      mode = v;
+      if (v !== 'join') self.set('booleanMode', v);
+      refresh();
+    } });
+
+    targetHost = el('div#objects');
+    others.forEach(function (index) {
+      var o = self.scene.objects[index];
+      var row = el('div.obj-row' + (index === target ? '.on' : ''), {
+        onpointerdown: function () {
+          target = index;
+          self.set('booleanTarget', index);
+          refresh();
+        }
+      }, [
+        UI.icon('cube'),
+        el('span.name', { text: o.name }),
+        el('span.count', { text: S.formatCount(o.mesh.liveTris) })
+      ]);
+      row.dataset.index = index;
+      targetHost.appendChild(row);
+    });
+
+    resRow = UI.slider({ label: 'Resolution', min: 48, max: 480, step: 4, value: st.booleanResolution,
+      title: 'Voxels along the longest side. Higher keeps edges sharper and takes longer.',
+      onchange: function (v) { self.set('booleanResolution', v); refresh(); } });
+    smoothRow = UI.slider({ label: 'Relax', min: 0, max: 4, step: 1, value: st.booleanSmooth,
+      onchange: function (v) { self.set('booleanSmooth', v); } });
+    keepCheck = UI.check({ label: 'Keep the other object', value: !!st.booleanKeep,
+      onchange: function (v) { self.set('booleanKeep', v); } });
+    reduceCheck = UI.check({ label: 'Reduce to budget afterwards', value: st.booleanReduce !== false,
+      title: 'A boolean rebuilds the surface at grid density, which is usually far more triangles than a game mesh wants',
+      onchange: function (v) { self.set('booleanReduce', v); } });
+
+    this.openSheet({
+      title: 'Combine',
+      content: [
+        el('div.row', null, modeSeg),
+        note,
+        el('p.sheet-note', { text: 'With' }),
+        targetHost,
+        resRow, smoothRow,
+        el('div.row.wrap', null, [keepCheck, reduceCheck]),
+        el('div.sheet-buttons', null, [
+          UI.button('Cancel', { onclick: function () { self.closeSheet(); } }),
+          (applyBtn = UI.button('Apply', { icon: 'check', class: 'accent', onclick: function () {
+            self.closeSheet();
+            self.applyCombine(mode, target, {
+              resolution: resRow.get(),
+              smooth: smoothRow.get(),
+              keep: keepCheck.get(),
+              reduce: reduceCheck.get()
+            });
+          } }))
+        ])
+      ]
+    });
+    refresh();
+  };
+
+  /**
+   * Run a join or a boolean between the selected object and another one.
+   * The geometry is computed first, then applied inside a single history
+   * step that covers both the mesh and the object list.
+   */
+  A.applyCombine = function (mode, indexB, opts) {
+    var self = this;
+    var indexA = this.scene.selected;
+    var a = this.scene.objects[indexA];
+    var b = this.scene.objects[indexB];
+    if (!a || !b) { UI.toast('Pick two objects to combine', 'bad'); return; }
+    var label = mode === 'join' ? 'Join' : ('Boolean ' + mode);
+
+    UI.busy(label, a.name + ' + ' + b.name, function (report) {
+      if (mode === 'join') {
+        return { join: self.scene.mergeObjects([indexA, indexB], a.name) };
+      }
+      return S.Boolean.compute(a, b, {
+        mode: mode, resolution: opts.resolution, smooth: opts.smooth, colors: true
+      }, function (f) { report(Math.round(f * 100) + '%'); });
+    }, function (result, ms) {
+      if (!result) return;
+      if (result.ok === false) { UI.toast(result.reason, 'bad', 5000); return; }
+
+      var beforeTris = a.mesh.liveTris;
+      self.history.runSceneOp(label,
+        function () {
+          return { objects: self.scene.objects.slice(), selected: self.scene.selected,
+                   obj: a, mesh: a.mesh.snapshot() };
+        },
+        function (state) {
+          self.scene.objects = state.objects.slice();
+          self.scene.selected = Math.min(state.selected, Math.max(0, self.scene.objects.length - 1));
+          state.obj.mesh.restore(state.mesh);
+          self.refreshObjects();
+          self.refreshStatus();
+          self.needsRender = true;
+        },
+        function () {
+          if (result.join) {
+            // a join replaces both objects with the merged one
+            var merged = result.join;
+            var keep = [];
+            for (var i = 0; i < self.scene.objects.length; i++) {
+              if (i !== indexA && i !== indexB) keep.push(self.scene.objects[i]);
+            }
+            self.renderer.releaseObject(a);
+            self.renderer.releaseObject(b);
+            keep.push(merged);
+            self.scene.objects = keep;
+            self.scene.selected = keep.length - 1;
+            return;
+          }
+          a.mesh.setFromArrays(result.positions, result.indices, { colors: result.colors, weld: false });
+          a.mesh.removeDegenerateTriangles(result.plan.voxel * result.plan.voxel * 1e-7);
+          if (opts.smooth > 0) a.mesh.smoothAll(opts.smooth, 0.4, false);
+          if (opts.reduce !== false) {
+            var budget = self.settings.triBudget || 10000;
+            if (a.mesh.liveTris > budget) a.mesh.decimate(budget, true);
+          }
+          a.mesh.computeNormals();
+          if (!opts.keep) {
+            self.renderer.releaseObject(b);
+            var at = self.scene.objects.indexOf(b);
+            if (at >= 0) self.scene.remove(at);
+            self.scene.selected = self.scene.objects.indexOf(a);
+          }
+        });
+
+      self.afterMeshOp(a);
+      var health = a.mesh.countBorderEdges() + a.mesh.countNonManifoldEdges();
+      UI.toast(label + ': ' + S.formatCount(beforeTris) + ' \u2192 ' +
+        S.formatCount(a.mesh.liveTris) + ' triangles in ' + UI.formatMs(ms) +
+        (health ? ' (with ' + health + ' odd edges)' : ''), health ? null : 'ok', 4200);
     });
   };
 
@@ -9437,6 +11585,392 @@ input[type=color] {
     ]));
   };
 
+  /* ---- stencils ---- */
+
+  /**
+   * The stencil picker: a thumbnail per stencil, built-ins first, then
+   * anything uploaded. Each thumbnail is the stencil itself drawn into a
+   * small canvas, so what you pick is what the brush will stamp.
+   */
+  A.buildAlphaGrid = function () {
+    var self = this;
+    var grid = el('div.alpha-grid');
+
+    function cell(id, label, alpha, removable) {
+      var node = el('button.alpha-cell' + (self.settings.alpha === id ? '.on' : ''), {
+        title: alpha ? label : 'No stencil — a plain round brush',
+        onclick: function () {
+          self.set('alpha', id);
+          grid.rebuild();
+        }
+      });
+      if (alpha) {
+        var size = 46;
+        var cvs = el('canvas', { width: size, height: size });
+        var ctx = cvs.getContext('2d');
+        var img = ctx.createImageData(size, size);
+        img.data.set(S.Alpha.toRGBA(alpha, size));
+        ctx.putImageData(img, 0, 0);
+        node.appendChild(cvs);
+      } else {
+        node.appendChild(el('span.alpha-none', null, UI.icon('close')));
+      }
+      node.appendChild(el('small', { text: label }));
+      if (removable) {
+        node.appendChild(el('span.alpha-x', {
+          title: 'Remove this stencil',
+          onclick: function (e) {
+            e.stopPropagation();
+            self.deleteAlpha(id);
+            grid.rebuild();
+          }
+        }, UI.icon('trash')));
+      }
+      return node;
+    }
+
+    grid.rebuild = function () {
+      UI.clear(grid);
+      grid.appendChild(cell('none', 'None', null, false));
+      var list = S.Alpha.list();
+      for (var i = 0; i < list.length; i++) {
+        grid.appendChild(cell(list[i].id, list[i].label, S.alphaById(list[i].id), !list[i].builtin));
+      }
+    };
+    grid.rebuild();
+    return grid;
+  };
+
+  A.saveAlphas = function () {
+    try {
+      if (root.localStorage && !S.Alpha.saveAll(root.localStorage)) {
+        UI.toast('Stencils are loaded but could not be saved for next time', null, 3200);
+      }
+    } catch (e) { /* ignore */ }
+  };
+
+  A.deleteAlpha = function (id) {
+    S.Alpha.remove(id);
+    this.saveAlphas();
+    if (this.settings.alpha === id) this.set('alpha', 'none');
+  };
+
+  /**
+   * Turn an image file into a stencil. Brightness becomes strength, so a
+   * photo of dirt or a drawing of a rivet works straight away; a PNG with
+   * transparency uses its alpha as well.
+   */
+  A.loadAlphaFromFile = function (file, grid, invert) {
+    var self = this;
+    if (!root.URL || !root.Image) { UI.toast('This browser cannot read image files', 'bad'); return; }
+    var url = URL.createObjectURL(file);
+    var img = new root.Image();
+    img.onload = function () {
+      try {
+        // draw it down to stencil size first; the browser's scaler is both
+        // faster and better than doing it a pixel at a time
+        var max = 256;
+        var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        var scale = Math.min(1, max / Math.max(w, h, 1));
+        var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+        var cvs = document.createElement('canvas');
+        cvs.width = cw; cvs.height = ch;
+        var ctx = cvs.getContext('2d');
+        ctx.drawImage(img, 0, 0, cw, ch);
+        var pixels = ctx.getImageData(0, 0, cw, ch).data;
+        var label = String(file.name || 'Stencil').replace(/\.[a-z0-9]+$/i, '').slice(0, 16) || 'Stencil';
+        var id = 'img-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1296).toString(36);
+        S.Alpha.add(S.Alpha.fromPixels(id, label, pixels, cw, ch, { invert: !!invert }));
+        self.saveAlphas();
+        self.set('alpha', id);
+        if (grid && grid.rebuild) grid.rebuild();
+        UI.toast('Stencil “' + label + '” ready — draw with it', 'ok', 3400);
+      } catch (e) {
+        UI.toast('Could not read that image', 'bad');
+      }
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      UI.toast('Could not open that image', 'bad');
+    };
+    img.src = url;
+  };
+
+  /** Make an inverted copy of the stencil in use, for light-on-dark images. */
+  A.invertCurrentAlpha = function (grid) {
+    var alpha = S.alphaById(this.settings.alpha);
+    if (!alpha) { UI.toast('Pick a stencil first', null, 1800); return; }
+    var id = alpha.id + '-inv';
+    if (!S.Alpha.loaded[id]) {
+      var data = new Float32Array(alpha.data.length);
+      for (var i = 0; i < data.length; i++) data[i] = 1 - alpha.data[i];
+      S.Alpha.add(S.Alpha.make(id, alpha.label + ' ⇄', alpha.size, data));
+      this.saveAlphas();
+    }
+    this.set('alpha', id);
+    if (grid && grid.rebuild) grid.rebuild();
+  };
+
+  /** The stencil block, shared by the brush settings sheet. */
+  A.buildAlphaSection = function () {
+    var self = this;
+    var st = this.settings;
+    var grid = this.buildAlphaGrid();
+    var stampCheck = UI.check({ label: 'One stamp per press', value: st.stampMode,
+      title: 'Tap to place a single dab instead of drawing a stroke — for rivets, panels and logos',
+      onchange: function (v) { self.set('stampMode', v); } });
+    var followCheck = UI.check({ label: 'Follow the stroke', value: st.alphaFollowStroke !== false,
+      title: 'Turns the stencil to face the direction you are drawing',
+      onchange: function (v) { self.set('alphaFollowStroke', v); } });
+    var rotateCheck = UI.check({ label: 'Random turn', value: !!st.alphaRandomRotate,
+      title: 'Spins the stencil a random amount each stroke, so a pattern does not repeat',
+      onchange: function (v) { self.set('alphaRandomRotate', v); } });
+    return [
+      el('p.sheet-note', { text: 'Stencil — the brush stamps this pattern instead of a round dab' }),
+      grid,
+      el('div.sheet-buttons', null, [
+        UI.button('Load image…', { icon: 'image', onclick: function () {
+          UI.pickFiles('image/*', false, function (files) { self.loadAlphaFromFile(files[0], grid); });
+        } }),
+        UI.button('Invert', { icon: 'reset', onclick: function () { self.invertCurrentAlpha(grid); } })
+      ]),
+      el('div.check-row', null, [stampCheck, followCheck, rotateCheck])
+    ];
+  };
+
+  /* ---- presets ---- */
+
+  A.savePresets = function () {
+    try { if (root.localStorage) S.Presets.save(root.localStorage, this.userPresets); } catch (e) { /* ignore */ }
+  };
+
+  A.applyPreset = function (id) {
+    var self = this;
+    var preset = S.Presets.byId(id, this.userPresets);
+    if (!preset) return;
+    var settings = {};
+    for (var k in preset.settings) settings[k] = preset.settings[k];
+    // a preset can ask for a stencil that is no longer loaded
+    if (settings.alpha && settings.alpha !== 'none' && !S.alphaById(settings.alpha)) settings.alpha = 'none';
+    S.Presets.apply({ settings: settings }, this.settings, function (key, value) { self.set(key, value); });
+    if (settings.brush) this.selectBrush(settings.brush);
+    this.syncPills();
+    this.syncViewButtons();
+    this.updateHud();
+    this.refreshStatus();
+    UI.toast(preset.label + ' — ' + S.Presets.describe(preset), 'ok', 2600);
+  };
+
+  A.syncPills = function () {
+    if (this.panelRefs.radius) this.panelRefs.radius.set(this.settings.radius);
+    if (this.panelRefs.strength) this.panelRefs.strength.set(this.settings.strength);
+  };
+
+  A.saveCurrentPreset = function () {
+    var self = this;
+    var brush = S.brushById(this.settings.brush);
+    var input = el('input', { type: 'text', value: brush.label + ' setup', maxlength: 28 });
+    UI.dialog({
+      title: 'Save this setup',
+      icon: 'star',
+      content: [
+        el('p.note', { text: 'Keeps the brush, size, strength, falloff, spacing, smoothing, stencil, ' +
+                             'stamp mode and paint colour. Mirroring, the triangle budget and the camera stay as they are.' }),
+        el('div.row', null, [el('label', { text: 'Name' }), input])
+      ],
+      buttons: [
+        { label: 'Cancel' },
+        { label: 'Save', class: 'accent', onclick: function () {
+          var preset = S.Presets.capture(self.settings, input.value.trim() || 'My preset');
+          self.userPresets.push(preset);
+          self.savePresets();
+          UI.toast('Saved “' + preset.label + '”', 'ok');
+        } }
+      ]
+    });
+    setTimeout(function () { input.focus(); input.select(); }, 50);
+  };
+
+  A.deletePreset = function (id) {
+    for (var i = 0; i < this.userPresets.length; i++) {
+      if (this.userPresets[i].id === id) {
+        this.userPresets.splice(i, 1);
+        this.savePresets();
+        return true;
+      }
+    }
+    return false;
+  };
+
+  /**
+   * The preset sheet. Built-in setups first — the ones a game model actually
+   * needs — then anything saved from the current brush.
+   */
+  A.openPresetSheet = function () {
+    var self = this;
+    var list = el('div.preset-list');
+
+    function rebuild() {
+      UI.clear(list);
+      var all = S.Presets.all(self.userPresets);
+      all.forEach(function (preset) {
+        var row = el('button.preset-row', {
+          onclick: function () {
+            self.closeSheet();
+            self.applyPreset(preset.id);
+          }
+        }, [
+          UI.icon(preset.settings.brush || 'star'),
+          el('span.preset-label', null, [
+            el('b', { text: preset.label }),
+            el('small', { text: preset.hint || S.Presets.describe(preset) })
+          ])
+        ]);
+        if (preset.user) {
+          row.appendChild(el('span.preset-x', { title: 'Delete this preset', onclick: function (e) {
+            e.stopPropagation();
+            self.deletePreset(preset.id);
+            rebuild();
+          } }, UI.icon('trash')));
+        }
+        list.appendChild(row);
+      });
+      if (!self.userPresets.length) {
+        list.appendChild(el('p.sheet-note', { text: 'Set a brush up how you like it, then save it here.' }));
+      }
+    }
+    rebuild();
+
+    this.openSheet({
+      title: 'Presets',
+      content: [
+        list,
+        el('div.sheet-buttons', null, [
+          UI.button('Save the current brush', { icon: 'star', class: 'accent', onclick: function () {
+            self.closeSheet();
+            self.saveCurrentPreset();
+          } })
+        ])
+      ]
+    });
+  };
+
+  /* ---- texture ---- */
+
+  /**
+   * Bake and export. Painting happens on the mesh, which is fast and has no
+   * seams to fight, but a game needs an image — so this unwraps the model by
+   * box projection, rasterises the paint into an atlas and writes a PNG.
+   */
+  A.openTextureSheet = function () {
+    var self = this;
+    var st = this.settings;
+    var preview = el('canvas.tex-preview', { width: 200, height: 200 });
+    var note = el('p.sheet-note', { text: 'Baking a preview…' });
+    var timer = null;
+
+    function refresh() {
+      var obj = self.scene.current();
+      if (!obj) { note.textContent = 'Nothing to bake.'; return; }
+      var geoms = S.IO.prepare([obj], { scale: 1, axis: 'y', applyTransform: false, includeColors: true });
+      if (!geoms.length) { note.textContent = 'This object has no geometry.'; return; }
+      var built = S.Texture.build(geoms[0], { size: 200, cavity: self.settings.textureCavity });
+      var ctx = preview.getContext('2d');
+      var img = ctx.createImageData(built.width, built.height);
+      img.data.set(built.pixels);
+      ctx.putImageData(img, 0, 0);
+      note.textContent = obj.name + ' — six charts, ' +
+        Math.round(built.coverage * 100) + '% of the image used, ' +
+        S.formatCount(built.geom.vertCount) + ' points after the unwrap.';
+    }
+    function refreshSoon() {
+      clearTimeout(timer);
+      timer = setTimeout(refresh, 120);
+    }
+
+    this.openSheet({
+      title: 'Texture',
+      content: [
+        el('div.tex-wrap', null, preview),
+        note,
+        UI.segment({ label: 'Image size', value: String(st.textureSize), options: [
+          { id: '512', label: '512', title: 'Small and light' },
+          { id: '1024', label: '1024', title: 'A good default for a game prop' },
+          { id: '2048', label: '2048', title: 'For a hero model' }
+        ], onchange: function (v) { self.set('textureSize', parseInt(v, 10)); } }),
+        UI.slider({ label: 'Creases', min: 0, max: 1, step: 0.05, value: st.textureCavity,
+          title: 'Darkens the recesses in the baked image, the way they look on screen',
+          onchange: function (v) { self.set('textureCavity', v); refreshSoon(); } })
+      ],
+      rows: [
+        { group: 'Save' },
+        { icon: 'cube', label: 'Roblox: mesh + texture', hint: 'OBJ under the budget, plus the PNG to upload as its texture',
+          onclick: function () { self.exportForRoblox(null, true); } },
+        { icon: 'file', label: 'OBJ + texture', hint: 'Full detail: .obj, .mtl and .png',
+          onclick: function () { self.exportWithTexture('obj'); } },
+        { icon: 'cube', label: 'GLB with the texture inside', hint: 'One file for Three.js, Unity, Godot, Blender',
+          onclick: function () { self.exportWithTexture('glb'); } },
+        { icon: 'image', label: 'Just the image', hint: 'The PNG on its own',
+          onclick: function () { self.exportTextureImage(); } },
+        { group: 'Paint' },
+        { icon: 'paint', label: 'Paint settings', hint: 'Colour, stencil, swatches',
+          chevron: true, onclick: function () { self.openBrushSettingsSheet(); } },
+        { icon: 'subdivide', label: 'More paint detail', hint: 'Subdivide, so the colour has more places to live',
+          onclick: function () { self.subdivide(true); } }
+      ]
+    });
+    requestAnimationFrame(refresh);
+  };
+
+  /** Texture options shared by every baked export. */
+  A.textureOptions = function () {
+    var opts = this.exportOptions();
+    opts.textureSize = this.settings.textureSize;
+    opts.cavity = this.settings.textureCavity;
+    opts.baseName = this.exportFilename('x').replace(/\.x$/, '');
+    return opts;
+  };
+
+  A.exportWithTexture = function (format) {
+    var self = this;
+    var objs = this.exportTargets();
+    if (!objs.length) { UI.toast('Nothing to export', 'bad'); return; }
+    var opts = this.textureOptions();
+    UI.busy('Baking the texture', opts.textureSize + ' × ' + opts.textureSize, function (report) {
+      var geoms = S.IO.prepare(objs, opts);
+      if (!geoms.length) throw new Error('The selected objects have no geometry.');
+      report('unwrapping, then painting the image');
+      var out = S.IO.exportTextured(format, geoms, opts);
+      var names = [], bytes = 0;
+      for (var i = 0; i < out.files.length; i++) {
+        bytes += UI.download(out.files[i].data, out.files[i].name, out.files[i].mime);
+        names.push(out.files[i].name);
+      }
+      return { names: names, bytes: bytes };
+    }, function (result) {
+      if (!result) return;
+      UI.toast('Saved ' + result.names.join(', ') + ' — ' + S.formatBytes(result.bytes), 'ok', 5200);
+    });
+  };
+
+  A.exportTextureImage = function () {
+    var self = this;
+    var obj = this.scene.current();
+    if (!obj) { UI.toast('Nothing to bake', 'bad'); return; }
+    var opts = this.textureOptions();
+    UI.busy('Baking the texture', opts.textureSize + ' × ' + opts.textureSize, function () {
+      var geoms = S.IO.prepare([obj], { scale: 1, axis: 'y', applyTransform: false, includeColors: true });
+      if (!geoms.length) throw new Error('This object has no geometry.');
+      var built = S.Texture.build(geoms[0], { size: opts.textureSize, cavity: opts.cavity });
+      var name = self.exportFilename('png');
+      return { name: name, size: UI.download(built.png(), name, 'image/png') };
+    }, function (result) {
+      if (!result) return;
+      UI.toast('Saved ' + result.name + ' — ' + S.formatBytes(result.size), 'ok', 4200);
+    });
+  };
+
   /* ---- brush settings (everything that used to crowd the screen) ---- */
 
   A.openBrushSettingsSheet = function () {
@@ -9447,7 +11981,7 @@ input[type=color] {
     var detailRow = UI.slider({ label: 'Detail', min: 2, max: 100, step: 1, value: st.detailPercent, suffix: '%',
       title: 'Triangle size under the brush, as a percentage of the brush size',
       onchange: function (v) { self.set('detailPercent', v); } });
-    var maxRow = UI.slider({ label: 'Limit', min: 50000, max: 6000000, step: 50000, value: st.maxTriangles,
+    var maxRow = UI.slider({ label: 'Limit', min: 25000, max: 2000000, step: 25000, value: st.maxTriangles,
       format: function (v) { return S.formatCount(Number(v)); },
       title: 'Dynamic topology stops adding triangles here',
       onchange: function (v) { self.set('maxTriangles', v); } });
@@ -9491,6 +12025,7 @@ input[type=color] {
         UI.slider({ label: 'Spacing', min: 0.02, max: 1, step: 0.01, value: st.spacing,
           title: 'Distance between brush stamps',
           onchange: function (v) { self.set('spacing', v); } }),
+        this.buildAlphaSection(),
         el('p.sheet-note', { text: 'Paint colour' }),
         el('div.row', null, [colorInput,
           UI.button('Pick from model', { icon: 'palette', class: 'grow', onclick: function () {
@@ -9505,7 +12040,7 @@ input[type=color] {
       ],
       rows: [
         { group: 'Triangles' },
-        { icon: 'layers', label: 'Dynamic topology', hint: 'Add detail as you sculpt (D)',
+        { icon: 'layers', label: 'Add triangles as you sculpt', hint: 'Dynamic topology (D) — off, brushes can only stretch what is there',
           toggle: true, keepOpen: true,
           value: function () { return self.settings.dyntopo; },
           onclick: function () { self.set('dyntopo', !self.settings.dyntopo); self.updateHud(); } },
@@ -9539,7 +12074,7 @@ input[type=color] {
     body.appendChild(detailRow);
     body.appendChild(maxRow);
     body.appendChild(el('p.sheet-note', {
-      text: 'Roblox refuses a mesh over 10,000 triangles, but a prop in a real game is usually 1k\u20134k. Picking a budget also sets how coarse dynamic topology works, and switches it off below 10k so the count cannot creep up.'
+      text: 'The budget is what Export reduces a copy of the model to \u2014 Roblox refuses a mesh over 10,000 triangles and a real prop is usually 1k\u20134k. Sculpt as dense as you need: the brushes add triangles as they build, and the count above only has to come down when you export. Detail sets how fine those new triangles are, Limit is where adding stops.'
     }));
   };
 
@@ -9793,27 +12328,32 @@ input[type=color] {
   };
 
   /**
-   * Dynamic topology stops adding triangles at the budget. Say so once, with
-   * the way out, rather than leaving the brush silently doing nothing.
-   */
-  /**
-   * Apply a triangle budget. This is the one knob that matters for a game
-   * mesh, so it sets everything that follows from it: the ceiling, how
-   * coarse dynamic topology works, and whether dynamic topology runs at all
-   * (below 10k a fixed mesh is easier to keep inside the budget).
+   * Set the export budget.
+   *
+   * This is what Export reduces a copy of the model to, not a cap on what
+   * you can sculpt: dynamic topology keeps its headroom, because a brush
+   * that cannot add triangles goes back to stretching the ones already
+   * there. It also picks a matching stroke detail, so a small budget means
+   * chunkier strokes and there is less to throw away at the end.
    */
   A.setBudget = function (n) {
     n = Math.max(200, Math.round(n));
     this.set('triBudget', n);
-    this.set('maxTriangles', n);
-    this.set('detailPercent', n <= 2000 ? 45 : (n <= 10000 ? 25 : (n <= 50000 ? 12 : 6)));
-    if (n <= 10000 && this.settings.dyntopo) this.set('dyntopo', false);
+    /*
+     * Headroom for the brushes: six times the budget, never under 150,000,
+     * and never under what the model already has — dropping the ceiling
+     * below the live count would make the next stroke coarsen the mesh
+     * instead of adding to it, which is a nasty surprise.
+     */
+    var obj = this.scene.current();
+    var live = obj ? obj.mesh.liveTris : 0;
+    this.set('maxTriangles', Math.max(n * 6, 150000, live));
+    this.set('detailPercent', n <= 2000 ? 26 : (n <= 10000 ? 20 : (n <= 50000 ? 14 : 9)));
     this.refreshStatus();
     this.updateHud();
-    var obj = this.scene.current();
-    var msg = 'Budget ' + S.formatCount(n) + ' triangles';
-    if (obj && obj.mesh.liveTris > n) msg += ' — this mesh is over it; tap the counter to reduce';
-    UI.toast(msg, obj && obj.mesh.liveTris > n ? 'bad' : null, 3600);
+    UI.toast('Export budget ' + S.formatCount(n) + ' triangles \u2014 sculpt as dense as you like, ' +
+             'Export reduces to it', null, 3800);
+
   };
 
   /** A starting density that lands near the budget for a given primitive. */
@@ -9829,6 +12369,10 @@ input[type=color] {
     return S.clamp(guess, 2, entry.detailMax || 12);
   };
 
+  /**
+   * Dynamic topology stops adding triangles at the Limit. Say so once, with
+   * the way out, rather than leaving the brush silently doing nothing.
+   */
   A.warnIfBudgetFull = function () {
     var obj = this.scene.current();
     if (!obj || !this.settings.dyntopo) return;
@@ -9837,7 +12381,8 @@ input[type=color] {
     var now = performance.now();
     if (this._budgetWarned && now - this._budgetWarned < 30000) return;
     this._budgetWarned = now;
-    UI.toast('At the ' + S.formatCount(cap) + ' triangle budget — raise it in Menu \u2192 Brush settings, or keep sculpting at this density', null, 5000);
+    UI.toast('At the ' + S.formatCount(cap) + ' triangle limit \u2014 the brushes cannot add any more. ' +
+      'Raise Limit in Brush settings, or remesh to even the surface out.', null, 5000);
   };
 
   /* ---- touch navigation ---- */
@@ -10592,7 +13137,7 @@ input[type=color] {
    * sculpt itself is left at full detail: the reduction happens on a copy,
    * per object, so each one arrives as its own MeshPart inside the limit.
    */
-  A.exportForRoblox = function (budget) {
+  A.exportForRoblox = function (budget, withTexture) {
     var self = this;
     // Roblox's own ceiling is 10,000 per MeshPart, so this export never goes
     // above that however high the working budget is set. A lower working
@@ -10622,8 +13167,32 @@ input[type=color] {
         scale: 1, axis: 'y', applyTransform: true,
         includeNormals: true, includeColors: false
       });
-      // Roblox's mesh importer ignores vertex colour, so it is left out to
-      // keep the file small
+      /*
+       * Roblox's mesh importer ignores vertex colour, so colour only reaches
+       * the game as an image: with the texture asked for, the paint is baked
+       * into a PNG and written beside the mesh, ready to upload and set as
+       * the MeshPart's TextureID. Without it, the OBJ goes out on its own and
+       * stays small.
+       */
+      if (withTexture) {
+        var texOpts = {
+          scale: 1, axis: 'y', applyTransform: true, includeNormals: true, includeColors: false,
+          textureSize: self.settings.textureSize, cavity: self.settings.textureCavity,
+          baseName: self.exportFilename('x').replace(/\.x$/, '')
+        };
+        report('baking the texture');
+        var coloured = S.IO.prepare(temps, {
+          scale: 1, axis: 'y', applyTransform: true, includeNormals: true, includeColors: true
+        });
+        var out = S.IO.exportTextured('obj', coloured, texOpts);
+        var names = [], bytes = 0;
+        for (var f = 0; f < out.files.length; f++) {
+          bytes += UI.download(out.files[f].data, out.files[f].name, out.files[f].mime);
+          names.push(out.files[f].name);
+        }
+        return { name: names.join(', '), size: bytes, original: original, reduced: reduced,
+                 objects: temps.length, limit: limit };
+      }
       var text = S.IO.exportOBJ(geoms, { includeNormals: true, includeColors: false });
       var name = self.exportFilename('obj');
       var size = UI.download(text, name, 'text/plain');
@@ -11149,7 +13718,7 @@ input[type=color] {
         el('p', { html: '<b>SculptFree ' + S.VERSION + '</b> — a digital sculpting app that runs in a browser, in one HTML file, with no account, no network and no paywall.' }),
         el('div.warn.ok', { text: 'Import and export are free and unlimited: OBJ, STL, PLY and GLB, in and out, at any triangle count.' }),
         el('h4', { text: 'What is in it' }),
-        el('p', { text: '18 brushes with symmetry, masking and vertex painting; dynamic topology; voxel remeshing; Loop subdivision; quadric decimation; a multi-object scene with transforms; undo that covers topology changes; and its own WebGL2 renderer with generated matcaps, so there are no assets to download.' }),
+        el('p', { text: '21 brushes with symmetry, masking, stencils and vertex painting; dynamic topology; voxel remeshing; Loop subdivision; quadric decimation; booleans; a multi-object scene with transforms; baked textures; undo that covers topology changes; and its own WebGL2 renderer with generated matcaps, so there are no assets to download.' }),
         el('h4', { text: 'Your work stays on your machine' }),
         el('p', { text: 'Nothing is uploaded anywhere. The recovery copy lives in this browser’s own storage, and projects are saved to files you keep.' }),
         el('h4', { text: 'This machine' }),

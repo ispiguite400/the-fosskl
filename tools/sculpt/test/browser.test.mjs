@@ -136,7 +136,7 @@ async function meshState() {
     return {
       tris: mesh.liveTris, verts: mesh.liveVerts, far, meanR: sumR / n,
       undo: app.history.undoStack.length, redo: app.history.redoStack.length,
-      borderEdges: mesh.countBorderEdges()
+      borderEdges: mesh.countBorderEdges(), nonManifold: mesh.countNonManifoldEdges()
     };
   });
 }
@@ -162,12 +162,18 @@ async function stroke(from, to, steps = 18, opts = {}) {
   const before = await meshState();
   await stroke([cx - 90, cy], [cx + 90, cy + 20]);
   const after = await meshState();
-  check('a clay stroke pushed the surface out', after.far > before.far + 0.005,
+  check('the default brush pushed the surface out', after.far > before.far + 0.005,
     `${before.far.toFixed(4)} -> ${after.far.toFixed(4)}`);
-  // the default is a fixed low-poly mesh: sculpting must not grow the count,
-  // which is what keeps a model inside a Roblox budget
-  eq('fixed topology keeps the triangle count', after.tris, before.tris);
+  /*
+   * The default brush adds material, so the stroke has to bring triangles
+   * with it. A stroke that leaves the count alone is a stroke that stretched
+   * the triangles that were already there, which is the one thing this tool
+   * must not do.
+   */
+  check('a stroke adds triangles where it builds', after.tris > before.tris,
+    `${before.tris} -> ${after.tris}`);
   eq('the mesh is still closed', after.borderEdges, 0);
+  eq('the mesh is still manifold', after.nonManifold === undefined ? 0 : after.nonManifold, 0);
   eq('one undo step recorded', after.undo, 1);
 
   await page.keyboard.press('Control+z');
@@ -183,55 +189,127 @@ async function stroke(from, to, steps = 18, opts = {}) {
   eq('redo restored the sculpt', redone.tris, after.tris);
 }
 
-/* ---- the triangle budget ------------------------------------------- */
+/* ---- adding material, and the export budget ------------------------- */
 {
+  await page.evaluate(() => window.SCULPT_APP.newScene('sphere', null, true));
+  await page.waitForTimeout(150);
   const defaults = await page.evaluate(() => ({
+    brush: window.SCULPT_APP.settings.brush,
     dyntopo: window.SCULPT_APP.settings.dyntopo,
     budget: window.SCULPT_APP.settings.triBudget,
     cap: window.SCULPT_APP.settings.maxTriangles,
+    detail: window.SCULPT_APP.settings.detailPercent,
     tris: window.SCULPT_APP.scene.current().mesh.liveTris
   }));
-  eq('dynamic topology is off by default', defaults.dyntopo, false);
-  eq('the default budget suits a Roblox prop', defaults.budget, 2000);
-  check('the starting mesh is inside the budget', defaults.tris <= defaults.budget,
-    `${defaults.tris} of ${defaults.budget}`);
+  eq('the default brush is Add', defaults.brush, 'add');
+  eq('brushes add triangles out of the box', defaults.dyntopo, true);
+  eq('the export budget suits a Roblox prop', defaults.budget, 2000);
+  check('sculpting has headroom above the export budget', defaults.cap >= 150000,
+    `${defaults.cap}`);
+  check('a new model starts light', defaults.tris <= 2000, `${defaults.tris}`);
 
-  // with dynamic topology on, detail is added but capped at the budget
+  /* material stacks up: the same spot, worked over, gets thicker */
   await page.evaluate(() => {
     const app = window.SCULPT_APP;
     app.newScene('sphere', null, true);
-    app.set('dyntopo', true);
+    app.selectBrush('add');
+    app.set('radius', 80);
+    app.set('strength', 1);
   });
   await page.waitForTimeout(150);
   const start = await meshState();
-  for (let i = 0; i < 6; i++) {
-    await stroke([cx - 70 + i * 12, cy - 40 + i * 9], [cx + 70, cy + 30 + i * 6], 10);
+  const heights = [];
+  for (let i = 0; i < 3; i++) {
+    await stroke([cx - 40, cy], [cx + 40, cy], 10);
+    heights.push((await meshState()).far);
   }
   const grown = await meshState();
-  check('dynamic topology adds detail when switched on', grown.tris > start.tris,
+  check('each pass adds more material', heights[1] > heights[0] && heights[2] > heights[1],
+    heights.map((h) => h.toFixed(4)).join(' -> '));
+  check('the triangles come with it', grown.tris > start.tris * 1.2,
     `${start.tris} -> ${grown.tris}`);
-  check('it never passes the budget', grown.tris <= defaults.cap + 8,
-    `${grown.tris} of ${defaults.cap}`);
-  eq('still closed at the budget', grown.borderEdges, 0);
+  eq('still closed after building up', grown.borderEdges, 0);
+  eq('still manifold after building up', grown.nonManifold, 0);
 
-  // picking a budget sets everything that follows from it
+  /* pulling out a horn: the thing a stretched mesh cannot do */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('sphere', null, true);
+    app.selectBrush('add');
+    app.set('radius', 60);
+    app.set('strength', 1);
+  });
+  await page.waitForTimeout(150);
+  const hornStart = await meshState();
+  for (let i = 0; i < 6; i++) await stroke([cx, cy], [cx + 120, cy - 40], 14);
+  const horn = await meshState();
+  check('a repeated pull draws material out into a horn', horn.far > hornStart.far * 1.4,
+    `${hornStart.far.toFixed(3)} -> ${horn.far.toFixed(3)}`);
+  check('the horn is made of new triangles, not stretched ones',
+    horn.tris > hornStart.tris * 1.5, `${hornStart.tris} -> ${horn.tris}`);
+  eq('the horn is closed', horn.borderEdges, 0);
+  eq('the horn is manifold', horn.nonManifold, 0);
+  await page.screenshot({ path: path.join(screens, '23-add-horn.png') });
+
+  /* the same gesture with adding switched off can only stretch */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('sphere', null, true);
+    app.set('dyntopo', false);
+  });
+  await page.waitForTimeout(150);
+  const fixedStart = await meshState();
+  for (let i = 0; i < 6; i++) await stroke([cx, cy], [cx + 120, cy - 40], 14);
+  const fixed = await meshState();
+  eq('with adding off the count cannot change', fixed.tris, fixedStart.tris);
+  check('and the same gesture reaches less far', fixed.far < horn.far,
+    `fixed ${fixed.far.toFixed(3)} vs adding ${horn.far.toFixed(3)}`);
+  await page.evaluate(() => { window.SCULPT_APP.set('dyntopo', true); });
+
+  /* the ceiling is respected, and it is the ceiling that warns */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('sphere', null, true);
+    app.set('maxTriangles', 4000);
+    app.set('radius', 70);
+  });
+  await page.waitForTimeout(150);
+  for (let i = 0; i < 4; i++) await stroke([cx - 60 + i * 20, cy - 30], [cx + 60, cy + 30], 12);
+  const capped = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    const chip = document.getElementById('title-chip');
+    return { tris: app.scene.current().mesh.liveTris, cap: app.settings.maxTriangles,
+             text: chip.textContent, over: chip.classList.contains('over'),
+             border: app.scene.current().mesh.countBorderEdges() };
+  });
+  check('adding stops at the limit', capped.tris <= capped.cap + 8, `${capped.tris} of ${capped.cap}`);
+  check('the counter turns red at the limit that stops the brushes', capped.over,
+    JSON.stringify(capped));
+  eq('still closed at the limit', capped.border, 0);
+  check('the counter says what it will export as', / → 2k$/.test(capped.text), capped.text);
+
+  /* picking a budget sets the export target, not a cap on sculpting */
   const applied = await page.evaluate(() => {
     const app = window.SCULPT_APP;
     app.setBudget(1000);
-    const low = { cap: app.settings.maxTriangles, dyntopo: app.settings.dyntopo, detail: app.settings.detailPercent };
+    const low = { budget: app.settings.triBudget, cap: app.settings.maxTriangles,
+                  dyntopo: app.settings.dyntopo, detail: app.settings.detailPercent };
     app.setBudget(250000);
-    const high = { cap: app.settings.maxTriangles, dyntopo: app.settings.dyntopo, detail: app.settings.detailPercent };
+    const high = { budget: app.settings.triBudget, cap: app.settings.maxTriangles,
+                   dyntopo: app.settings.dyntopo, detail: app.settings.detailPercent };
     app.setBudget(2000);
     return { low, high, suggested: app.detailForBudget(window.SCULPT.Prim.byId('sphere')) };
   });
-  eq('a 1k budget caps the mesh', applied.low.cap, 1000);
-  eq('a 1k budget switches dynamic topology off', applied.low.dyntopo, false);
+  eq('a 1k budget is an export target', applied.low.budget, 1000);
+  check('a 1k budget still leaves room to sculpt', applied.low.cap >= 150000, `${applied.low.cap}`);
+  eq('picking a budget never switches adding off', applied.low.dyntopo, true);
   check('a small budget uses coarser triangles', applied.low.detail > applied.high.detail,
     `${applied.low.detail}% vs ${applied.high.detail}%`);
-  eq('a big budget raises the cap', applied.high.cap, 250000);
+  check('a big budget raises the ceiling to match', applied.high.cap >= 250000 * 6,
+    `${applied.high.cap}`);
   eq('a 2k budget suggests a 1.3k starting sphere', applied.suggested, 3);
 
-  await page.evaluate(() => { window.SCULPT_APP.newScene('sphere', null, true); window.SCULPT_APP.set('dyntopo', false); });
+  await page.evaluate(() => { window.SCULPT_APP.newScene('sphere', null, true); });
   await page.waitForTimeout(150);
 }
 
@@ -250,7 +328,8 @@ async function stroke(from, to, steps = 18, opts = {}) {
   await page.locator('#brushes .tool.more').click();
   await page.waitForTimeout(450);
   const cards = await page.locator('.brush-card').count();
-  eq('the brush sheet lists every brush', cards, 20);
+  const brushTotal = await page.evaluate(() => window.SCULPT.BRUSHES.length);
+  eq('the brush sheet lists every brush', cards, brushTotal);
   await page.locator('.brush-card[title^="Pulls out horns"]').click();
   await page.waitForTimeout(220);
   brush = await page.evaluate(() => window.SCULPT_APP.settings.brush);
@@ -509,7 +588,7 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
 
 /* verify the exported files in node, with the same parsers the app uses */
 {
-  const S = (await import('./harness.mjs')).load(['07-scene', '08-brush', '09-camera']);
+  const S = (await import('./harness.mjs')).load();
   const expected = await page.evaluate(() => {
     const mesh = window.SCULPT_APP.scene.current().mesh;
     return { tris: mesh.liveTris, verts: mesh.liveVerts };
@@ -715,6 +794,21 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
 {
   const perf = await page.evaluate(async () => {
     const app = window.SCULPT_APP;
+    /*
+     * A measurement has to control its inputs: earlier blocks leave the brush
+     * wherever they left it, and mirroring alone multiplies the work per
+     * stamp by up to eight.
+     */
+    app.set('radius', 62);
+    app.set('strength', 0.6);
+    app.set('spacing', 0.16);
+    app.set('symmetryX', false);
+    app.set('symmetryY', false);
+    app.set('symmetryZ', false);
+    app.set('alpha', 'none');
+    app.set('stampMode', false);
+    app.set('maxTriangles', 150000);
+    app.selectBrush('add');
     app.newScene('sphere', 6, true);            // 81920 triangles
     app.settings.dyntopo = false;
     const mesh = app.scene.current().mesh;
@@ -891,7 +985,7 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   await download.saveAs(dest);
   check('the Roblox export is an OBJ', download.suggestedFilename().endsWith('.obj'),
     download.suggestedFilename());
-  const S2 = (await import('./harness.mjs')).load(['07-scene', '08-brush', '09-camera']);
+  const S2 = (await import('./harness.mjs')).load();
   const buf = fs.readFileSync(dest);
   const res = S2.IO.importBuffer('roblox.obj', buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
   check('the Roblox export re-imports cleanly', res.objects.length === 1 && !res.warnings.length,
@@ -906,12 +1000,17 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   const stillDense = await page.evaluate(() => window.SCULPT_APP.scene.current().mesh.liveTris);
   eq('the sculpt itself keeps its detail', stillDense, dense);
 
-  // the budget chip reports over-budget
+  // over the export budget the chip says what it will export as, and does not
+  // cry about it: sculpting past the budget is the normal way to work
   const chip = await page.evaluate(() => {
     const c = document.getElementById('title-chip');
-    return { text: c.textContent, over: c.classList.contains('over') };
+    return { text: c.textContent, over: c.classList.contains('over'), title: c.title };
   });
-  check("the budget chip shows the overrun", chip.over && /2k$/.test(chip.text), JSON.stringify(chip));
+  check('the counter shows the sculpt and the export target', /\u2192 2k$/.test(chip.text),
+    JSON.stringify(chip));
+  check('sculpting past the export budget is not flagged as a problem', !chip.over,
+    JSON.stringify(chip));
+  check('the counter explains itself', /exports reduced to 2000/.test(chip.title), chip.title);
 
   // and from a high working budget it still comes back Roblox-legal
   await page.evaluate(() => window.SCULPT_APP.setBudget(250000));
@@ -928,6 +1027,594 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   check('a 250k working budget still exports under Roblox\'s 10k limit', m2.liveTris <= 10000,
     String(m2.liveTris));
   await page.evaluate(() => window.SCULPT_APP.setBudget(2000));
+}
+
+/* ---- stencils through the real interface ---------------------------- */
+{
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.closeSheet();
+    app.newScene('sphere', 4, true);       // 5,120 triangles to stamp into
+    app.set('alpha', 'none');
+    app.set('stampMode', false);
+    app.set('dyntopo', false);
+    app.set('maxTriangles', 400000);
+    app.selectBrush('draw');
+    app.set('radius', 120);
+    app.set('strength', 0.8);
+  });
+
+  await page.evaluate(() => window.SCULPT_APP.openBrushSettingsSheet());
+  await page.waitForTimeout(220);
+  const picker = await page.evaluate(() => {
+    const cells = Array.from(document.querySelectorAll('.alpha-grid .alpha-cell'));
+    const thumb = cells[1] && cells[1].querySelector('canvas');
+    let spread = 0;
+    if (thumb) {
+      const data = thumb.getContext('2d').getImageData(0, 0, thumb.width, thumb.height).data;
+      let lo = 255, hi = 0;
+      for (let i = 0; i < data.length; i += 4) { lo = Math.min(lo, data[i]); hi = Math.max(hi, data[i]); }
+      spread = hi - lo;
+    }
+    return {
+      cells: cells.length,
+      labels: cells.map((c) => c.querySelector('small').textContent),
+      firstIsOn: cells[0].classList.contains('on'),
+      thumbSpread: spread,
+      buttons: Array.from(document.querySelectorAll('.sheet .btn span')).map((b) => b.textContent)
+    };
+  });
+  eq('the stencil picker lists none plus the built-ins', picker.cells, 9);
+  eq('the first cell is None and is selected', picker.labels[0] + ':' + picker.firstIsOn, 'None:true');
+  check('the stencil thumbnails are actually drawn', picker.thumbSpread > 100, `${picker.thumbSpread}`);
+  check('the sheet offers loading an image', picker.buttons.join(',').indexOf('Load image') >= 0,
+    picker.buttons.join(','));
+
+  await page.locator('.alpha-grid .alpha-cell', { hasText: 'Gravel' }).click();
+  await page.waitForTimeout(120);
+  const picked = await page.evaluate(() => ({
+    alpha: window.SCULPT_APP.settings.alpha,
+    on: Array.from(document.querySelectorAll('.alpha-grid .alpha-cell.on'))
+      .map((c) => c.querySelector('small').textContent).join(',')
+  }));
+  eq('picking a stencil sets it', picked.alpha, 'gravel');
+  eq('the picked stencil is the only one marked', picked.on, 'Gravel');
+  await page.screenshot({ path: path.join(screens, '16-stencils.png') });
+  await page.evaluate(() => window.SCULPT_APP.closeSheet());
+  await page.waitForTimeout(220);
+
+  /* the same dab, with and without a stencil */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('sphere', 5, true);       // 20,480 triangles, so a stamp has detail to bite into
+    app.set('maxTriangles', 400000);
+    app.selectBrush('draw');
+    app.set('radius', 70);
+    app.set('strength', 0.7);
+    app.set('stampMode', true);
+  });
+
+  /**
+   * Press once and describe the shape of the dent: what share of the moved
+   * vertices sit near the deepest point, and what share barely moved. A
+   * plain brush leaves a dome — a few deep vertices and a long shallow
+   * skirt. A stencil with hard edges leaves a plateau: most of the footprint
+   * at full depth and very little skirt.
+   */
+  async function dabProfile(drag) {
+    await page.evaluate(() => {
+      const m = window.SCULPT_APP.scene.current().mesh;
+      window.__before = Float32Array.from(m.positions.array.subarray(0, m.liveVerts * 3));
+    });
+    if (drag) {
+      await stroke([cx - 60, cy], [cx + 60, cy], 14);
+    } else {
+      await page.mouse.move(cx, cy);
+      await page.mouse.down();
+      await page.mouse.up();
+    }
+    await page.waitForTimeout(80);
+    return page.evaluate(() => {
+      const m = window.SCULPT_APP.scene.current().mesh;
+      const before = window.__before, pos = m.positions.array;
+      const moves = [];
+      let max = 0;
+      for (let v = 0; v < m.liveVerts; v++) {
+        const o = v * 3;
+        const d = Math.hypot(pos[o] - before[o], pos[o + 1] - before[o + 1], pos[o + 2] - before[o + 2]);
+        if (d > 1e-7) moves.push(d);
+        if (d > max) max = d;
+      }
+      let deep = 0, solid = 0, skirt = 0;
+      for (const d of moves) {
+        if (d > 0.7 * max) deep++;
+        if (d > 0.3 * max) solid++;
+        if (d < 0.2 * max) skirt++;
+      }
+      return { moved: moves.length, max: max,
+               plateau: moves.length ? deep / moves.length : 0,
+               solid: moves.length ? solid / moves.length : 0,
+               skirt: moves.length ? skirt / moves.length : 0 };
+    });
+  }
+
+  await page.evaluate(() => window.SCULPT_APP.set('alpha', 'none'));
+  const plain = await dabProfile();
+  await page.evaluate(() => window.SCULPT_APP.undo());
+  await page.waitForTimeout(120);
+  await page.evaluate(() => window.SCULPT_APP.set('alpha', 'square'));
+  const stencilled = await dabProfile();
+
+  check('a plain dab moves vertices', plain.moved > 100, `${plain.moved}`);
+  check('a stencilled dab moves vertices', stencilled.moved > 100, `${stencilled.moved}`);
+  check('a plain brush leaves a dome, not a plateau', plain.plateau < 0.3,
+    `${(plain.plateau * 100).toFixed(0)}% at full depth`);
+  check('a hard-edged stencil stamps a plateau', stencilled.plateau > 0.5,
+    `${(stencilled.plateau * 100).toFixed(0)}% at full depth`);
+  check('a stencil cuts the soft skirt away', stencilled.skirt < plain.skirt * 0.6,
+    `plain ${(plain.skirt * 100).toFixed(0)}% vs stencil ${(stencilled.skirt * 100).toFixed(0)}%`);
+  await page.screenshot({ path: path.join(screens, '17-stencil-stroke.png') });
+
+  /* a patterned stencil over a drag, the way dirt and gravel are used */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.undo();
+    app.set('stampMode', false);
+    app.set('alpha', 'none');
+    app.set('radius', 90);
+  });
+  const plainDrag = await dabProfile(true);
+  await page.evaluate(() => window.SCULPT_APP.undo());
+  await page.waitForTimeout(120);
+  await page.evaluate(() => {
+    window.SCULPT_APP.set('alpha', 'gravel');
+    window.SCULPT_APP.set('alphaRandomRotate', true);
+  });
+  const gravelDrag = await dabProfile(true);
+
+  check('a patterned stencil still cuts a stroke', gravelDrag.moved > 200, `${gravelDrag.moved}`);
+  /*
+   * A plain stroke is mostly skirt: the radial falloff means most of the
+   * footprint is barely touched. A stencil replaces that falloff with the
+   * pattern, so the same footprint comes out as lumps at depth rather than a
+   * wide shallow smear — which is exactly what makes it read as gravel.
+   */
+  check('a patterned stencil replaces the soft falloff with lumps',
+    gravelDrag.skirt < plainDrag.skirt * 0.8,
+    `plain ${(plainDrag.skirt * 100).toFixed(0)}% skirt vs stencil ${(gravelDrag.skirt * 100).toFixed(0)}%`);
+  check('the pattern puts more of the footprint at real depth',
+    gravelDrag.solid > plainDrag.solid * 1.35,
+    `plain ${(plainDrag.solid * 100).toFixed(1)}% vs stencil ${(gravelDrag.solid * 100).toFixed(1)}%`);
+
+  /* stamp mode: one dab per press, however far the pointer travels */
+  await page.evaluate(() => { window.SCULPT_APP.undo(); });
+  await page.waitForTimeout(120);
+  await page.evaluate(() => {
+    window.SCULPT_APP.set('alpha', 'rivet');
+    window.SCULPT_APP.set('alphaRandomRotate', false);
+    window.SCULPT_APP.set('stampMode', true);
+    window.SCULPT_APP.set('radius', 60);
+  });
+  await page.evaluate(() => {
+    const m = window.SCULPT_APP.scene.current().mesh;
+    window.__before = Float32Array.from(m.positions.array.subarray(0, m.liveVerts * 3));
+  });
+  await stroke([cx - 100, cy - 30], [cx + 100, cy + 30], 20);
+  const stamped = await page.evaluate(() => {
+    const m = window.SCULPT_APP.scene.current().mesh;
+    const before = window.__before, pos = m.positions.array;
+    let moved = 0, minX = Infinity, maxX = -Infinity;
+    for (let v = 0; v < m.liveVerts; v++) {
+      const o = v * 3;
+      const d = Math.hypot(pos[o] - before[o], pos[o + 1] - before[o + 1], pos[o + 2] - before[o + 2]);
+      if (d > 1e-6) { moved++; minX = Math.min(minX, pos[o]); maxX = Math.max(maxX, pos[o]); }
+    }
+    return { moved: moved, width: maxX - minX, undo: window.SCULPT_APP.history.undoStack.length };
+  });
+  check('a stamp still changes the surface', stamped.moved > 20, `${stamped.moved}`);
+  // the drag covered 200px; a single dab of a 60px brush cannot be that wide
+  check('stamp mode lays one dab, not a trail', stamped.width < 0.35, `${stamped.width.toFixed(3)} wide`);
+
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.undo();
+    app.set('stampMode', false);
+    app.set('alpha', 'none');
+  });
+}
+
+/* ---- uploading an image as a stencil -------------------------------- */
+{
+  const loaded = await page.evaluate(async () => {
+    const app = window.SCULPT_APP;
+    // paint a checkerboard, hand it over as a real PNG File
+    const cvs = document.createElement('canvas');
+    cvs.width = cvs.height = 64;
+    const ctx = cvs.getContext('2d');
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = '#fff';
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) if ((x + y) % 2 === 0) ctx.fillRect(x * 8, y * 8, 8, 8);
+    }
+    const blob = await new Promise((res) => cvs.toBlob(res, 'image/png'));
+    const file = new File([blob], 'checker-test.png', { type: 'image/png' });
+    app.loadAlphaFromFile(file, null);
+    // the load runs on the image's onload, so wait for it
+    for (let i = 0; i < 60; i++) {
+      if (Object.keys(window.SCULPT.Alpha.loaded).length) break;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    const ids = Object.keys(window.SCULPT.Alpha.loaded);
+    const alpha = window.SCULPT.Alpha.loaded[ids[0]];
+    let lo = 1, hi = 0;
+    for (let i = 0; i < alpha.data.length; i++) { lo = Math.min(lo, alpha.data[i]); hi = Math.max(hi, alpha.data[i]); }
+    let stored = 0;
+    try { stored = JSON.parse(window.localStorage.getItem('sculptfree.alphas.v1') || '[]').length; } catch (e) { stored = -1; }
+    return { count: ids.length, id: ids[0], label: alpha.label, size: alpha.size,
+             lo: lo, hi: hi, selected: app.settings.alpha === ids[0], stored: stored };
+  });
+  eq('an uploaded image becomes one stencil', loaded.count, 1);
+  eq('the stencil is named after the file', loaded.label, 'checker-test');
+  check('the uploaded stencil has real contrast', loaded.lo < 0.05 && loaded.hi > 0.95,
+    `${loaded.lo} .. ${loaded.hi}`);
+  check('the uploaded stencil is selected straight away', loaded.selected);
+  check('the uploaded stencil was saved for next time', loaded.stored === 1 || loaded.stored === -1,
+    `${loaded.stored}`);
+
+  // it shows up in the picker with a way to remove it
+  await page.evaluate(() => window.SCULPT_APP.openBrushSettingsSheet());
+  await page.waitForTimeout(200);
+  const inPicker = await page.evaluate(() => {
+    const cells = Array.from(document.querySelectorAll('.alpha-grid .alpha-cell'));
+    const mine = cells.find((c) => c.querySelector('small').textContent === 'checker-test');
+    return { cells: cells.length, found: !!mine, removable: !!(mine && mine.querySelector('.alpha-x')),
+             builtinRemovable: !!cells[1].querySelector('.alpha-x') };
+  });
+  eq('the picker grew by one', inPicker.cells, 10);
+  check('the uploaded stencil is in the picker', inPicker.found);
+  check('an uploaded stencil can be removed', inPicker.removable);
+  check('a built-in stencil cannot be removed', inPicker.builtinRemovable === false);
+  await page.screenshot({ path: path.join(screens, '18-stencil-upload.png') });
+
+  await page.locator('.alpha-grid .alpha-cell', { hasText: 'checker-test' }).locator('.alpha-x').click();
+  await page.waitForTimeout(120);
+  const afterRemove = await page.evaluate(() => ({
+    loaded: Object.keys(window.SCULPT.Alpha.loaded).length,
+    alpha: window.SCULPT_APP.settings.alpha,
+    cells: document.querySelectorAll('.alpha-grid .alpha-cell').length
+  }));
+  eq('removing a stencil takes it out of the picker', afterRemove.cells, 9);
+  eq('removing the stencil in use falls back to none', afterRemove.alpha, 'none');
+  eq('nothing is left loaded', afterRemove.loaded, 0);
+  await page.evaluate(() => window.SCULPT_APP.closeSheet());
+  await page.waitForTimeout(200);
+}
+
+/* ---- presets -------------------------------------------------------- */
+{
+  await page.evaluate(() => window.SCULPT_APP.openPresetSheet());
+  await page.waitForTimeout(220);
+  const sheet = await page.evaluate(() => ({
+    rows: document.querySelectorAll('.preset-row').length,
+    labels: Array.from(document.querySelectorAll('.preset-row b')).map((b) => b.textContent),
+    hints: Array.from(document.querySelectorAll('.preset-row small')).map((b) => b.textContent).filter(Boolean).length,
+    title: document.querySelector('.sheet header b, .sheet .sheet-title, .sheet header span') &&
+           document.querySelector('.sheet').textContent.indexOf('Presets') >= 0
+  }));
+  check('the preset sheet lists the built-ins', sheet.rows >= 12, `${sheet.rows}`);
+  check('every preset row explains itself', sheet.hints === sheet.rows, `${sheet.hints}/${sheet.rows}`);
+  check('the presets include a hard-surface setup', sheet.labels.indexOf('Hard surface') >= 0,
+    sheet.labels.join(','));
+  await page.screenshot({ path: path.join(screens, '19-presets.png') });
+
+  await page.locator('.preset-row', { hasText: 'Rivets' }).click();
+  await page.waitForTimeout(200);
+  const applied = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    const range = document.querySelector('#bar-bottom .pill input[type=range]');
+    return {
+      brush: app.settings.brush, alpha: app.settings.alpha, stamp: app.settings.stampMode,
+      radius: app.settings.radius, pill: Number(range.value),
+      toolOn: document.querySelector('#brushes .tool.on') !== null,
+      sheets: document.querySelectorAll('.sheet').length
+    };
+  });
+  eq('a preset switches the brush', applied.brush, 'draw');
+  eq('a preset picks up its stencil', applied.alpha, 'rivet');
+  eq('a preset can turn on stamp mode', applied.stamp, true);
+  eq('the size slider follows the preset', applied.pill, applied.radius);
+  check('the brush strip shows the new brush', applied.toolOn);
+  eq('applying a preset closes the sheet', applied.sheets, 0);
+
+  /* save the current setup, then delete it again */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.set('radius', 33);
+    app.set('strength', 0.42);
+    app.saveCurrentPreset();
+  });
+  await page.waitForTimeout(200);
+  await page.fill('.dialog input[type=text]', 'Test setup');
+  await page.locator('.dialog .btn', { hasText: 'Save' }).click();
+  await page.waitForTimeout(200);
+  const saved = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    let stored = -1;
+    try { stored = JSON.parse(window.localStorage.getItem('sculptfree.presets.v1') || '[]').length; } catch (e) {}
+    return { count: app.userPresets.length, label: app.userPresets[0] && app.userPresets[0].label,
+             radius: app.userPresets[0] && app.userPresets[0].settings.radius, stored: stored };
+  });
+  eq('the setup was saved', saved.count, 1);
+  eq('the saved setup kept its name', saved.label, 'Test setup');
+  eq('the saved setup kept the size', saved.radius, 33);
+  check('the saved setup is in local storage', saved.stored === 1 || saved.stored === -1, `${saved.stored}`);
+
+  await page.evaluate(() => window.SCULPT_APP.openPresetSheet());
+  await page.waitForTimeout(220);
+  const withMine = await page.evaluate(() => ({
+    rows: document.querySelectorAll('.preset-row').length,
+    mineRemovable: !!Array.from(document.querySelectorAll('.preset-row'))
+      .find((r) => r.textContent.indexOf('Test setup') >= 0 && r.querySelector('.preset-x'))
+  }));
+  check('the saved setup appears in the list', withMine.rows >= 13, `${withMine.rows}`);
+  check('a saved setup can be deleted', withMine.mineRemovable);
+  await page.locator('.preset-row', { hasText: 'Test setup' }).locator('.preset-x').click();
+  await page.waitForTimeout(150);
+  const deleted = await page.evaluate(() => ({
+    count: window.SCULPT_APP.userPresets.length,
+    rows: document.querySelectorAll('.preset-row').length
+  }));
+  eq('deleting a setup removes it', deleted.count, 0);
+  check('the list shrank', deleted.rows === withMine.rows - 1, `${deleted.rows}`);
+  await page.evaluate(() => window.SCULPT_APP.closeSheet());
+  await page.waitForTimeout(200);
+}
+
+/* ---- texture: bake, preview and export ------------------------------ */
+{
+  // paint something first, so there is colour worth baking
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('sphere', 3, true);
+    app.set('alpha', 'none');
+    app.set('stampMode', false);
+    app.set('paintColorHex', '#2b6cff');
+    app.fillColor();
+    app.set('paintColorHex', '#ffcc22');
+    app.selectBrush('paint');
+    app.set('radius', 90);
+    app.set('strength', 1);
+  });
+  await stroke([cx - 50, cy - 20], [cx + 50, cy + 20], 12);
+
+  await page.evaluate(() => window.SCULPT_APP.openTextureSheet());
+  await page.waitForTimeout(600);
+  const preview = await page.evaluate(() => {
+    const cvs = document.querySelector('.tex-preview');
+    if (!cvs) return null;
+    const d = cvs.getContext('2d').getImageData(0, 0, cvs.width, cvs.height).data;
+    let blue = 0, yellow = 0, black = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 2] > 120 && d[i] < 90) blue++;
+      if (d[i] > 150 && d[i + 1] > 110 && d[i + 2] < 90) yellow++;
+      if (d[i] < 10 && d[i + 1] < 10 && d[i + 2] < 10) black++;
+    }
+    return { w: cvs.width, h: cvs.height, blue, yellow, black,
+             note: document.querySelector('.sheet .sheet-note').textContent };
+  });
+  check('the texture sheet shows a preview', preview && preview.w >= 128, JSON.stringify(preview && preview.w));
+  check('the baked preview carries the base colour', preview.blue > 500, `${preview.blue} blue pixels`);
+  check('the baked preview carries the painted colour', preview.yellow > 50, `${preview.yellow} yellow pixels`);
+  eq('the baked preview has no holes', preview.black, 0);
+  check('the sheet reports how much of the image is used', /% of the image used/.test(preview.note),
+    preview.note);
+  await page.screenshot({ path: path.join(screens, '20-texture.png') });
+
+  /* OBJ + MTL + PNG, through the real download path */
+  const downloads = [];
+  const collect = (d) => downloads.push(d);
+  page.on('download', collect);
+  await page.evaluate(() => {
+    window.SCULPT_APP.set('textureSize', 512);
+    window.SCULPT_APP.exportWithTexture('obj');
+  });
+  for (let i = 0; i < 120 && downloads.length < 3; i++) await page.waitForTimeout(100);
+  page.off('download', collect);
+  eq('a textured OBJ export writes three files', downloads.length, 3);
+  const names = [];
+  for (const d of downloads) {
+    const dest = path.join(tmp, d.suggestedFilename());
+    await d.saveAs(dest);
+    names.push(d.suggestedFilename());
+  }
+  const objName = names.find((n) => n.endsWith('.obj'));
+  const mtlName = names.find((n) => n.endsWith('.mtl'));
+  const pngName = names.find((n) => n.endsWith('.png'));
+  check('the set is an obj, an mtl and a png', !!objName && !!mtlName && !!pngName, names.join(','));
+  check('the three files share one name', objName.replace(/\.obj$/, '') === pngName.replace(/\.png$/, ''),
+    names.join(','));
+
+  const objText = fs.readFileSync(path.join(tmp, objName), 'utf8');
+  check('the exported obj has texture coordinates', /^vt /m.test(objText));
+  check('the exported obj points at the material file', objText.indexOf('mtllib ' + mtlName) >= 0);
+  const mtlText = fs.readFileSync(path.join(tmp, mtlName), 'utf8');
+  check('the material points at the image', mtlText.indexOf('map_Kd ' + pngName) >= 0, mtlText.slice(0, 120));
+
+  const png = fs.readFileSync(path.join(tmp, pngName));
+  const sig = [137, 80, 78, 71, 13, 10, 26, 10];
+  check('the image is a png', sig.every((b, i) => png[i] === b));
+  const pngW = png.readUInt32BE(16), pngH = png.readUInt32BE(20);
+  eq('the image is the size that was asked for', `${pngW}x${pngH}`, '512x512');
+  check('the image is not a stub', png.length > 2000, `${png.length} bytes`);
+
+  const S3 = (await import('./harness.mjs')).load();
+  const objBuf = fs.readFileSync(path.join(tmp, objName));
+  const reimported = S3.IO.importBuffer(objName,
+    objBuf.buffer.slice(objBuf.byteOffset, objBuf.byteOffset + objBuf.byteLength));
+  check('the textured obj re-imports cleanly', reimported.objects.length === 1 && !reimported.warnings.length,
+    reimported.warnings.join(';'));
+
+  /* GLB carries the image inside */
+  const [glb] = await Promise.all([
+    page.waitForEvent('download', { timeout: 60000 }),
+    page.evaluate(() => window.SCULPT_APP.exportWithTexture('glb'))
+  ]);
+  const glbPath = path.join(tmp, glb.suggestedFilename());
+  await glb.saveAs(glbPath);
+  check('the textured glb is one file', glb.suggestedFilename().endsWith('.glb'), glb.suggestedFilename());
+  const glbBuf = fs.readFileSync(glbPath);
+  const ab = glbBuf.buffer.slice(glbBuf.byteOffset, glbBuf.byteOffset + glbBuf.byteLength);
+  const jsonLen = new DataView(ab).getUint32(12, true);
+  const glbJson = JSON.parse(Buffer.from(new Uint8Array(ab, 20, jsonLen)).toString('utf8').trim());
+  check('the glb has the texture inside it', !!glbJson.images && glbJson.images.length === 1 &&
+    glbJson.images[0].mimeType === 'image/png');
+  check('the glb material samples it',
+    !!glbJson.materials[0].pbrMetallicRoughness.baseColorTexture);
+  const reglb = S3.IO.parseGLB(ab);
+  check('the textured glb re-imports cleanly', reglb.objects.length === 1 && !reglb.warnings.length,
+    reglb.warnings.join(';'));
+
+  /* Roblox: a mesh inside the budget and its texture */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.setBudget(2000);
+    app.set('maxTriangles', 400000);
+    app.scene.current().mesh.subdivide(false);
+    app.scene.current().mesh.subdivide(false);
+    app.refreshStatus();
+  });
+  const robloxFiles = [];
+  const collect2 = (d) => robloxFiles.push(d);
+  page.on('download', collect2);
+  await page.evaluate(() => window.SCULPT_APP.exportForRoblox(null, true));
+  for (let i = 0; i < 150 && robloxFiles.length < 3; i++) await page.waitForTimeout(100);
+  page.off('download', collect2);
+  eq('the Roblox texture export writes a mesh and an image', robloxFiles.length, 3);
+  const robloxNames = [];
+  for (const d of robloxFiles) {
+    await d.saveAs(path.join(tmp, 'rbx-' + d.suggestedFilename()));
+    robloxNames.push(d.suggestedFilename());
+  }
+  const rbxObj = robloxNames.find((n) => n.endsWith('.obj'));
+  check('the Roblox set includes the image', robloxNames.some((n) => n.endsWith('.png')), robloxNames.join(','));
+  const rbxBuf = fs.readFileSync(path.join(tmp, 'rbx-' + rbxObj));
+  const rbxRes = S3.IO.importBuffer(rbxObj, rbxBuf.buffer.slice(rbxBuf.byteOffset, rbxBuf.byteOffset + rbxBuf.byteLength));
+  const rbxMesh = new S3.Mesh();
+  rbxMesh.setFromArrays(rbxRes.objects[0].positions, rbxRes.objects[0].indices, { weld: true });
+  check('the textured Roblox mesh still fits the budget', rbxMesh.liveTris <= 2000, `${rbxMesh.liveTris}`);
+  check('the textured Roblox mesh is closed', rbxMesh.countBorderEdges() === 0,
+    `${rbxMesh.countBorderEdges()} border edges`);
+  await page.evaluate(() => {
+    window.SCULPT_APP.closeSheet();
+    window.SCULPT_APP.newScene('sphere', 3, true);
+  });
+  await page.waitForTimeout(200);
+}
+
+/* ---- the new sheets on a phone, held upright ------------------------ */
+{
+  await page.setViewportSize({ width: 412, height: 915 });
+  await page.waitForTimeout(400);
+  const sheets = [
+    ['brush settings', () => window.SCULPT_APP.openBrushSettingsSheet()],
+    ['presets', () => window.SCULPT_APP.openPresetSheet()],
+    ['texture', () => window.SCULPT_APP.openTextureSheet()]
+  ];
+  for (const [name, open] of sheets) {
+    await page.evaluate(open);
+    await page.waitForTimeout(name === 'texture' ? 700 : 260);
+    // the sheet slides up; measuring mid-animation reads a position it is
+    // about to leave, so wait for it to settle
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.sheet');
+      if (!el) return false;
+      const now = el.getBoundingClientRect().bottom;
+      const settled = window.__lastSheetBottom === now;
+      window.__lastSheetBottom = now;
+      return settled;
+    }, null, { timeout: 4000 });
+    const fit = await page.evaluate(() => {
+      const sheet = document.querySelector('.sheet');
+      const r = sheet.getBoundingClientRect();
+      // every control has to be reachable: nothing may sit off either edge
+      let offEdge = 0, tooSmall = 0;
+      for (const node of sheet.querySelectorAll('button, input, canvas')) {
+        const b = node.getBoundingClientRect();
+        if (b.width === 0 && b.height === 0) continue;   // hidden
+        if (b.left < -0.5 || b.right > window.innerWidth + 0.5) offEdge++;
+        if (node.tagName === 'BUTTON' && b.height > 0 && b.height < 22) tooSmall++;
+      }
+      return {
+        width: r.width, viewport: window.innerWidth,
+        pageScroll: document.documentElement.scrollWidth - window.innerWidth,
+        bottom: Math.round(r.bottom), height: Math.round(r.height),
+        offEdge: offEdge, tooSmall: tooSmall,
+        controls: sheet.querySelectorAll('button, input').length
+      };
+    });
+    check(`the ${name} sheet fits a phone`, fit.width <= fit.viewport + 0.5,
+      `${fit.width} in ${fit.viewport}`);
+    eq(`the ${name} sheet causes no sideways scroll`, fit.pageScroll <= 0, true);
+    eq(`nothing in the ${name} sheet sits off the edge`, fit.offEdge, 0);
+    eq(`every button in the ${name} sheet is big enough to tap`, fit.tooSmall, 0);
+    check(`the ${name} sheet does not run past the screen`, fit.bottom <= 916,
+      `bottom ${fit.bottom}`);
+    await page.screenshot({ path: path.join(screens, '2' + (1 + sheets.findIndex((x) => x[0] === name)) + '-phone-' + name.split(' ')[0] + '.png') });
+    await page.evaluate(() => window.SCULPT_APP.closeSheet());
+    await page.waitForTimeout(240);
+  }
+  await page.setViewportSize({ width: 1360, height: 860 });
+  await page.waitForTimeout(300);
+}
+
+/* ---- settings saved by the old build are migrated ------------------- */
+{
+  /*
+   * Someone who used the version where dynamic topology was off has that
+   * choice sitting in their browser's storage. Restoring it would hand them
+   * back the stretching behaviour, so the load drops those keys once and
+   * keeps everything else.
+   */
+  await page.evaluate(() => {
+    window.localStorage.setItem('sculptfree.settings.v1', JSON.stringify({
+      brush: 'clay', dyntopo: false, maxTriangles: 2000, detailPercent: 45,
+      radius: 123, strength: 0.42, matcap: 'skin', triBudget: 5000, cavity: 0.9
+    }));
+  });
+  await page.reload();
+  await page.waitForFunction(() => window.SCULPT_APP && window.SCULPT_APP.renderer, null, { timeout: 15000 });
+  await page.keyboard.press('Escape');            // dismiss any recovery offer
+  await page.waitForTimeout(200);
+  const migrated = await page.evaluate(() => {
+    const st = window.SCULPT_APP.settings;
+    let stored = null;
+    try { stored = JSON.parse(window.localStorage.getItem('sculptfree.settings.v1')); } catch (e) { /* ignore */ }
+    return { brush: st.brush, dyntopo: st.dyntopo, cap: st.maxTriangles, detail: st.detailPercent,
+             radius: st.radius, strength: st.strength, matcap: st.matcap, budget: st.triBudget,
+             cavity: st.cavity, schema: stored && stored.schema };
+  });
+  eq('an old settings file no longer switches adding off', migrated.dyntopo, true);
+  eq('the old 2k ceiling is replaced with real headroom', migrated.cap, 150000);
+  eq('the old coarse detail is replaced', migrated.detail, 20);
+  eq('the old default brush moves across to Add', migrated.brush, 'add');
+  eq('the brush size is kept', migrated.radius, 123);
+  eq('the strength is kept', migrated.strength, 0.42);
+  eq('the material is kept', migrated.matcap, 'skin');
+  eq('the export budget is kept', migrated.budget, 5000);
+  eq('other look settings are kept', migrated.cavity, 0.9);
+
+  // sculpting once writes the stamp, so the migration happens only once
+  await page.evaluate(() => window.SCULPT_APP.set('radius', 70));
+  const stamped = await page.evaluate(() => {
+    try { return JSON.parse(window.localStorage.getItem('sculptfree.settings.v1')).schema; }
+    catch (e) { return null; }
+  });
+  eq('the migration stamps the file so it runs once', stamped, 2);
+
+  await page.evaluate(() => {
+    try { window.localStorage.removeItem('sculptfree.settings.v1'); } catch (e) { /* ignore */ }
+  });
 }
 
 /* ---- final state --------------------------------------------------- */

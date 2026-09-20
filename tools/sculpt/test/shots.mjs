@@ -39,6 +39,43 @@ async function shot(name) {
 
 await shot('01-start');
 
+/* what the brushes do: add material, and pull it out */
+await page.evaluate(() => {
+  const app = window.SCULPT_APP;
+  const w = app.canvas.clientWidth, h = app.canvas.clientHeight;
+  const cx = w / 2, cy = h / 2;
+  function stroke(brush, from, to, radius, strength, steps = 16, invert = false) {
+    app.settings.brush = brush;
+    app.settings.radius = radius;
+    app.settings.strength = strength;
+    app.engine.begin({ x: from[0], y: from[1], pressure: 1, invert });
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      app.engine.move({ x: from[0] + (to[0] - from[0]) * t, y: from[1] + (to[1] - from[1]) * t, pressure: 1, invert });
+    }
+    app.engine.end();
+  }
+  app.set('dyntopo', true);
+  // a ridge built up in passes, and a horn pulled out of the side
+  for (let i = 0; i < 3; i++) stroke('add', [cx - 110, cy + 30], [cx + 20, cy + 70], 70, 1, 18);
+  for (let i = 0; i < 6; i++) stroke('add', [cx + 40, cy - 30], [cx + 150, cy - 90], 55, 1, 14);
+  stroke('smooth', [cx - 60, cy + 40], [cx + 20, cy + 60], 90, 0.4, 12);
+  app.settings.brush = 'add';
+  app.settings.radius = 62;
+  app.settings.strength = 0.6;
+  app.frameSelection(true);
+  app.refreshStatus();
+  app.draw();
+});
+await page.mouse.move(700, 380);
+await shot('02-adding');
+await page.evaluate(() => { window.SCULPT_APP.set('wireframe', true); window.SCULPT_APP.draw(); });
+await shot('03-adding-wireframe');
+await page.evaluate(() => {
+  window.SCULPT_APP.set('wireframe', false);
+  window.SCULPT_APP.newScene('sphere', null, true);
+});
+
 /* sculpt a head-ish shape so later shots show real work */
 await page.evaluate(() => {
   const app = window.SCULPT_APP;
@@ -56,9 +93,9 @@ await page.evaluate(() => {
     }
     app.engine.end();
   }
-  stroke('clay', [cx + 30, cy - 90], [cx + 120, cy - 74], 90, 0.4);         // brow
-  stroke('clay', [cx + 55, cy - 44], [cx + 105, cy - 40], 66, 0.35, 14, true); // eye sockets
-  stroke('clay', [cx + 60, cy + 34], [cx + 120, cy + 10], 96, 0.35);        // cheeks
+  stroke('add', [cx + 30, cy - 90], [cx + 120, cy - 74], 90, 0.45);        // brow
+  stroke('add', [cx + 55, cy - 44], [cx + 105, cy - 40], 66, 0.4, 14, true); // eye sockets
+  stroke('add', [cx + 60, cy + 34], [cx + 120, cy + 10], 96, 0.4);         // cheeks
   stroke('claystrips', [cx + 40, cy + 130], [cx + 118, cy + 84], 80, 0.35); // jaw
   app.settings.symmetryX = false;
   stroke('draw', [cx, cy + 4], [cx - 2, cy + 34], 52, 0.5, 14);             // nose
@@ -69,7 +106,7 @@ await page.evaluate(() => {
   stroke('paint', [cx, cy - 20], [cx + 130, cy + 20], 170, 1, 10);
   app.settings.paintColor = new Float32Array([0.62, 0.24, 0.2]);
   stroke('paint', [cx + 18, cy + 84], [cx + 64, cy + 78], 32, 1, 8);
-  app.settings.brush = 'clay';
+  app.settings.brush = 'add';
   app.settings.radius = 78;
   app.settings.strength = 0.55;
   app.settings.paintColorHex = '#d94f3d';
@@ -79,7 +116,7 @@ await page.evaluate(() => {
   app.draw();
 });
 await page.mouse.move(700, 400);
-await shot('02-sculpting');
+await shot('04-sculpting');
 
 /* each sheet */
 /* the trims: cut flat faces onto a ball */
@@ -121,32 +158,44 @@ await page.evaluate(() => {
   app.draw();
 });
 await page.mouse.move(690, 420);
-await shot('03-trims');
+await shot('05-trims');
 await page.evaluate(() => { window.SCULPT_APP.set('flat', false); window.SCULPT_APP.setBudget(2000); });
 
 await page.evaluate(() => window.SCULPT_APP.openMainMenu());
-await shot('04-menu');
+await shot('06-menu');
 await page.evaluate(() => window.SCULPT_APP.openBrushSheet());
-await shot('05-brushes');
+await shot('07-brushes');
 await page.evaluate(() => window.SCULPT_APP.openExportSheet());
-await shot('06-export');
+await shot('08-export');
 await page.evaluate(() => window.SCULPT_APP.openLookSheet());
-await shot('07-look');
+await shot('09-look');
 await page.evaluate(() => window.SCULPT_APP.openBrushSettingsSheet());
-await shot('08-brush-settings');
+await shot('10-brush-settings');
+await page.evaluate(() => window.SCULPT_APP.openPresetSheet());
+await shot('11-presets');
+await page.evaluate(() => {
+  const app = window.SCULPT_APP;
+  app.closeSheet();
+  app.set('paintColorHex', '#3a6ea8');
+  app.fillColor();
+  app.set('paintColorHex', '#c9a227');
+  app.openTextureSheet();
+});
+await page.waitForTimeout(900);
+await shot('11b-texture');
 await page.evaluate(() => window.SCULPT_APP.openObjectsSheet());
-await shot('09-objects');
+await shot('12-objects');
 await page.evaluate(() => { window.SCULPT_APP.closeSheet(); window.SCULPT_APP.dialogRemesh(); });
-await shot('09-remesh');
+await shot('13-remesh');
 await page.keyboard.press('Escape');
 await page.evaluate(() => window.SCULPT_APP.dialogPrimitive());
-await shot('10-shapes');
+await shot('14-shapes');
 await page.keyboard.press('Escape');
 await page.evaluate(() => window.SCULPT_APP.dialogShortcuts());
-await shot('11-controls');
+await shot('15-controls');
 await page.keyboard.press('Escape');
 await page.evaluate(() => window.SCULPT_APP.dialogExport());
-await shot('12-export-options');
+await shot('16-export-options');
 await page.keyboard.press('Escape');
 
 /* wireframe view of the sculpt */
@@ -156,16 +205,16 @@ await page.evaluate(() => {
   app.draw();
 });
 await page.mouse.move(660, 380);
-await shot('13-wireframe');
+await shot('17-wireframe');
 await page.evaluate(() => window.SCULPT_APP.set('wireframe', false));
 
 /* a remesh, so the even-triangle result is visible */
 await page.evaluate(() => window.SCULPT_APP.runRemesh({ resolution: 140, smooth: 2, colors: true }));
 await page.waitForFunction(() => document.getElementById('busy').hidden, null, { timeout: 60000 });
 await page.evaluate(() => { window.SCULPT_APP.set('wireframe', true); window.SCULPT_APP.draw(); });
-await shot('14-remeshed-wireframe');
+await shot('18-remeshed-wireframe');
 await page.evaluate(() => { window.SCULPT_APP.set('wireframe', false); window.SCULPT_APP.draw(); });
-await shot('15-remeshed');
+await shot('19-remeshed');
 
 console.log('desktop errors:', errors.length ? errors.slice(0, 3) : 'none');
 await page.close();
@@ -200,12 +249,12 @@ await phone.evaluate(() => {
     }
     app.engine.end();
   }
-  stroke('clay', [cx + 16, cy - 74], [cx + 62, cy - 62], 62, 0.45);
-  stroke('clay', [cx + 26, cy - 32], [cx + 54, cy - 30], 44, 0.4, 10, true);
-  stroke('draw', [cx, cy - 2], [cx, cy + 26], 40, 0.5, 12);
-  stroke('clay', [cx + 28, cy + 56], [cx + 60, cy + 34], 58, 0.4);
+  stroke('add', [cx + 16, cy - 74], [cx + 62, cy - 62], 62, 0.5);
+  stroke('add', [cx + 26, cy - 32], [cx + 54, cy - 30], 44, 0.45, 10, true);
+  stroke('add', [cx, cy - 2], [cx, cy + 26], 40, 0.55, 12);
+  stroke('add', [cx + 28, cy + 56], [cx + 60, cy + 34], 58, 0.45);
   stroke('smooth', [cx + 10, cy - 50], [cx + 70, cy + 40], 100, 0.5, 14);
-  app.settings.brush = 'clay';
+  app.settings.brush = 'add';
   app.settings.radius = 60;
   app.frameSelection(true);
   app.refreshStatus();
@@ -225,6 +274,12 @@ await pshot('21-phone-reduce');
 await phone.keyboard.press('Escape');
 await phone.evaluate(() => window.SCULPT_APP.openLookSheet());
 await pshot('22-phone-look');
+await phone.keyboard.press('Escape');
+await phone.evaluate(() => window.SCULPT_APP.openPresetSheet());
+await pshot('23-phone-presets');
+await phone.evaluate(() => window.SCULPT_APP.openTextureSheet());
+await phone.waitForTimeout(900);
+await pshot('24-phone-texture');
 await phone.keyboard.press('Escape');
 console.log('phone errors:', perrors.length ? perrors.slice(0, 3) : 'none');
 

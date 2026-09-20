@@ -83,6 +83,10 @@
     this.frontFacing = true;
     this.autoSmooth = 0;
     this.clay = 0.2;
+    // the stencil, and the two in-surface axes it is read along
+    this.alpha = null;
+    this.alphaU = V3.create(1, 0, 0);
+    this.alphaV = V3.create(0, 0, 1);
   }
 
   BrushContext.prototype.ensureWeights = function (n) {
@@ -105,12 +109,32 @@
     var nx = ctx.normal[0], ny = ctx.normal[1], nz = ctx.normal[2];
     var falloff = ctx.falloff;
     var front = ctx.frontFacing;
+    var alpha = ctx.alpha;
+    var au, av;
+    if (alpha) {
+      au = ctx.alphaU; av = ctx.alphaV;
+    }
     for (var i = 0; i < n; i++) {
       var v = verts[i], o = v * 3;
       var dx = pos[o] - cx, dy = pos[o + 1] - cy, dz = pos[o + 2] - cz;
       var d = Math.sqrt(dx * dx + dy * dy + dz * dz) * inv;
       if (d >= 1) { w[i] = 0; continue; }
-      var f = falloff(1 - d);
+      var f;
+      if (alpha) {
+        /*
+         * Reading through a stencil, the pattern has to be what shapes the
+         * dab, so the radial falloff is reduced to a vignette over the outer
+         * fifth of the brush. Applying the usual curve on top would round
+         * the corners off every stamp and wash the pattern out.
+         */
+        var u = ((dx * au[0] + dy * au[1] + dz * au[2]) * inv) * 0.5 + 0.5;
+        var vv = ((dx * av[0] + dy * av[1] + dz * av[2]) * inv) * 0.5 + 0.5;
+        f = S.Alpha.sample(alpha, u, vv);
+        if (f <= 0) { w[i] = 0; continue; }
+        if (d > 0.8) f *= S.smoothstep((1 - d) / 0.2);
+      } else {
+        f = falloff(1 - d);
+      }
       if (front) {
         var dot = nor[o] * nx + nor[o + 1] * ny + nor[o + 2] * nz;
         if (dot <= 0) { w[i] = 0; continue; }
@@ -188,6 +212,38 @@
       pos[o] += nx * amount * f;
       pos[o + 1] += ny * amount * f;
       pos[o + 2] += nz * amount * f;
+    });
+  };
+
+  /**
+   * Add — the brush everything else hangs off.
+   *
+   * Every stamp raises the surface to a plateau a fixed height above the
+   * local average, so material *accumulates*: draw over a spot twice and it
+   * is twice as thick, drag and it pulls a ridge, keep dragging and it pulls
+   * a limb. With dynamic topology on (the default) the new volume gets its
+   * own triangles as it grows, which is the difference between adding to a
+   * model and stretching the triangles it already had.
+   *
+   * Ctrl (invert) digs the same shape out instead.
+   */
+  BrushFns.add = function (ctx) {
+    areaPlane(ctx);
+    var s = sgn(ctx);
+    var nx = ctx.planeNormal[0], ny = ctx.planeNormal[1], nz = ctx.planeNormal[2];
+    var px = ctx.planePoint[0], py = ctx.planePoint[1], pz = ctx.planePoint[2];
+    // how thick one pass lays down, as a share of the brush size
+    var target = ctx.radius * S.clamp(ctx.clay, 0.02, 0.6) * 1.6 * s;
+    var strength = ctx.strength;
+    eachVert(ctx, function (v, o, f, pos) {
+      var height = (pos[o] - px) * nx + (pos[o + 1] - py) * ny + (pos[o + 2] - pz) * nz;
+      var move = (target - height) * strength * f;
+      // never cut while adding (or add while cutting): that is what makes it
+      // build up rather than drag the whole surface along
+      if (s > 0 ? move < 0 : move > 0) return;
+      pos[o] += nx * move;
+      pos[o + 1] += ny * move;
+      pos[o + 2] += nz * move;
     });
   };
 
@@ -541,8 +597,10 @@
    * ================================================================ */
 
   S.BRUSHES = [
+    { id: 'add', label: 'Add', group: 'Add', key: 'A', fn: BrushFns.add,
+      strength: 0.6, hint: 'Adds material where you draw. Go over it again and it thickens; drag and it pulls out a ridge or a limb. Ctrl digs in instead.' },
     { id: 'clay', label: 'Clay', group: 'Add', key: '1', fn: BrushFns.clay,
-      strength: 0.55, hint: 'Builds material up towards a plane — the general-purpose brush.' },
+      strength: 0.55, hint: 'Softer than Add: fills towards the average surface, for smoothing volume in.' },
     { id: 'claystrips', label: 'Clay Strips', group: 'Add', key: '2', fn: BrushFns.clayStrips,
       strength: 0.6, hint: 'Clay with a square edge; good for blocking in forms.' },
     { id: 'draw', label: 'Draw', group: 'Add', key: '3', fn: BrushFns.draw,
@@ -677,12 +735,28 @@
     });
 
     this.anchorRadius = this.localRadius(this._anchorWorld);
+
+    // resolve the stencil once for the stroke
+    this.alpha = (!brush.mask && st.alpha && st.alpha !== 'none') ? S.alphaById(st.alpha) : null;
+    this.stampAngle = (this.alpha && st.alphaRandomRotate) ? Math.random() * Math.PI * 2 : 0;
+    if (!this._frameFwd) this._frameFwd = V3.create(0, 0, 1);
+    V3.perpendicular(this._frameFwd, this._anchorNormal);
     this.ctx.origin = (brush.grab || brush.id === 'layer') ? new Map() : null;
     this.grabVerts = null;
 
     // grab brushes capture their vertex set once, so the same material moves
     // for the whole stroke instead of picking up new vertices as it goes
     if (brush.grab && !brush.follow) {
+      // refine first: a pull with only a handful of vertices under the brush
+      // drags the mesh thin, and the whole point of dynamic topology is that
+      // it does not have to
+      if (this.usesDyntopo()) {
+        var gDetail = st.detailMode === 'constant'
+          ? st.detailSize
+          : this.anchorRadius * S.clamp(st.detailPercent / 100, 0.02, 1);
+        this.obj.mesh.dyntopo(this._anchorLocal[0], this._anchorLocal[1], this._anchorLocal[2],
+                              this.anchorRadius, Math.max(gDetail, 1e-6), st.maxTriangles);
+      }
       this.captureGrabSet();
     }
     this.stampAt(this._anchorLocal, this._anchorNormal, true);
@@ -805,13 +879,42 @@
       if (st.paintColor) V3.copy(ctx.color, st.paintColor);
       ctx.origin = this.ctx.origin;
 
+      // the stencil, and the two axes it is read along
+      ctx.alpha = this.alpha || null;
+      if (ctx.alpha) {
+        var fwd = this._alphaFwd || (this._alphaFwd = V3.create(0, 0, 1));
+        if (st.alphaFollowStroke !== false && this.strokeDir && V3.lenSq(this.strokeDir) > 1e-12) {
+          V3.set(fwd, this.strokeDir[0] * m[0], this.strokeDir[1] * m[1], this.strokeDir[2] * m[2]);
+        } else {
+          // no direction to follow: hold the frame the stroke started with,
+          // so a stamp does not spin as the surface normal wanders
+          V3.set(fwd, this._frameFwd[0] * m[0], this._frameFwd[1] * m[1], this._frameFwd[2] * m[2]);
+        }
+        var dotN = V3.dot(fwd, ctx.normal);
+        V3.set(fwd, fwd[0] - ctx.normal[0] * dotN, fwd[1] - ctx.normal[1] * dotN, fwd[2] - ctx.normal[2] * dotN);
+        if (V3.lenSq(fwd) < 1e-12) V3.perpendicular(fwd, ctx.normal);
+        else V3.normalize(fwd, fwd);
+        if (this.stampAngle) {
+          // spin the stencil, so repeated dabs of dirt do not tile visibly
+          var ca = Math.cos(this.stampAngle), sa = Math.sin(this.stampAngle);
+          var side0 = V3.cross(V3.create(0, 0, 0), ctx.normal, fwd);
+          V3.set(fwd, fwd[0] * ca + side0[0] * sa, fwd[1] * ca + side0[1] * sa, fwd[2] * ca + side0[2] * sa);
+          V3.normalize(fwd, fwd);
+        }
+        V3.copy(ctx.alphaV, fwd);
+        V3.cross(ctx.alphaU, ctx.normal, fwd);
+        V3.normalize(ctx.alphaU, ctx.alphaU);
+      }
+
       computeWeights(ctx);
       this.history.captureVerts(verts, ctx.count);
       brush.fn(ctx);
 
       // `crisp` brushes (the trims) skip auto-smoothing: rounding the edge
       // off afterwards would undo the hard face they exist to cut
-      var autoSmooth = (brush.paint || brush.mask || brush.crisp) ? 0 : (st.autoSmooth || 0);
+      // A stencil's whole point is the pattern it leaves, so relaxing the
+      // surface behind the stamp would rub it straight back out.
+      var autoSmooth = (brush.paint || brush.mask || brush.crisp || this.alpha) ? 0 : (st.autoSmooth || 0);
       if (autoSmooth > 0) {
         mesh.smoothVerts(verts, ctx.count, autoSmooth * 0.5, true, ctx.weights);
       }
@@ -833,6 +936,9 @@
   StrokeEngine.prototype.move = function (input) {
     if (!this.active) return false;
     var st = this.settings;
+    // stamp mode lays exactly one dab per press, which is how you place a
+    // rivet or a patch of detail without smearing it
+    if (st.stampMode && !this.brush.grab) return true;
     this.pressure = input.pressure === undefined ? 1 : input.pressure;
 
     // lazy-mouse style path smoothing
@@ -926,12 +1032,38 @@
   StrokeEngine.prototype.end = function () {
     if (!this.active) return false;
     this.active = false;
+    var mesh = this.obj.mesh;
+    var st = this.settings;
+
+    /*
+     * A grab stroke drags the triangles it captured, so it leaves the
+     * surface stretched behind it. With dynamic topology on, rebuild the
+     * region it pulled through: the stretch becomes new triangles, and the
+     * pull ends up looking like added material instead of a thinned mesh.
+     */
+    if (this.usesDyntopo() && this.brush.grab && !this.brush.follow && !this.brush.rotate) {
+      var total = this.grabTotal;
+      var pulled = total ? V3.len(total) : 0;
+      var base = this.grabRadius || this.anchorRadius || 0;
+      // a sphere covering both ends of the pull
+      var reach = base + pulled * 0.6;
+      if (reach > 1e-6) {
+        var detail = st.detailMode === 'constant'
+          ? st.detailSize
+          : base * S.clamp(st.detailPercent / 100, 0.02, 1);
+        mesh.dyntopo(this._anchorLocal[0] + (total ? total[0] * 0.5 : 0),
+                     this._anchorLocal[1] + (total ? total[1] * 0.5 : 0),
+                     this._anchorLocal[2] + (total ? total[2] * 0.5 : 0),
+                     reach, Math.max(detail, 1e-6), st.maxTriangles);
+        mesh.computeNormals();
+      }
+    }
+
     this.strokeDelta = null;
     this.grabTotal = null;
     this.rotateAngle = 0;
     this.ctx.origin = null;
     this.grabVerts = null;
-    var mesh = this.obj.mesh;
     mesh.gridMaybeRebuild();
     var committed = this.history.endStroke();
     return committed;

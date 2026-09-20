@@ -1,5 +1,5 @@
 import { load, check, eq, report, audit } from './harness.mjs';
-const S = load(['07-scene']);
+const S = load();
 const IO = S.IO;
 
 function objectOf(mesh, name = 'test', tweak) {

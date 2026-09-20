@@ -19,7 +19,7 @@
 
   var DEFAULTS = {
     // brush
-    brush: 'clay',
+    brush: 'add',
     radius: 62,
     strength: 0.55,
     falloff: 'smooth',
@@ -32,21 +32,38 @@
     pressureStrength: true,
     paintColorHex: '#d94f3d',
     /*
-     * Topology — sized for a game, not for rendering.
-     *
-     * Roblox refuses a MeshPart over 10,000 triangles, but that is a ceiling,
-     * not a target: props in a real game are usually 1k-4k so that hundreds
-     * of them can be on screen at once. So the default budget is 2,000 and
-     * dynamic topology starts switched OFF — the mesh keeps the triangles it
-     * started with and you move them around, which is how low-poly models
-     * are made. Turn it on (D, or Brush settings) when you want the brush to
-     * add detail, and it will still stop at the budget.
+     * Stencils. A brush with a stencil stops being a round dab and becomes a
+     * stamp of whatever the image shows, which is how dirt, gravel, cracks
+     * and rivets get onto a model without sculpting each one by hand.
      */
-    dyntopo: false,
+    alpha: 'none',
+    stampMode: false,
+    alphaFollowStroke: true,
+    alphaRandomRotate: false,
+    /*
+     * Topology.
+     *
+     * Dynamic topology is ON, and that is the whole feel of the tool: a
+     * brush adds material and the new volume gets its own triangles as it
+     * grows. With it off, a stroke can only push the triangles the mesh
+     * already has, so a ball turns into a stretched ball instead of a ball
+     * with a horn on it.
+     *
+     * Two separate numbers, which is easy to mix up:
+     *   maxTriangles  the ceiling while sculpting. Headroom, not a target —
+     *                 150,000 leaves room for any prop and keeps a stroke
+     *                 responsive on a phone, where a mesh in the high
+     *                 hundreds of thousands starts to drag.
+     *   triBudget     what the model is EXPORTED at. Roblox refuses a
+     *                 MeshPart over 10,000 triangles and a real prop is
+     *                 usually 1k-4k, so the default is 2,000 and Export
+     *                 reduces a copy to it. The sculpt keeps its detail.
+     */
+    dyntopo: true,
     detailMode: 'relative',
-    detailPercent: 45,
+    detailPercent: 20,
     detailSize: 0.01,
-    maxTriangles: 2000,
+    maxTriangles: 150000,
     triBudget: 2000,
     remeshResolution: 160,
     remeshSmooth: 2,
@@ -70,6 +87,13 @@
     renderScale: 1,
     ortho: false,
     fov: 42,
+    // combine
+    booleanMode: 'union',
+    booleanResolution: 160,
+    booleanSmooth: 1,
+    booleanKeep: false,
+    booleanReduce: true,
+    booleanTarget: -1,
     // export
     exportFormat: 'obj',
     exportScale: 1,
@@ -78,6 +102,8 @@
     exportNormals: true,
     exportAscii: false,
     exportSelectedOnly: false,
+    textureSize: 1024,
+    textureCavity: 0.45,
     // misc
     historyBudgetMB: 384,
     autosave: true,
@@ -87,6 +113,21 @@
   function App(mount) {
     this.mount = mount || document.body;
     this.settings = this.loadSettings();
+    /*
+     * Uploaded stencils and saved presets live in the same store as the
+     * settings, so a phone that gets closed and reopened still has the dirt
+     * texture and the brush setups that were dialled in.
+     */
+    this.userPresets = [];
+    try {
+      if (root.localStorage) {
+        S.Alpha.loadAll(root.localStorage);
+        this.userPresets = S.Presets.load(root.localStorage);
+      }
+    } catch (e) { /* private browsing: built-ins only */ }
+    if (this.settings.alpha && this.settings.alpha !== 'none' && !S.alphaById(this.settings.alpha)) {
+      this.settings.alpha = 'none';
+    }
     this.scene = new S.Scene();
     this.history = new S.History(this.settings.historyBudgetMB * 1024 * 1024);
     this.camera = new S.Camera();
@@ -117,6 +158,18 @@
    * settings
    * ================================================================ */
 
+  /*
+   * Settings the tool remembers, with one migration.
+   *
+   * Version 2 is the release where the brushes started adding material. A
+   * settings blob written before that carries the old topology defaults —
+   * dynamic topology off, a 2,000-triangle ceiling — and restoring them
+   * would hand a returning user the very behaviour that was fixed. So those
+   * keys are dropped on the way in, once, and everything else is kept.
+   */
+  var SETTINGS_SCHEMA = 2;
+  var STALE_ON_UPGRADE = ['dyntopo', 'maxTriangles', 'detailPercent', 'detailMode', 'detailSize'];
+
   A.loadSettings = function () {
     var out = {};
     for (var k in DEFAULTS) out[k] = DEFAULTS[k];
@@ -124,7 +177,15 @@
       var raw = root.localStorage && root.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         var saved = JSON.parse(raw);
-        for (var key in saved) if (key in DEFAULTS) out[key] = saved[key];
+        var upgrading = (saved.schema || 0) < SETTINGS_SCHEMA;
+        for (var key in saved) {
+          if (!(key in DEFAULTS)) continue;
+          if (upgrading && STALE_ON_UPGRADE.indexOf(key) >= 0) continue;
+          out[key] = saved[key];
+        }
+        // the old default brush was Clay; move that one over to Add, but
+        // leave any other choice alone
+        if (upgrading && saved.brush === 'clay') out.brush = DEFAULTS.brush;
       }
     } catch (e) { /* private mode, or corrupt: defaults are fine */ }
     out.paintColor = new Float32Array(UI.hexToRgb(out.paintColorHex));
@@ -133,7 +194,7 @@
 
   A.saveSettings = function () {
     try {
-      var copy = {};
+      var copy = { schema: SETTINGS_SCHEMA };
       for (var k in DEFAULTS) copy[k] = this.settings[k];
       root.localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
     } catch (e) { /* ignore */ }
@@ -167,8 +228,8 @@
    * ================================================================ */
 
   /** The brushes that get a permanent button. The rest live under "More". */
-  var PRIMARY_BRUSHES = ['clay', 'draw', 'trimdynamic', 'trimnormal', 'smooth',
-                        'flatten', 'crease', 'move', 'inflate', 'paint'];
+  var PRIMARY_BRUSHES = ['add', 'clay', 'draw', 'trimdynamic', 'trimnormal',
+                        'smooth', 'crease', 'move', 'inflate', 'paint'];
 
   A.buildDom = function () {
     var self = this;
@@ -302,12 +363,23 @@
   A.refreshStatus = function () {
     var obj = this.scene.current();
     if (this.titleChip) {
+      /*
+       * What the sculpt costs now, and what it will be exported at. Sculpting
+       * past the export budget is normal and expected — Export reduces a
+       * copy — so the chip only turns red at the dynamic-topology ceiling,
+       * which is the number that actually stops the brushes adding.
+       */
       var budget = this.settings.triBudget;
+      var cap = this.settings.maxTriangles;
       var tris = obj ? obj.mesh.liveTris : 0;
-      this.titleChip.textContent = S.formatCount(tris) + ' / ' + S.formatCount(budget);
-      this.titleChip.classList.toggle('over', tris > budget);
-      this.titleChip.classList.toggle('near', tris > budget * 0.85 && tris <= budget);
-      this.titleChip.title = obj ? (obj.name + ' — ' + tris + ' triangles, budget ' + budget) : '';
+      this.titleChip.textContent = S.formatCount(tris) +
+        (budget && tris > budget ? ' \u2192 ' + S.formatCount(budget) : ' / ' + S.formatCount(budget));
+      this.titleChip.classList.toggle('over', this.settings.dyntopo && tris >= cap - 8);
+      this.titleChip.classList.toggle('near', this.settings.dyntopo && tris > cap * 0.85 && tris < cap - 8);
+      this.titleChip.title = obj
+        ? (obj.name + ' \u2014 ' + tris + ' triangles now, exports reduced to ' + budget +
+           '. Tap to change either number.')
+        : '';
     }
     if (this.undoBtn) this.undoBtn.disabled = !this.history.canUndo();
     if (this.redoBtn) this.redoBtn.disabled = !this.history.canRedo();
@@ -451,6 +523,8 @@
           chevron: true, onclick: function () { self.dialogPrimitive(); } },
         { icon: 'layers', label: 'Objects', hint: 'Switch between, hide, rename, delete',
           chevron: true, onclick: function () { self.openObjectsSheet(); } },
+        { icon: 'boolean', label: 'Combine', hint: 'Join, union, subtract or intersect two objects',
+          chevron: true, onclick: function () { self.openCombineSheet(); } },
 
         { group: 'Files — all free, no limits' },
         { icon: 'upload', label: 'Open a model', hint: 'OBJ, STL, PLY, GLB or a saved project',
@@ -473,9 +547,13 @@
         { icon: 'smooth', label: 'Smooth everything', onclick: function () { self.smoothAll(); } },
         { icon: 'mask', label: 'Mask', hint: 'Clear, invert or blur the locked area',
           chevron: true, onclick: function () { self.openMaskSheet(); } },
+        { icon: 'texture', label: 'Texture', hint: 'Bake the paint into an image and export it',
+          chevron: true, onclick: function () { self.openTextureSheet(); } },
 
         { group: 'Settings' },
-        { icon: 'sliders', label: 'Brush settings', hint: 'Falloff, spacing, detail, pressure',
+        { icon: 'star', label: 'Presets', hint: 'Ready-made brush setups, and your own',
+          chevron: true, onclick: function () { self.openPresetSheet(); } },
+        { icon: 'sliders', label: 'Brush settings', hint: 'Falloff, spacing, stencils, detail, pressure',
           chevron: true, onclick: function () { self.openBrushSettingsSheet(); } },
         { icon: 'palette', label: 'Look', hint: 'Material, wireframe, background',
           chevron: true, onclick: function () { self.openLookSheet(); } },
@@ -508,6 +586,10 @@
       title: 'Brushes',
       content: [
         grid,
+        el('div.sheet-buttons', null, [
+          UI.button('Presets', { icon: 'star', onclick: function () { self.openPresetSheet(); } }),
+          UI.button('Brush settings', { icon: 'sliders', onclick: function () { self.openBrushSettingsSheet(); } })
+        ]),
         el('p.sheet-note', { text: 'Hold Shift while sculpting to smooth, Ctrl to invert — with any brush.' })
       ]
     });
@@ -529,6 +611,8 @@
         { icon: 'cube', label: 'GLB', hint: 'For Three.js, Unity, Godot, Unreal',
           onclick: function () { self.quickExport('glb'); } },
         { icon: 'palette', label: 'PLY', hint: 'Keeps painted colour exactly', onclick: function () { self.quickExport('ply'); } },
+        { icon: 'texture', label: 'With a baked texture', hint: 'OBJ + PNG, or GLB with the image inside',
+          chevron: true, onclick: function () { self.openTextureSheet(); } },
         { icon: 'decimate', label: 'STL', hint: 'For 3D printing', onclick: function () { self.quickExport('stl'); } },
         { group: 'More' },
         { icon: 'sliders', label: 'Export options', hint: 'Scale, up axis, colour, text formats',
@@ -559,7 +643,7 @@
         el('div.sheet-buttons', null, [
           UI.button('Add', { icon: 'plus', onclick: function () { self.closeSheet(); self.dialogPrimitive(); } }),
           UI.button('Duplicate', { icon: 'copy', onclick: function () { self.duplicateObject(); self.refreshObjects(); } }),
-          UI.button('Merge all', { icon: 'layers', onclick: function () { self.closeSheet(); self.mergeAll(); } }),
+          UI.button('Combine…', { icon: 'boolean', onclick: function () { self.openCombineSheet(); } }),
           UI.button('Delete', { icon: 'trash', class: 'danger', onclick: function () { self.deleteObject(); self.refreshObjects(); } })
         ]),
         el('p.sheet-note', { text: 'Each object has its own mesh. Sculpting only ever touches the selected one.' })
@@ -625,6 +709,197 @@
         }
       }, [eye, nameInput, el('span.count', { text: S.formatCount(obj.mesh.liveTris) })]);
       host.appendChild(row);
+    });
+  };
+
+  /* ---- combine: join and booleans ---- */
+
+  A.openCombineSheet = function () {
+    var self = this;
+    var st = this.settings;
+    var a = this.scene.current();
+    if (!a) { UI.toast('No object selected', 'bad'); return; }
+
+    var others = [];
+    for (var i = 0; i < this.scene.objects.length; i++) {
+      if (i !== this.scene.selected) others.push(i);
+    }
+    if (!others.length) {
+      this.openSheet({
+        title: 'Combine',
+        content: [
+          el('p.sheet-note', { text: 'Combining needs two objects. Add a second shape (Menu \u2192 Add a shape), position it where you want it, then come back.' }),
+          el('div.sheet-buttons', null, [
+            UI.button('Add a shape', { icon: 'plus', onclick: function () { self.closeSheet(); self.dialogPrimitive(); } })
+          ])
+        ]
+      });
+      return;
+    }
+
+    var mode = st.booleanMode || 'union';
+    var target = others.indexOf(st.booleanTarget) >= 0 ? st.booleanTarget : others[0];
+    var note = el('p.sheet-note');
+    var resRow, smoothRow, keepCheck, reduceCheck, targetHost, applyBtn;
+
+    function refresh() {
+      var entry = mode === 'join'
+        ? { label: 'Join', hint: 'Puts both meshes in one object and leaves the geometry alone. Instant and exact; the surfaces still pass through each other.' }
+        : S.Boolean.modeById(mode);
+      var b = self.scene.objects[target];
+      var total = a.mesh.liveTris + (b ? b.mesh.liveTris : 0);
+      note.innerHTML = '<b>' + entry.label + '</b> \u2014 ' + entry.hint +
+        (mode === 'join'
+          ? '<br>Result: <b>' + S.formatCount(total) + '</b> triangles, the two meshes unchanged.'
+          : '<br>Rebuilds one closed surface on a grid, so a sharp edge is only as sharp as the resolution.');
+      var showBool = mode !== 'join';
+      resRow.style.display = showBool ? '' : 'none';
+      smoothRow.style.display = showBool ? '' : 'none';
+      for (var k = 0; k < targetHost.children.length; k++) {
+        targetHost.children[k].classList.toggle('on', +targetHost.children[k].dataset.index === target);
+      }
+    }
+
+    var modeSeg = UI.segment({ value: mode, options: [
+      { id: 'join', label: 'Join', title: 'Keep both meshes, one object' },
+      { id: 'union', label: 'Union', title: 'Fuse into one surface' },
+      { id: 'subtract', label: 'Subtract', title: 'Cut B out of A' },
+      { id: 'intersect', label: 'Overlap', title: 'Keep only the overlap' }
+    ], onchange: function (v) {
+      mode = v;
+      if (v !== 'join') self.set('booleanMode', v);
+      refresh();
+    } });
+
+    targetHost = el('div#objects');
+    others.forEach(function (index) {
+      var o = self.scene.objects[index];
+      var row = el('div.obj-row' + (index === target ? '.on' : ''), {
+        onpointerdown: function () {
+          target = index;
+          self.set('booleanTarget', index);
+          refresh();
+        }
+      }, [
+        UI.icon('cube'),
+        el('span.name', { text: o.name }),
+        el('span.count', { text: S.formatCount(o.mesh.liveTris) })
+      ]);
+      row.dataset.index = index;
+      targetHost.appendChild(row);
+    });
+
+    resRow = UI.slider({ label: 'Resolution', min: 48, max: 480, step: 4, value: st.booleanResolution,
+      title: 'Voxels along the longest side. Higher keeps edges sharper and takes longer.',
+      onchange: function (v) { self.set('booleanResolution', v); refresh(); } });
+    smoothRow = UI.slider({ label: 'Relax', min: 0, max: 4, step: 1, value: st.booleanSmooth,
+      onchange: function (v) { self.set('booleanSmooth', v); } });
+    keepCheck = UI.check({ label: 'Keep the other object', value: !!st.booleanKeep,
+      onchange: function (v) { self.set('booleanKeep', v); } });
+    reduceCheck = UI.check({ label: 'Reduce to budget afterwards', value: st.booleanReduce !== false,
+      title: 'A boolean rebuilds the surface at grid density, which is usually far more triangles than a game mesh wants',
+      onchange: function (v) { self.set('booleanReduce', v); } });
+
+    this.openSheet({
+      title: 'Combine',
+      content: [
+        el('div.row', null, modeSeg),
+        note,
+        el('p.sheet-note', { text: 'With' }),
+        targetHost,
+        resRow, smoothRow,
+        el('div.row.wrap', null, [keepCheck, reduceCheck]),
+        el('div.sheet-buttons', null, [
+          UI.button('Cancel', { onclick: function () { self.closeSheet(); } }),
+          (applyBtn = UI.button('Apply', { icon: 'check', class: 'accent', onclick: function () {
+            self.closeSheet();
+            self.applyCombine(mode, target, {
+              resolution: resRow.get(),
+              smooth: smoothRow.get(),
+              keep: keepCheck.get(),
+              reduce: reduceCheck.get()
+            });
+          } }))
+        ])
+      ]
+    });
+    refresh();
+  };
+
+  /**
+   * Run a join or a boolean between the selected object and another one.
+   * The geometry is computed first, then applied inside a single history
+   * step that covers both the mesh and the object list.
+   */
+  A.applyCombine = function (mode, indexB, opts) {
+    var self = this;
+    var indexA = this.scene.selected;
+    var a = this.scene.objects[indexA];
+    var b = this.scene.objects[indexB];
+    if (!a || !b) { UI.toast('Pick two objects to combine', 'bad'); return; }
+    var label = mode === 'join' ? 'Join' : ('Boolean ' + mode);
+
+    UI.busy(label, a.name + ' + ' + b.name, function (report) {
+      if (mode === 'join') {
+        return { join: self.scene.mergeObjects([indexA, indexB], a.name) };
+      }
+      return S.Boolean.compute(a, b, {
+        mode: mode, resolution: opts.resolution, smooth: opts.smooth, colors: true
+      }, function (f) { report(Math.round(f * 100) + '%'); });
+    }, function (result, ms) {
+      if (!result) return;
+      if (result.ok === false) { UI.toast(result.reason, 'bad', 5000); return; }
+
+      var beforeTris = a.mesh.liveTris;
+      self.history.runSceneOp(label,
+        function () {
+          return { objects: self.scene.objects.slice(), selected: self.scene.selected,
+                   obj: a, mesh: a.mesh.snapshot() };
+        },
+        function (state) {
+          self.scene.objects = state.objects.slice();
+          self.scene.selected = Math.min(state.selected, Math.max(0, self.scene.objects.length - 1));
+          state.obj.mesh.restore(state.mesh);
+          self.refreshObjects();
+          self.refreshStatus();
+          self.needsRender = true;
+        },
+        function () {
+          if (result.join) {
+            // a join replaces both objects with the merged one
+            var merged = result.join;
+            var keep = [];
+            for (var i = 0; i < self.scene.objects.length; i++) {
+              if (i !== indexA && i !== indexB) keep.push(self.scene.objects[i]);
+            }
+            self.renderer.releaseObject(a);
+            self.renderer.releaseObject(b);
+            keep.push(merged);
+            self.scene.objects = keep;
+            self.scene.selected = keep.length - 1;
+            return;
+          }
+          a.mesh.setFromArrays(result.positions, result.indices, { colors: result.colors, weld: false });
+          a.mesh.removeDegenerateTriangles(result.plan.voxel * result.plan.voxel * 1e-7);
+          if (opts.smooth > 0) a.mesh.smoothAll(opts.smooth, 0.4, false);
+          if (opts.reduce !== false) {
+            var budget = self.settings.triBudget || 10000;
+            if (a.mesh.liveTris > budget) a.mesh.decimate(budget, true);
+          }
+          a.mesh.computeNormals();
+          if (!opts.keep) {
+            self.renderer.releaseObject(b);
+            var at = self.scene.objects.indexOf(b);
+            if (at >= 0) self.scene.remove(at);
+            self.scene.selected = self.scene.objects.indexOf(a);
+          }
+        });
+
+      self.afterMeshOp(a);
+      var health = a.mesh.countBorderEdges() + a.mesh.countNonManifoldEdges();
+      UI.toast(label + ': ' + S.formatCount(beforeTris) + ' \u2192 ' +
+        S.formatCount(a.mesh.liveTris) + ' triangles in ' + UI.formatMs(ms) +
+        (health ? ' (with ' + health + ' odd edges)' : ''), health ? null : 'ok', 4200);
     });
   };
 
@@ -720,6 +995,392 @@
     ]));
   };
 
+  /* ---- stencils ---- */
+
+  /**
+   * The stencil picker: a thumbnail per stencil, built-ins first, then
+   * anything uploaded. Each thumbnail is the stencil itself drawn into a
+   * small canvas, so what you pick is what the brush will stamp.
+   */
+  A.buildAlphaGrid = function () {
+    var self = this;
+    var grid = el('div.alpha-grid');
+
+    function cell(id, label, alpha, removable) {
+      var node = el('button.alpha-cell' + (self.settings.alpha === id ? '.on' : ''), {
+        title: alpha ? label : 'No stencil — a plain round brush',
+        onclick: function () {
+          self.set('alpha', id);
+          grid.rebuild();
+        }
+      });
+      if (alpha) {
+        var size = 46;
+        var cvs = el('canvas', { width: size, height: size });
+        var ctx = cvs.getContext('2d');
+        var img = ctx.createImageData(size, size);
+        img.data.set(S.Alpha.toRGBA(alpha, size));
+        ctx.putImageData(img, 0, 0);
+        node.appendChild(cvs);
+      } else {
+        node.appendChild(el('span.alpha-none', null, UI.icon('close')));
+      }
+      node.appendChild(el('small', { text: label }));
+      if (removable) {
+        node.appendChild(el('span.alpha-x', {
+          title: 'Remove this stencil',
+          onclick: function (e) {
+            e.stopPropagation();
+            self.deleteAlpha(id);
+            grid.rebuild();
+          }
+        }, UI.icon('trash')));
+      }
+      return node;
+    }
+
+    grid.rebuild = function () {
+      UI.clear(grid);
+      grid.appendChild(cell('none', 'None', null, false));
+      var list = S.Alpha.list();
+      for (var i = 0; i < list.length; i++) {
+        grid.appendChild(cell(list[i].id, list[i].label, S.alphaById(list[i].id), !list[i].builtin));
+      }
+    };
+    grid.rebuild();
+    return grid;
+  };
+
+  A.saveAlphas = function () {
+    try {
+      if (root.localStorage && !S.Alpha.saveAll(root.localStorage)) {
+        UI.toast('Stencils are loaded but could not be saved for next time', null, 3200);
+      }
+    } catch (e) { /* ignore */ }
+  };
+
+  A.deleteAlpha = function (id) {
+    S.Alpha.remove(id);
+    this.saveAlphas();
+    if (this.settings.alpha === id) this.set('alpha', 'none');
+  };
+
+  /**
+   * Turn an image file into a stencil. Brightness becomes strength, so a
+   * photo of dirt or a drawing of a rivet works straight away; a PNG with
+   * transparency uses its alpha as well.
+   */
+  A.loadAlphaFromFile = function (file, grid, invert) {
+    var self = this;
+    if (!root.URL || !root.Image) { UI.toast('This browser cannot read image files', 'bad'); return; }
+    var url = URL.createObjectURL(file);
+    var img = new root.Image();
+    img.onload = function () {
+      try {
+        // draw it down to stencil size first; the browser's scaler is both
+        // faster and better than doing it a pixel at a time
+        var max = 256;
+        var w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        var scale = Math.min(1, max / Math.max(w, h, 1));
+        var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+        var cvs = document.createElement('canvas');
+        cvs.width = cw; cvs.height = ch;
+        var ctx = cvs.getContext('2d');
+        ctx.drawImage(img, 0, 0, cw, ch);
+        var pixels = ctx.getImageData(0, 0, cw, ch).data;
+        var label = String(file.name || 'Stencil').replace(/\.[a-z0-9]+$/i, '').slice(0, 16) || 'Stencil';
+        var id = 'img-' + Date.now().toString(36) + '-' + Math.floor(Math.random() * 1296).toString(36);
+        S.Alpha.add(S.Alpha.fromPixels(id, label, pixels, cw, ch, { invert: !!invert }));
+        self.saveAlphas();
+        self.set('alpha', id);
+        if (grid && grid.rebuild) grid.rebuild();
+        UI.toast('Stencil “' + label + '” ready — draw with it', 'ok', 3400);
+      } catch (e) {
+        UI.toast('Could not read that image', 'bad');
+      }
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      UI.toast('Could not open that image', 'bad');
+    };
+    img.src = url;
+  };
+
+  /** Make an inverted copy of the stencil in use, for light-on-dark images. */
+  A.invertCurrentAlpha = function (grid) {
+    var alpha = S.alphaById(this.settings.alpha);
+    if (!alpha) { UI.toast('Pick a stencil first', null, 1800); return; }
+    var id = alpha.id + '-inv';
+    if (!S.Alpha.loaded[id]) {
+      var data = new Float32Array(alpha.data.length);
+      for (var i = 0; i < data.length; i++) data[i] = 1 - alpha.data[i];
+      S.Alpha.add(S.Alpha.make(id, alpha.label + ' ⇄', alpha.size, data));
+      this.saveAlphas();
+    }
+    this.set('alpha', id);
+    if (grid && grid.rebuild) grid.rebuild();
+  };
+
+  /** The stencil block, shared by the brush settings sheet. */
+  A.buildAlphaSection = function () {
+    var self = this;
+    var st = this.settings;
+    var grid = this.buildAlphaGrid();
+    var stampCheck = UI.check({ label: 'One stamp per press', value: st.stampMode,
+      title: 'Tap to place a single dab instead of drawing a stroke — for rivets, panels and logos',
+      onchange: function (v) { self.set('stampMode', v); } });
+    var followCheck = UI.check({ label: 'Follow the stroke', value: st.alphaFollowStroke !== false,
+      title: 'Turns the stencil to face the direction you are drawing',
+      onchange: function (v) { self.set('alphaFollowStroke', v); } });
+    var rotateCheck = UI.check({ label: 'Random turn', value: !!st.alphaRandomRotate,
+      title: 'Spins the stencil a random amount each stroke, so a pattern does not repeat',
+      onchange: function (v) { self.set('alphaRandomRotate', v); } });
+    return [
+      el('p.sheet-note', { text: 'Stencil — the brush stamps this pattern instead of a round dab' }),
+      grid,
+      el('div.sheet-buttons', null, [
+        UI.button('Load image…', { icon: 'image', onclick: function () {
+          UI.pickFiles('image/*', false, function (files) { self.loadAlphaFromFile(files[0], grid); });
+        } }),
+        UI.button('Invert', { icon: 'reset', onclick: function () { self.invertCurrentAlpha(grid); } })
+      ]),
+      el('div.check-row', null, [stampCheck, followCheck, rotateCheck])
+    ];
+  };
+
+  /* ---- presets ---- */
+
+  A.savePresets = function () {
+    try { if (root.localStorage) S.Presets.save(root.localStorage, this.userPresets); } catch (e) { /* ignore */ }
+  };
+
+  A.applyPreset = function (id) {
+    var self = this;
+    var preset = S.Presets.byId(id, this.userPresets);
+    if (!preset) return;
+    var settings = {};
+    for (var k in preset.settings) settings[k] = preset.settings[k];
+    // a preset can ask for a stencil that is no longer loaded
+    if (settings.alpha && settings.alpha !== 'none' && !S.alphaById(settings.alpha)) settings.alpha = 'none';
+    S.Presets.apply({ settings: settings }, this.settings, function (key, value) { self.set(key, value); });
+    if (settings.brush) this.selectBrush(settings.brush);
+    this.syncPills();
+    this.syncViewButtons();
+    this.updateHud();
+    this.refreshStatus();
+    UI.toast(preset.label + ' — ' + S.Presets.describe(preset), 'ok', 2600);
+  };
+
+  A.syncPills = function () {
+    if (this.panelRefs.radius) this.panelRefs.radius.set(this.settings.radius);
+    if (this.panelRefs.strength) this.panelRefs.strength.set(this.settings.strength);
+  };
+
+  A.saveCurrentPreset = function () {
+    var self = this;
+    var brush = S.brushById(this.settings.brush);
+    var input = el('input', { type: 'text', value: brush.label + ' setup', maxlength: 28 });
+    UI.dialog({
+      title: 'Save this setup',
+      icon: 'star',
+      content: [
+        el('p.note', { text: 'Keeps the brush, size, strength, falloff, spacing, smoothing, stencil, ' +
+                             'stamp mode and paint colour. Mirroring, the triangle budget and the camera stay as they are.' }),
+        el('div.row', null, [el('label', { text: 'Name' }), input])
+      ],
+      buttons: [
+        { label: 'Cancel' },
+        { label: 'Save', class: 'accent', onclick: function () {
+          var preset = S.Presets.capture(self.settings, input.value.trim() || 'My preset');
+          self.userPresets.push(preset);
+          self.savePresets();
+          UI.toast('Saved “' + preset.label + '”', 'ok');
+        } }
+      ]
+    });
+    setTimeout(function () { input.focus(); input.select(); }, 50);
+  };
+
+  A.deletePreset = function (id) {
+    for (var i = 0; i < this.userPresets.length; i++) {
+      if (this.userPresets[i].id === id) {
+        this.userPresets.splice(i, 1);
+        this.savePresets();
+        return true;
+      }
+    }
+    return false;
+  };
+
+  /**
+   * The preset sheet. Built-in setups first — the ones a game model actually
+   * needs — then anything saved from the current brush.
+   */
+  A.openPresetSheet = function () {
+    var self = this;
+    var list = el('div.preset-list');
+
+    function rebuild() {
+      UI.clear(list);
+      var all = S.Presets.all(self.userPresets);
+      all.forEach(function (preset) {
+        var row = el('button.preset-row', {
+          onclick: function () {
+            self.closeSheet();
+            self.applyPreset(preset.id);
+          }
+        }, [
+          UI.icon(preset.settings.brush || 'star'),
+          el('span.preset-label', null, [
+            el('b', { text: preset.label }),
+            el('small', { text: preset.hint || S.Presets.describe(preset) })
+          ])
+        ]);
+        if (preset.user) {
+          row.appendChild(el('span.preset-x', { title: 'Delete this preset', onclick: function (e) {
+            e.stopPropagation();
+            self.deletePreset(preset.id);
+            rebuild();
+          } }, UI.icon('trash')));
+        }
+        list.appendChild(row);
+      });
+      if (!self.userPresets.length) {
+        list.appendChild(el('p.sheet-note', { text: 'Set a brush up how you like it, then save it here.' }));
+      }
+    }
+    rebuild();
+
+    this.openSheet({
+      title: 'Presets',
+      content: [
+        list,
+        el('div.sheet-buttons', null, [
+          UI.button('Save the current brush', { icon: 'star', class: 'accent', onclick: function () {
+            self.closeSheet();
+            self.saveCurrentPreset();
+          } })
+        ])
+      ]
+    });
+  };
+
+  /* ---- texture ---- */
+
+  /**
+   * Bake and export. Painting happens on the mesh, which is fast and has no
+   * seams to fight, but a game needs an image — so this unwraps the model by
+   * box projection, rasterises the paint into an atlas and writes a PNG.
+   */
+  A.openTextureSheet = function () {
+    var self = this;
+    var st = this.settings;
+    var preview = el('canvas.tex-preview', { width: 200, height: 200 });
+    var note = el('p.sheet-note', { text: 'Baking a preview…' });
+    var timer = null;
+
+    function refresh() {
+      var obj = self.scene.current();
+      if (!obj) { note.textContent = 'Nothing to bake.'; return; }
+      var geoms = S.IO.prepare([obj], { scale: 1, axis: 'y', applyTransform: false, includeColors: true });
+      if (!geoms.length) { note.textContent = 'This object has no geometry.'; return; }
+      var built = S.Texture.build(geoms[0], { size: 200, cavity: self.settings.textureCavity });
+      var ctx = preview.getContext('2d');
+      var img = ctx.createImageData(built.width, built.height);
+      img.data.set(built.pixels);
+      ctx.putImageData(img, 0, 0);
+      note.textContent = obj.name + ' — six charts, ' +
+        Math.round(built.coverage * 100) + '% of the image used, ' +
+        S.formatCount(built.geom.vertCount) + ' points after the unwrap.';
+    }
+    function refreshSoon() {
+      clearTimeout(timer);
+      timer = setTimeout(refresh, 120);
+    }
+
+    this.openSheet({
+      title: 'Texture',
+      content: [
+        el('div.tex-wrap', null, preview),
+        note,
+        UI.segment({ label: 'Image size', value: String(st.textureSize), options: [
+          { id: '512', label: '512', title: 'Small and light' },
+          { id: '1024', label: '1024', title: 'A good default for a game prop' },
+          { id: '2048', label: '2048', title: 'For a hero model' }
+        ], onchange: function (v) { self.set('textureSize', parseInt(v, 10)); } }),
+        UI.slider({ label: 'Creases', min: 0, max: 1, step: 0.05, value: st.textureCavity,
+          title: 'Darkens the recesses in the baked image, the way they look on screen',
+          onchange: function (v) { self.set('textureCavity', v); refreshSoon(); } })
+      ],
+      rows: [
+        { group: 'Save' },
+        { icon: 'cube', label: 'Roblox: mesh + texture', hint: 'OBJ under the budget, plus the PNG to upload as its texture',
+          onclick: function () { self.exportForRoblox(null, true); } },
+        { icon: 'file', label: 'OBJ + texture', hint: 'Full detail: .obj, .mtl and .png',
+          onclick: function () { self.exportWithTexture('obj'); } },
+        { icon: 'cube', label: 'GLB with the texture inside', hint: 'One file for Three.js, Unity, Godot, Blender',
+          onclick: function () { self.exportWithTexture('glb'); } },
+        { icon: 'image', label: 'Just the image', hint: 'The PNG on its own',
+          onclick: function () { self.exportTextureImage(); } },
+        { group: 'Paint' },
+        { icon: 'paint', label: 'Paint settings', hint: 'Colour, stencil, swatches',
+          chevron: true, onclick: function () { self.openBrushSettingsSheet(); } },
+        { icon: 'subdivide', label: 'More paint detail', hint: 'Subdivide, so the colour has more places to live',
+          onclick: function () { self.subdivide(true); } }
+      ]
+    });
+    requestAnimationFrame(refresh);
+  };
+
+  /** Texture options shared by every baked export. */
+  A.textureOptions = function () {
+    var opts = this.exportOptions();
+    opts.textureSize = this.settings.textureSize;
+    opts.cavity = this.settings.textureCavity;
+    opts.baseName = this.exportFilename('x').replace(/\.x$/, '');
+    return opts;
+  };
+
+  A.exportWithTexture = function (format) {
+    var self = this;
+    var objs = this.exportTargets();
+    if (!objs.length) { UI.toast('Nothing to export', 'bad'); return; }
+    var opts = this.textureOptions();
+    UI.busy('Baking the texture', opts.textureSize + ' × ' + opts.textureSize, function (report) {
+      var geoms = S.IO.prepare(objs, opts);
+      if (!geoms.length) throw new Error('The selected objects have no geometry.');
+      report('unwrapping, then painting the image');
+      var out = S.IO.exportTextured(format, geoms, opts);
+      var names = [], bytes = 0;
+      for (var i = 0; i < out.files.length; i++) {
+        bytes += UI.download(out.files[i].data, out.files[i].name, out.files[i].mime);
+        names.push(out.files[i].name);
+      }
+      return { names: names, bytes: bytes };
+    }, function (result) {
+      if (!result) return;
+      UI.toast('Saved ' + result.names.join(', ') + ' — ' + S.formatBytes(result.bytes), 'ok', 5200);
+    });
+  };
+
+  A.exportTextureImage = function () {
+    var self = this;
+    var obj = this.scene.current();
+    if (!obj) { UI.toast('Nothing to bake', 'bad'); return; }
+    var opts = this.textureOptions();
+    UI.busy('Baking the texture', opts.textureSize + ' × ' + opts.textureSize, function () {
+      var geoms = S.IO.prepare([obj], { scale: 1, axis: 'y', applyTransform: false, includeColors: true });
+      if (!geoms.length) throw new Error('This object has no geometry.');
+      var built = S.Texture.build(geoms[0], { size: opts.textureSize, cavity: opts.cavity });
+      var name = self.exportFilename('png');
+      return { name: name, size: UI.download(built.png(), name, 'image/png') };
+    }, function (result) {
+      if (!result) return;
+      UI.toast('Saved ' + result.name + ' — ' + S.formatBytes(result.size), 'ok', 4200);
+    });
+  };
+
   /* ---- brush settings (everything that used to crowd the screen) ---- */
 
   A.openBrushSettingsSheet = function () {
@@ -730,7 +1391,7 @@
     var detailRow = UI.slider({ label: 'Detail', min: 2, max: 100, step: 1, value: st.detailPercent, suffix: '%',
       title: 'Triangle size under the brush, as a percentage of the brush size',
       onchange: function (v) { self.set('detailPercent', v); } });
-    var maxRow = UI.slider({ label: 'Limit', min: 50000, max: 6000000, step: 50000, value: st.maxTriangles,
+    var maxRow = UI.slider({ label: 'Limit', min: 25000, max: 2000000, step: 25000, value: st.maxTriangles,
       format: function (v) { return S.formatCount(Number(v)); },
       title: 'Dynamic topology stops adding triangles here',
       onchange: function (v) { self.set('maxTriangles', v); } });
@@ -774,6 +1435,7 @@
         UI.slider({ label: 'Spacing', min: 0.02, max: 1, step: 0.01, value: st.spacing,
           title: 'Distance between brush stamps',
           onchange: function (v) { self.set('spacing', v); } }),
+        this.buildAlphaSection(),
         el('p.sheet-note', { text: 'Paint colour' }),
         el('div.row', null, [colorInput,
           UI.button('Pick from model', { icon: 'palette', class: 'grow', onclick: function () {
@@ -788,7 +1450,7 @@
       ],
       rows: [
         { group: 'Triangles' },
-        { icon: 'layers', label: 'Dynamic topology', hint: 'Add detail as you sculpt (D)',
+        { icon: 'layers', label: 'Add triangles as you sculpt', hint: 'Dynamic topology (D) — off, brushes can only stretch what is there',
           toggle: true, keepOpen: true,
           value: function () { return self.settings.dyntopo; },
           onclick: function () { self.set('dyntopo', !self.settings.dyntopo); self.updateHud(); } },
@@ -822,7 +1484,7 @@
     body.appendChild(detailRow);
     body.appendChild(maxRow);
     body.appendChild(el('p.sheet-note', {
-      text: 'Roblox refuses a mesh over 10,000 triangles, but a prop in a real game is usually 1k\u20134k. Picking a budget also sets how coarse dynamic topology works, and switches it off below 10k so the count cannot creep up.'
+      text: 'The budget is what Export reduces a copy of the model to \u2014 Roblox refuses a mesh over 10,000 triangles and a real prop is usually 1k\u20134k. Sculpt as dense as you need: the brushes add triangles as they build, and the count above only has to come down when you export. Detail sets how fine those new triangles are, Limit is where adding stops.'
     }));
   };
 
@@ -1076,27 +1738,32 @@
   };
 
   /**
-   * Dynamic topology stops adding triangles at the budget. Say so once, with
-   * the way out, rather than leaving the brush silently doing nothing.
-   */
-  /**
-   * Apply a triangle budget. This is the one knob that matters for a game
-   * mesh, so it sets everything that follows from it: the ceiling, how
-   * coarse dynamic topology works, and whether dynamic topology runs at all
-   * (below 10k a fixed mesh is easier to keep inside the budget).
+   * Set the export budget.
+   *
+   * This is what Export reduces a copy of the model to, not a cap on what
+   * you can sculpt: dynamic topology keeps its headroom, because a brush
+   * that cannot add triangles goes back to stretching the ones already
+   * there. It also picks a matching stroke detail, so a small budget means
+   * chunkier strokes and there is less to throw away at the end.
    */
   A.setBudget = function (n) {
     n = Math.max(200, Math.round(n));
     this.set('triBudget', n);
-    this.set('maxTriangles', n);
-    this.set('detailPercent', n <= 2000 ? 45 : (n <= 10000 ? 25 : (n <= 50000 ? 12 : 6)));
-    if (n <= 10000 && this.settings.dyntopo) this.set('dyntopo', false);
+    /*
+     * Headroom for the brushes: six times the budget, never under 150,000,
+     * and never under what the model already has — dropping the ceiling
+     * below the live count would make the next stroke coarsen the mesh
+     * instead of adding to it, which is a nasty surprise.
+     */
+    var obj = this.scene.current();
+    var live = obj ? obj.mesh.liveTris : 0;
+    this.set('maxTriangles', Math.max(n * 6, 150000, live));
+    this.set('detailPercent', n <= 2000 ? 26 : (n <= 10000 ? 20 : (n <= 50000 ? 14 : 9)));
     this.refreshStatus();
     this.updateHud();
-    var obj = this.scene.current();
-    var msg = 'Budget ' + S.formatCount(n) + ' triangles';
-    if (obj && obj.mesh.liveTris > n) msg += ' — this mesh is over it; tap the counter to reduce';
-    UI.toast(msg, obj && obj.mesh.liveTris > n ? 'bad' : null, 3600);
+    UI.toast('Export budget ' + S.formatCount(n) + ' triangles \u2014 sculpt as dense as you like, ' +
+             'Export reduces to it', null, 3800);
+
   };
 
   /** A starting density that lands near the budget for a given primitive. */
@@ -1112,6 +1779,10 @@
     return S.clamp(guess, 2, entry.detailMax || 12);
   };
 
+  /**
+   * Dynamic topology stops adding triangles at the Limit. Say so once, with
+   * the way out, rather than leaving the brush silently doing nothing.
+   */
   A.warnIfBudgetFull = function () {
     var obj = this.scene.current();
     if (!obj || !this.settings.dyntopo) return;
@@ -1120,7 +1791,8 @@
     var now = performance.now();
     if (this._budgetWarned && now - this._budgetWarned < 30000) return;
     this._budgetWarned = now;
-    UI.toast('At the ' + S.formatCount(cap) + ' triangle budget — raise it in Menu \u2192 Brush settings, or keep sculpting at this density', null, 5000);
+    UI.toast('At the ' + S.formatCount(cap) + ' triangle limit \u2014 the brushes cannot add any more. ' +
+      'Raise Limit in Brush settings, or remesh to even the surface out.', null, 5000);
   };
 
   /* ---- touch navigation ---- */
@@ -1875,7 +2547,7 @@
    * sculpt itself is left at full detail: the reduction happens on a copy,
    * per object, so each one arrives as its own MeshPart inside the limit.
    */
-  A.exportForRoblox = function (budget) {
+  A.exportForRoblox = function (budget, withTexture) {
     var self = this;
     // Roblox's own ceiling is 10,000 per MeshPart, so this export never goes
     // above that however high the working budget is set. A lower working
@@ -1905,8 +2577,32 @@
         scale: 1, axis: 'y', applyTransform: true,
         includeNormals: true, includeColors: false
       });
-      // Roblox's mesh importer ignores vertex colour, so it is left out to
-      // keep the file small
+      /*
+       * Roblox's mesh importer ignores vertex colour, so colour only reaches
+       * the game as an image: with the texture asked for, the paint is baked
+       * into a PNG and written beside the mesh, ready to upload and set as
+       * the MeshPart's TextureID. Without it, the OBJ goes out on its own and
+       * stays small.
+       */
+      if (withTexture) {
+        var texOpts = {
+          scale: 1, axis: 'y', applyTransform: true, includeNormals: true, includeColors: false,
+          textureSize: self.settings.textureSize, cavity: self.settings.textureCavity,
+          baseName: self.exportFilename('x').replace(/\.x$/, '')
+        };
+        report('baking the texture');
+        var coloured = S.IO.prepare(temps, {
+          scale: 1, axis: 'y', applyTransform: true, includeNormals: true, includeColors: true
+        });
+        var out = S.IO.exportTextured('obj', coloured, texOpts);
+        var names = [], bytes = 0;
+        for (var f = 0; f < out.files.length; f++) {
+          bytes += UI.download(out.files[f].data, out.files[f].name, out.files[f].mime);
+          names.push(out.files[f].name);
+        }
+        return { name: names.join(', '), size: bytes, original: original, reduced: reduced,
+                 objects: temps.length, limit: limit };
+      }
       var text = S.IO.exportOBJ(geoms, { includeNormals: true, includeColors: false });
       var name = self.exportFilename('obj');
       var size = UI.download(text, name, 'text/plain');
@@ -2432,7 +3128,7 @@
         el('p', { html: '<b>SculptFree ' + S.VERSION + '</b> — a digital sculpting app that runs in a browser, in one HTML file, with no account, no network and no paywall.' }),
         el('div.warn.ok', { text: 'Import and export are free and unlimited: OBJ, STL, PLY and GLB, in and out, at any triangle count.' }),
         el('h4', { text: 'What is in it' }),
-        el('p', { text: '18 brushes with symmetry, masking and vertex painting; dynamic topology; voxel remeshing; Loop subdivision; quadric decimation; a multi-object scene with transforms; undo that covers topology changes; and its own WebGL2 renderer with generated matcaps, so there are no assets to download.' }),
+        el('p', { text: '21 brushes with symmetry, masking, stencils and vertex painting; dynamic topology; voxel remeshing; Loop subdivision; quadric decimation; booleans; a multi-object scene with transforms; baked textures; undo that covers topology changes; and its own WebGL2 renderer with generated matcaps, so there are no assets to download.' }),
         el('h4', { text: 'Your work stays on your machine' }),
         el('p', { text: 'Nothing is uploaded anywhere. The recovery copy lives in this browser’s own storage, and projects are saved to files you keep.' }),
         el('h4', { text: 'This machine' }),

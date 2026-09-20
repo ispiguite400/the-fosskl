@@ -2,13 +2,20 @@
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
-export function load(extra = []) {
-  const files = ['01-core', '02-mesh', '03-topology', '04-primitives', '05-remesh', '06-io', ...extra];
-  for (const f of files) {
-    try { require('../src/' + f + '.js'); } catch (e) {
-      if (!/Cannot find module/.test(e.message)) throw e;
-    }
-  }
+/**
+ * Load every module, in the order their filenames sort in — the same order
+ * index.html loads them. Nothing in any module touches the DOM at load time
+ * (the app's boot call is guarded), so the whole thing runs under Node.
+ *
+ * Taking the list from the directory rather than naming files here means
+ * renumbering a module cannot quietly break the test suites.
+ */
+export function load() {
+  const fs = require('fs');
+  const path = require('path');
+  const dir = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'src');
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith('.js')).sort();
+  for (const f of files) require(path.join(dir, f));
   return globalThis.SCULPT;
 }
 

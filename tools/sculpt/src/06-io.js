@@ -248,11 +248,16 @@
     var out = [];
     out.push('# Exported by SculptFree ' + S.VERSION);
     out.push('# ' + new Date().toISOString());
+    if (opts.mtlName) out.push('mtllib ' + opts.mtlName);
     var vertBase = 1;
+    // OBJ counts texture coordinates in their own namespace, so an object
+    // without UVs must not advance it
+    var uvBase = 1;
     for (var i = 0; i < geoms.length; i++) {
       var g = geoms[i];
       var n = g.vertCount;
       out.push('o ' + g.name.replace(/\s+/g, '_'));
+      if (opts.mtlName) out.push('usemtl ' + materialName(g, i));
       var p = g.positions, c = g.colors, nor = g.normals;
       var v, o;
       if (opts.includeColors && c) {
@@ -267,24 +272,74 @@
           out.push('v ' + p[o].toPrecision(7) + ' ' + p[o + 1].toPrecision(7) + ' ' + p[o + 2].toPrecision(7));
         }
       }
-      if (opts.includeNormals !== false) {
+      /*
+       * Texture coordinates, when the geometry has been unwrapped. There is
+       * one per vertex (the unwrap duplicates any vertex that lands on two
+       * charts), so the vt list runs parallel to the v list and one index
+       * serves both.
+       */
+      var withUV = !!g.uvs;
+      if (withUV) {
+        for (v = 0; v < n; v++) {
+          out.push('vt ' + g.uvs[v * 2].toFixed(6) + ' ' + g.uvs[v * 2 + 1].toFixed(6));
+        }
+      }
+      var withNormals = opts.includeNormals !== false;
+      if (withNormals) {
         for (v = 0; v < n; v++) {
           o = v * 3;
           out.push('vn ' + nor[o].toFixed(6) + ' ' + nor[o + 1].toFixed(6) + ' ' + nor[o + 2].toFixed(6));
         }
       }
       var idx = g.indices;
-      if (opts.includeNormals !== false) {
-        for (var t = 0; t < idx.length; t += 3) {
-          var a = idx[t] + vertBase, b = idx[t + 1] + vertBase, cc = idx[t + 2] + vertBase;
+      for (var t = 0; t < idx.length; t += 3) {
+        var a = idx[t] + vertBase, b = idx[t + 1] + vertBase, cc = idx[t + 2] + vertBase;
+        if (withUV && withNormals) {
+          var ua = idx[t] + uvBase, ub = idx[t + 1] + uvBase, uc = idx[t + 2] + uvBase;
+          out.push('f ' + a + '/' + ua + '/' + a + ' ' + b + '/' + ub + '/' + b +
+                   ' ' + cc + '/' + uc + '/' + cc);
+        } else if (withUV) {
+          out.push('f ' + a + '/' + (idx[t] + uvBase) + ' ' + b + '/' + (idx[t + 1] + uvBase) +
+                   ' ' + cc + '/' + (idx[t + 2] + uvBase));
+        } else if (withNormals) {
           out.push('f ' + a + '//' + a + ' ' + b + '//' + b + ' ' + cc + '//' + cc);
-        }
-      } else {
-        for (var t2 = 0; t2 < idx.length; t2 += 3) {
-          out.push('f ' + (idx[t2] + vertBase) + ' ' + (idx[t2 + 1] + vertBase) + ' ' + (idx[t2 + 2] + vertBase));
+        } else {
+          out.push('f ' + a + ' ' + b + ' ' + cc);
         }
       }
       vertBase += n;
+      if (withUV) uvBase += n;
+    }
+    return out.join('\n') + '\n';
+  };
+
+  function materialName(g, i) {
+    var name = (g.name || ('object_' + (i + 1))).replace(/\s+/g, '_');
+    return name + '_mat';
+  }
+  IO.materialName = materialName;
+
+  /**
+   * The companion .mtl file. One material per object, pointing at the baked
+   * texture when there is one — which is all Roblox Studio, Blender or Unity
+   * need to show the paint straight after import.
+   */
+  IO.exportMTL = function (geoms, opts) {
+    opts = opts || {};
+    var out = ['# Exported by SculptFree ' + S.VERSION];
+    for (var i = 0; i < geoms.length; i++) {
+      var g = geoms[i];
+      var base = g.color || [0.85, 0.85, 0.85];
+      out.push('');
+      out.push('newmtl ' + materialName(g, i));
+      out.push('Ka 0.000 0.000 0.000');
+      out.push('Kd ' + (g.textureName ? '1.000 1.000 1.000' :
+        base[0].toFixed(3) + ' ' + base[1].toFixed(3) + ' ' + base[2].toFixed(3)));
+      out.push('Ks 0.050 0.050 0.050');
+      out.push('Ns 20.0');
+      out.push('d 1.0');
+      out.push('illum 2');
+      if (g.textureName) out.push('map_Kd ' + g.textureName);
     }
     return out.join('\n') + '\n';
   };
@@ -882,6 +937,7 @@
       scenes: [{ nodes: [] }],
       nodes: [], meshes: [], materials: [], accessors: [], bufferViews: [], buffers: []
     };
+    var textureIndex = {};              // png byte length + name -> texture id
 
     // lay out the binary blob first so byte offsets are known
     var chunks = [];
@@ -920,8 +976,40 @@
       json.accessors.push({ bufferView: norView, componentType: 5126, count: n, type: 'VEC3' });
       var norAcc = json.accessors.length - 1;
 
+      /*
+       * Texture coordinates. glTF's v axis runs down from the top-left while
+       * ours runs up from the bottom-left (the OBJ convention), so flip it
+       * here rather than keeping two sets of coordinates around.
+       */
+      var uvAcc = -1;
+      if (g.uvs) {
+        var flipped = new Float32Array(n * 2);
+        for (var u = 0; u < n; u++) {
+          flipped[u * 2] = g.uvs[u * 2];
+          flipped[u * 2 + 1] = 1 - g.uvs[u * 2 + 1];
+        }
+        var uvView = addView(flipped, 34962);
+        json.accessors.push({ bufferView: uvView, componentType: 5126, count: n, type: 'VEC2' });
+        uvAcc = json.accessors.length - 1;
+      }
+
+      /* the baked image, embedded in the same binary chunk */
+      var texAcc = -1;
+      if (g.texturePNG && uvAcc >= 0) {
+        var key = g.name + ':' + g.texturePNG.length;
+        if (textureIndex[key] === undefined) {
+          var imgView = addView(g.texturePNG, 0);
+          if (!json.images) { json.images = []; json.samplers = []; json.textures = []; }
+          json.images.push({ name: (g.name || 'texture') + '_colour', bufferView: imgView, mimeType: 'image/png' });
+          json.samplers.push({ magFilter: 9729, minFilter: 9987, wrapS: 33071, wrapT: 33071 });
+          json.textures.push({ source: json.images.length - 1, sampler: json.samplers.length - 1 });
+          textureIndex[key] = json.textures.length - 1;
+        }
+        texAcc = textureIndex[key];
+      }
+
       var colAcc = -1;
-      if (withColors && g.colors) {
+      if (withColors && g.colors && texAcc < 0) {
         // VEC4 with opaque alpha is the most widely supported colour layout
         var rgba = new Float32Array(n * 4);
         for (var v2 = 0; v2 < n; v2++) {
@@ -942,18 +1030,21 @@
       var idxAcc = json.accessors.length - 1;
 
       var base = g.color || [0.85, 0.85, 0.85];
+      var pbr = {
+        baseColorFactor: (texAcc >= 0 || (withColors && g.colors)) ? [1, 1, 1, 1] : [base[0], base[1], base[2], 1],
+        metallicFactor: opts.metallic === undefined ? 0 : opts.metallic,
+        roughnessFactor: opts.roughness === undefined ? 0.65 : opts.roughness
+      };
+      if (texAcc >= 0) pbr.baseColorTexture = { index: texAcc, texCoord: 0 };
       json.materials.push({
         name: g.name + '_material',
-        pbrMetallicRoughness: {
-          baseColorFactor: withColors && g.colors ? [1, 1, 1, 1] : [base[0], base[1], base[2], 1],
-          metallicFactor: opts.metallic === undefined ? 0 : opts.metallic,
-          roughnessFactor: opts.roughness === undefined ? 0.65 : opts.roughness
-        },
+        pbrMetallicRoughness: pbr,
         doubleSided: true
       });
       var matIdx = json.materials.length - 1;
 
       var attributes = { POSITION: posAcc, NORMAL: norAcc };
+      if (uvAcc >= 0) attributes.TEXCOORD_0 = uvAcc;
       if (colAcc >= 0) attributes.COLOR_0 = colAcc;
       json.meshes.push({ name: g.name, primitives: [{ attributes: attributes, indices: idxAcc, material: matIdx, mode: 4 }] });
       json.nodes.push({ name: g.name, mesh: json.meshes.length - 1 });
@@ -1132,6 +1223,59 @@
     } catch (err) {
       return { objects: [], warnings: ['Could not read "' + filename + '": ' + (err && err.message || err)] };
     }
+  };
+
+  /**
+   * Export with a baked texture.
+   *
+   * The paint lives on the mesh, so it has to become an image before another
+   * program can see it: every object is unwrapped by box projection, its
+   * colour is rasterised into an atlas, and the result is written as a real
+   * PNG. OBJ gets a .mtl and the image beside it (which is exactly what
+   * Roblox Studio wants: upload the mesh, upload the image, set it as the
+   * TextureID); GLB carries the image inside the one file.
+   *
+   * opts adds: { textureSize, cavity, baseName }
+   */
+  IO.exportTextured = function (format, geoms, opts) {
+    opts = opts || {};
+    var size = opts.textureSize || 1024;
+    var baseName = (opts.baseName || 'sculpt').replace(/\.[a-z0-9]+$/i, '');
+    var files = [];
+    var textured = [];
+    var totalPixels = 0;
+    for (var i = 0; i < geoms.length; i++) {
+      var built = S.Texture.build(geoms[i], { size: size, cavity: opts.cavity || 0 });
+      var g = built.geom;
+      g.color = geoms[i].color;
+      var png = built.png();
+      totalPixels += built.coverage;
+      var suffix = geoms.length > 1
+        ? '_' + String(geoms[i].name || ('object_' + (i + 1))).replace(/\s+/g, '_')
+        : '';
+      var pngName = baseName + suffix + '.png';
+      if (format === 'glb') {
+        g.texturePNG = png;
+      } else {
+        g.textureName = pngName;
+        files.push({ name: pngName, data: png, mime: 'image/png' });
+      }
+      textured.push(g);
+    }
+    if (format === 'glb') {
+      files.push({ name: baseName + '.glb', data: IO.exportGLB(textured, opts), mime: 'model/gltf-binary' });
+    } else {
+      var objOpts = {};
+      for (var k in opts) objOpts[k] = opts[k];
+      objOpts.mtlName = baseName + '.mtl';
+      files.unshift({ name: objOpts.mtlName, data: IO.exportMTL(textured, opts), mime: 'text/plain' });
+      files.unshift({ name: baseName + '.obj', data: IO.exportOBJ(textured, objOpts), mime: 'text/plain' });
+    }
+    return {
+      files: files,
+      geoms: textured,
+      coverage: geoms.length ? totalPixels / geoms.length : 0
+    };
   };
 
   IO.exportGeoms = function (format, geoms, opts) {

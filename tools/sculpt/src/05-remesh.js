@@ -291,7 +291,11 @@
    */
   Remesh.plan = function (mesh, resolution, padVoxels) {
     mesh.bounds();
-    var mn = mesh.boundsMin(), mx = mesh.boundsMax();
+    return Remesh.planFromBounds(mesh.boundsMin(), mesh.boundsMax(), resolution, padVoxels);
+  };
+
+  /** The same, for an explicit box — booleans grid two meshes together. */
+  Remesh.planFromBounds = function (mn, mx, resolution, padVoxels) {
     var sx = mx[0] - mn[0], sy = mx[1] - mn[1], sz = mx[2] - mn[2];
     var maxSide = Math.max(sx, sy, sz, 1e-6);
     var res = Math.max(8, Math.min(1024, Math.round(resolution)));
