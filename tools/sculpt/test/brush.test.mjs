@@ -454,4 +454,216 @@ function drag(engine, steps = 10, from = [340, 300], to = [460, 300], pressure =
   audit(mesh, 'after cancelling a dyntopo stroke');
 }
 
+/* ---- the trim brushes ---------------------------------------------- */
+{
+  // A trim shaves the surface flat against a plane. Trim Dynamic takes the
+  // plane from the surface under the brush, so it facets a form as it goes;
+  // Trim Normal holds the plane it started on, so one drag cuts a single
+  // flat face. Both only remove material unless inverted.
+  function movedVerts(mesh, before) {
+    const out = [];
+    for (let v = 0; v < mesh.masks.length; v++) {
+      if (mesh.vertDead.array[v]) continue;
+      const o = v * 3;
+      if (o + 2 >= before.length) continue;
+      const d = Math.hypot(mesh.positions.array[o] - before[o],
+                           mesh.positions.array[o + 1] - before[o + 1],
+                           mesh.positions.array[o + 2] - before[o + 2]);
+      if (d > 1e-5) out.push(v);
+    }
+    return out;
+  }
+  /** RMS distance of a set of vertices from their own best-fit plane. */
+  function planeResidual(mesh, verts) {
+    if (verts.length < 4) return 0;
+    const p = mesh.positions.array;
+    let cx = 0, cy = 0, cz = 0;
+    for (const v of verts) { cx += p[v * 3]; cy += p[v * 3 + 1]; cz += p[v * 3 + 2]; }
+    const n = verts.length;
+    cx /= n; cy /= n; cz /= n;
+    // covariance matrix of the centred points
+    let xx = 0, xy = 0, xz = 0, yy = 0, yz = 0, zz = 0;
+    for (const v of verts) {
+      const dx = p[v * 3] - cx, dy = p[v * 3 + 1] - cy, dz = p[v * 3 + 2] - cz;
+      xx += dx * dx; xy += dx * dy; xz += dx * dz;
+      yy += dy * dy; yz += dy * dz; zz += dz * dz;
+    }
+    // the plane normal is the eigenvector of the smallest eigenvalue; find it
+    // by inverse power iteration on the covariance, which for a near-planar
+    // set converges in a few steps from any start
+    let nx = 0, ny = 0, nz = 1;
+    for (let it = 0; it < 64; it++) {
+      // multiply by (trace*I - C), whose largest eigenvector is C's smallest
+      const tr = xx + yy + zz;
+      const ax = (tr - xx) * nx - xy * ny - xz * nz;
+      const ay = -xy * nx + (tr - yy) * ny - yz * nz;
+      const az = -xz * nx - yz * ny + (tr - zz) * nz;
+      const l = Math.hypot(ax, ay, az) || 1;
+      nx = ax / l; ny = ay / l; nz = az / l;
+    }
+    let sum = 0;
+    for (const v of verts) {
+      const d = (p[v * 3] - cx) * nx + (p[v * 3 + 1] - cy) * ny + (p[v * 3 + 2] - cz) * nz;
+      sum += d * d;
+    }
+    return Math.sqrt(sum / n);
+  }
+
+  /* trim normal: one plane for the whole stroke */
+  {
+    const { obj, engine } = setup({ brush: 'trimnormal', strength: 1, spacing: 0.1, autoSmooth: 0 }, 'sphere', 4);
+    const mesh = obj.mesh;
+    const before = mesh.positions.copy();
+    drag(engine, 20, [340, 300], [460, 300]);
+    const moved = movedVerts(mesh, before);
+    check('trim normal moved a patch', moved.length > 40, `${moved.length}`);
+    audit(mesh, 'trim normal');
+    eq('mesh still closed', mesh.countBorderEdges(), 0);
+
+    // everything it touched should lie on the plane it started from
+    check('trim normal leaves one flat plane', planeResidual(mesh, moved) < 0.004,
+      `residual ${planeResidual(mesh, moved).toFixed(5)}`);
+    // the plane sits a set depth below where the stroke began, and nothing
+    // it touched may remain above it
+    const anchor = engine._anchorLocal, anchorN = engine._anchorNormal;
+    let worst = -Infinity;
+    for (const v of moved) {
+      const o = v * 3;
+      const d = (mesh.positions.array[o] - anchor[0]) * anchorN[0] +
+                (mesh.positions.array[o + 1] - anchor[1]) * anchorN[1] +
+                (mesh.positions.array[o + 2] - anchor[2]) * anchorN[2];
+      worst = Math.max(worst, d);
+    }
+    check('nothing is left above the trim plane', worst < 0.002, `worst ${worst.toFixed(5)} above the anchor`);
+    check('the cut has a sensible depth', worst < -0.001, `cut to ${worst.toFixed(5)} below the anchor`);
+
+    // cut only: nothing may end up further out than it started
+    let grew = 0;
+    for (const v of moved) {
+      const o = v * 3;
+      const r0 = Math.hypot(before[o], before[o + 1], before[o + 2]);
+      const r1 = Math.hypot(mesh.positions.array[o], mesh.positions.array[o + 1], mesh.positions.array[o + 2]);
+      if (r1 > r0 + 1e-6) grew++;
+    }
+    eq('trim only removes material', grew, 0);
+  }
+
+  /* trim dynamic: the plane follows the form */
+  {
+    const { obj, engine } = setup({ brush: 'trimdynamic', strength: 1, spacing: 0.1, autoSmooth: 0 }, 'sphere', 4);
+    const mesh = obj.mesh;
+    const before = mesh.positions.copy();
+    drag(engine, 20, [340, 300], [460, 300]);
+    const moved = movedVerts(mesh, before);
+    check('trim dynamic moved a patch', moved.length > 40, `${moved.length}`);
+    audit(mesh, 'trim dynamic');
+    eq('mesh still closed', mesh.countBorderEdges(), 0);
+    let grew = 0;
+    for (const v of moved) {
+      const o = v * 3;
+      const r0 = Math.hypot(before[o], before[o + 1], before[o + 2]);
+      const r1 = Math.hypot(mesh.positions.array[o], mesh.positions.array[o + 1], mesh.positions.array[o + 2]);
+      if (r1 > r0 + 1e-6) grew++;
+    }
+    eq('trim dynamic only removes material', grew, 0);
+
+    // it should facet along the stroke rather than cut one plane, so its
+    // spread across the stroke is larger than trim normal's
+    const dynResidual = planeResidual(mesh, moved);
+    const nrm = setup({ brush: 'trimnormal', strength: 1, spacing: 0.1, autoSmooth: 0 }, 'sphere', 4);
+    const nBefore = nrm.obj.mesh.positions.copy();
+    drag(nrm.engine, 20, [340, 300], [460, 300]);
+    const nrmResidual = planeResidual(nrm.obj.mesh, movedVerts(nrm.obj.mesh, nBefore));
+    check('trim dynamic follows the form, trim normal cuts one plane',
+      dynResidual > nrmResidual * 2, `dynamic ${dynResidual.toFixed(5)} vs normal ${nrmResidual.toFixed(5)}`);
+  }
+
+  /* a trim is crisper than flatten with the same settings */
+  {
+    function patchFlatness(brushId) {
+      const { obj, engine } = setup({ brush: brushId, strength: 1, spacing: 0.1 }, 'sphere', 4);
+      const mesh = obj.mesh;
+      const before = mesh.positions.copy();
+      drag(engine, 14, [380, 300], [420, 300]);
+      // spread of z over the vertices nearest the stroke centre
+      const near = [];
+      for (let v = 0; v < mesh.masks.length; v++) {
+        if (mesh.vertDead.array[v]) continue;
+        const o = v * 3;
+        if (mesh.positions.array[o + 2] < 0.2) continue;
+        if (Math.hypot(mesh.positions.array[o], mesh.positions.array[o + 1]) > 0.12) continue;
+        near.push(v);
+      }
+      let lo = Infinity, hi = -Infinity;
+      for (const v of near) {
+        const z = mesh.positions.array[v * 3 + 2];
+        if (z < lo) lo = z;
+        if (z > hi) hi = z;
+      }
+      return { spread: hi - lo, count: near.length };
+    }
+    const trim = patchFlatness('trimdynamic');
+    const flat = patchFlatness('flatten');
+    check('a trim flattens harder than Flatten', trim.spread < flat.spread,
+      `trim ${trim.spread.toFixed(4)} vs flatten ${flat.spread.toFixed(4)}`);
+  }
+
+  /* inverted, a trim fills instead of cutting */
+  {
+    const { obj, engine } = setup({ brush: 'trimnormal', strength: 1, autoSmooth: 0 }, 'sphere', 4);
+    const mesh = obj.mesh;
+    // dent the front first so there is something below the plane to fill
+    const verts = mesh.vertsInSphere(0, 0, 0.5, 0.25);
+    for (const v of verts) mesh.positions.array[v * 3 + 2] -= 0.12;
+    mesh.computeNormals();
+    mesh.gridRebuild();
+    const before = mesh.positions.copy();
+    engine.begin({ x: 400, y: 300, pressure: 1, invert: true });
+    for (let i = 1; i <= 12; i++) engine.move({ x: 400 + i * 5, y: 300, pressure: 1, invert: true });
+    engine.end();
+    let raised = 0, lowered = 0;
+    for (let v = 0; v < mesh.liveVerts; v++) {
+      const o = v * 3;
+      const d = mesh.positions.array[o + 2] - before[o + 2];
+      if (d > 1e-5) raised++;
+      else if (d < -1e-5) lowered++;
+    }
+    check('inverted trim fills the dent', raised > 10, `${raised} raised`);
+    eq('inverted trim removes nothing', lowered, 0);
+    audit(mesh, 'inverted trim');
+  }
+
+  /* auto-smooth must not soften a trim */
+  {
+    function residualWith(autoSmooth) {
+      const { obj, engine } = setup({ brush: 'trimdynamic', strength: 1, spacing: 0.1, autoSmooth: autoSmooth }, 'sphere', 4);
+      const mesh = obj.mesh;
+      const before = mesh.positions.copy();
+      drag(engine, 16, [370, 300], [430, 300]);
+      return planeResidual(mesh, movedVerts(mesh, before));
+    }
+    const off = residualWith(0), on = residualWith(0.8);
+    check('a trim ignores auto smooth, so the face stays flat',
+      Math.abs(on - off) < off * 0.25 + 1e-6, `${off.toFixed(5)} vs ${on.toFixed(5)}`);
+  }
+
+  /* trims work with symmetry, like every other brush */
+  {
+    const { obj, engine } = setup({ brush: 'trimdynamic', strength: 1, symmetryX: true }, 'sphere', 4);
+    const mesh = obj.mesh;
+    const before = mesh.positions.copy();
+    drag(engine, 14, [430, 280], [470, 320]);
+    let plus = 0, minus = 0;
+    for (let v = 0; v < mesh.liveVerts; v++) {
+      const o = v * 3;
+      if (Math.abs(mesh.positions.array[o] - before[o]) +
+          Math.abs(mesh.positions.array[o + 2] - before[o + 2]) < 1e-5) continue;
+      if (before[o] > 0) plus++; else minus++;
+    }
+    check('trim respects symmetry', plus > 10 && minus > 10, `+x ${plus}, -x ${minus}`);
+    audit(mesh, 'trim with symmetry');
+    eq('mesh still closed', mesh.countBorderEdges(), 0);
+  }
+}
+
 report('brush');

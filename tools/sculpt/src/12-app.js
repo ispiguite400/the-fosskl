@@ -167,7 +167,8 @@
    * ================================================================ */
 
   /** The brushes that get a permanent button. The rest live under "More". */
-  var PRIMARY_BRUSHES = ['clay', 'draw', 'inflate', 'smooth', 'flatten', 'crease', 'move', 'paint'];
+  var PRIMARY_BRUSHES = ['clay', 'draw', 'trimdynamic', 'trimnormal', 'smooth',
+                        'flatten', 'crease', 'move', 'inflate', 'paint'];
 
   A.buildDom = function () {
     var self = this;

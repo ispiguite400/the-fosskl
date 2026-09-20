@@ -6239,6 +6239,9 @@ input[type=color] {
   /** How steeply a surface must turn away before the brush fades out. */
   var RIM_FADE = 0.4;
 
+  /** How deep one pass of Trim Normal cuts, as a fraction of brush radius. */
+  var TRIM_DEPTH = 0.12;
+
   /* ================================================================ *
    * falloff curves
    * ================================================================ */
@@ -6274,6 +6277,10 @@ input[type=color] {
     this.delta = V3.create(0, 0, 0);      // local-space pointer delta (grab brushes)
     this.planePoint = V3.create(0, 0, 0);
     this.planeNormal = V3.create(0, 1, 0);
+    // where the stroke started, which is the plane Trim Normal holds to
+    this.anchorPoint = V3.create(0, 0, 0);
+    this.anchorNormal = V3.create(0, 1, 0);
+    this.anchorRadius = 1;
     this.radius = 1;
     this.strength = 0.5;
     this.invert = false;
@@ -6499,6 +6506,68 @@ input[type=color] {
     });
   }
 
+  /**
+   * Trim: shave the surface flat against a plane.
+   *
+   * The difference from Flatten is the weighting. Flatten eases off towards
+   * the rim of the brush, which leaves a soft dish; a trim holds full
+   * strength across most of the footprint so the patch lands *on* the plane
+   * and meets the untouched surface at a crisp edge. That is what makes it
+   * the tool for hard surfaces — armour plates, cut stone, blocky props.
+   *
+   * By default it only cuts: material above the plane comes down, nothing
+   * below is raised, so repeated strokes carve a facet instead of inflating
+   * the form. Ctrl (invert) fills below the plane instead.
+   *
+   * `mode` picks where the plane comes from:
+   *   'dynamic' — recomputed from the surface under the brush each stamp, so
+   *               it follows the form and faceting it as you go
+   *   'normal'  — fixed where the stroke started, so one drag trims
+   *               everything to a single flat face
+   */
+  function trimBrush(ctx, mode) {
+    var px, py, pz, nx, ny, nz;
+    if (mode === 'normal') {
+      nx = ctx.anchorNormal[0]; ny = ctx.anchorNormal[1]; nz = ctx.anchorNormal[2];
+      // Sit the plane a little below the point the stroke started from.
+      // Exactly tangent, it would have nothing above it to cut on a convex
+      // form — the brush would appear to do nothing until you dragged off
+      // the high point. This depth is what one pass shaves off.
+      // measured once at the start of the stroke: the brush radius changes
+      // slightly as the pointer moves nearer or further from the camera, and
+      // using the live value would step the plane and terrace the cut
+      var sink = ctx.anchorRadius * TRIM_DEPTH * (ctx.invert ? -1 : 1);
+      px = ctx.anchorPoint[0] - nx * sink;
+      py = ctx.anchorPoint[1] - ny * sink;
+      pz = ctx.anchorPoint[2] - nz * sink;
+    } else {
+      areaPlane(ctx);
+      px = ctx.planePoint[0]; py = ctx.planePoint[1]; pz = ctx.planePoint[2];
+      nx = ctx.planeNormal[0]; ny = ctx.planeNormal[1]; nz = ctx.planeNormal[2];
+    }
+    var l = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (l < 1e-12) return;
+    nx /= l; ny /= l; nz /= l;
+
+    var cut = !ctx.invert;
+    // trims are meant to be decisive; a full-strength stamp lands the patch
+    // on the plane rather than easing towards it
+    var strength = S.clamp(ctx.strength * 1.5, 0, 1);
+    eachVert(ctx, function (v, o, f, pos) {
+      var d = (pos[o] - px) * nx + (pos[o + 1] - py) * ny + (pos[o + 2] - pz) * nz;
+      if (cut ? d <= 0 : d >= 0) return;          // one-sided
+      var w = f * 2.2;
+      if (w > 1) w = 1;                            // plateau: crisp border
+      var move = -d * strength * w;
+      pos[o] += nx * move;
+      pos[o + 1] += ny * move;
+      pos[o + 2] += nz * move;
+    });
+  }
+
+  BrushFns.trimDynamic = function (ctx) { trimBrush(ctx, 'dynamic'); };
+  BrushFns.trimNormal = function (ctx) { trimBrush(ctx, 'normal'); };
+
   BrushFns.flatten = function (ctx) { planeBrush(ctx, 'flatten'); };
   BrushFns.fill = function (ctx) { planeBrush(ctx, 'fill'); };
   BrushFns.scrape = function (ctx) { planeBrush(ctx, 'scrape'); };
@@ -6698,6 +6767,12 @@ input[type=color] {
     { id: 'layer', label: 'Layer', group: 'Add', key: '7', fn: BrushFns.layer,
       strength: 0.5, hint: 'Raises a plateau of even height, never higher than once.' },
 
+    { id: 'trimdynamic', label: 'Trim Dyn', group: 'Refine', key: 'T', fn: BrushFns.trimDynamic,
+      strength: 0.6, crisp: true,
+      hint: 'Shaves the surface flat against the plane under the brush, with a crisp edge. Cuts material away; Ctrl fills instead.' },
+    { id: 'trimnormal', label: 'Trim Nrm', group: 'Refine', key: 'E', fn: BrushFns.trimNormal,
+      strength: 0.6, crisp: true,
+      hint: 'Trims to one flat plane, fixed where you start the stroke — for slicing a clean face across a form.' },
     { id: 'smooth', label: 'Smooth', group: 'Refine', key: 'S', fn: BrushFns.smooth,
       strength: 0.5, hint: 'Relaxes the surface along itself. Hold Shift with any brush.' },
     { id: 'flatten', label: 'Flatten', group: 'Refine', key: '8', fn: BrushFns.flatten,
@@ -6812,6 +6887,7 @@ input[type=color] {
       masks: !!brush.mask
     });
 
+    this.anchorRadius = this.localRadius(this._anchorWorld);
     this.ctx.origin = (brush.grab || brush.id === 'layer') ? new Map() : null;
     this.grabVerts = null;
 
@@ -6931,6 +7007,11 @@ input[type=color] {
       V3.set(ctx.delta, this.strokeDelta ? this.strokeDelta[0] * m[0] : 0,
                         this.strokeDelta ? this.strokeDelta[1] * m[1] : 0,
                         this.strokeDelta ? this.strokeDelta[2] * m[2] : 0);
+      // the plane Trim Normal holds to, mirrored for this symmetry pass
+      V3.set(ctx.anchorPoint, this._anchorLocal[0] * m[0], this._anchorLocal[1] * m[1], this._anchorLocal[2] * m[2]);
+      V3.set(ctx.anchorNormal, this._anchorNormal[0] * m[0], this._anchorNormal[1] * m[1], this._anchorNormal[2] * m[2]);
+      V3.normalize(ctx.anchorNormal, ctx.anchorNormal);
+      ctx.anchorRadius = this.anchorRadius || radius;
       ctx.rotateAngle = this.rotateAngle || 0;
       if (st.paintColor) V3.copy(ctx.color, st.paintColor);
       ctx.origin = this.ctx.origin;
@@ -6939,7 +7020,9 @@ input[type=color] {
       this.history.captureVerts(verts, ctx.count);
       brush.fn(ctx);
 
-      var autoSmooth = brush.paint || brush.mask ? 0 : (st.autoSmooth || 0);
+      // `crisp` brushes (the trims) skip auto-smoothing: rounding the edge
+      // off afterwards would undo the hard face they exist to cut
+      var autoSmooth = (brush.paint || brush.mask || brush.crisp) ? 0 : (st.autoSmooth || 0);
       if (autoSmooth > 0) {
         mesh.smoothVerts(verts, ctx.count, autoSmooth * 0.5, true, ctx.weights);
       }
@@ -8260,6 +8343,8 @@ input[type=color] {
     layer: 'M4 8h16v3H4Z M6 14h12v3H6Z',
     smooth: 'M3 15c3 0 4.5-6 9-6s6 6 9 6 M3 19h18',
     flatten: 'M3 14h18 M6 9c2 2 4 2 6 0s4-2 6 0',
+    trimdynamic: 'M20.5 8.5H3.5 M12 21a9 9 0 0 1-8.5-12.5 M12 21a9 9 0 0 0 8.5-12.5 M4 6l3-3',
+    trimnormal: 'M20.5 11H3.5 M12 21a9 9 0 0 1-8.4-10 M12 21a9 9 0 0 0 8.4-10 M12 8V2 M9.6 4.4 12 2l2.4 2.4',
     fill: 'M3 15h18 M8 15V9l4-3 4 3v6',
     scrape: 'M3 10h18 M7 15c1.5-2 3-2 5 0s3.5 2 5 0',
     pinch: 'M12 3v7 M12 21v-7 M8 10h8 M8 14h8 M9 6l3-3 3 3 M9 18l3 3 3-3',
@@ -8799,7 +8884,8 @@ input[type=color] {
    * ================================================================ */
 
   /** The brushes that get a permanent button. The rest live under "More". */
-  var PRIMARY_BRUSHES = ['clay', 'draw', 'inflate', 'smooth', 'flatten', 'crease', 'move', 'paint'];
+  var PRIMARY_BRUSHES = ['clay', 'draw', 'trimdynamic', 'trimnormal', 'smooth',
+                        'flatten', 'crease', 'move', 'inflate', 'paint'];
 
   A.buildDom = function () {
     var self = this;

@@ -50,10 +50,28 @@ orbit. That is the whole interface.
 - `[` `]` size, `{` `}` strength, `X` `Y` `Z` mirror, `D` dynamic topology,
   `F` frame, `W` wireframe, `?` for the full list
 
-Eighteen brushes: clay, clay strips, draw, inflate, blob, crease, layer,
-smooth, flatten, fill, scrape, pinch, move, snake hook, nudge, rotate, paint
-and mask. Symmetry works in the object's own space, so it keeps working after
-you move or rotate the object.
+Twenty brushes: clay, clay strips, draw, inflate, blob, crease, layer,
+**trim dynamic**, **trim normal**, smooth, flatten, fill, scrape, pinch, move,
+snake hook, nudge, rotate, paint and mask. Symmetry works in the object's own
+space, so it keeps working after you move or rotate the object.
+
+### The trims
+
+Both shave the surface flat against a plane, and both only ever *remove*
+material (hold Ctrl to fill instead). Unlike Flatten, they hold full strength
+across the brush instead of easing off at the rim, so the patch lands on the
+plane and meets the untouched surface at a crisp edge — which is what makes
+them the tools for armour plates, cut stone and blocky props.
+
+- **Trim Dynamic** (`T`) takes its plane from the surface under the brush and
+  recomputes it as you go, so it facets a form while following its shape.
+- **Trim Normal** (`E`) locks the plane where you start the stroke, so one
+  drag cuts a single clean flat face. The plane sits a fixed depth below the
+  point you started from — that depth is what one pass shaves off — so it
+  works even when you start on the high point of a curve.
+
+Neither is auto-smoothed, whatever the Smoothing setting says: rounding the
+edge off afterwards would undo the face you just cut.
 
 **Dynamic topology** adds and removes triangles under the brush as you work,
 so you can pull a horn out of a sphere and it will have triangles where it
@@ -208,11 +226,11 @@ node test/remesh.test.mjs       # 76  watertight and manifold output, volume, co
 node test/io.test.mjs           # 120 round trips for every format, GLB structure, transforms
 node test/brush.test.mjs        # 239 every brush, symmetry, masking, undo, dyntopo
 node test/camera.test.mjs       # 18  projection, framing, ray casting
-node build.js && node test/browser.test.mjs   # 170 end-to-end in a real browser
+node build.js && node test/browser.test.mjs   # 178 end-to-end in a real browser
 node test/shots.mjs             # renders the screenshots in test/screens
 ```
 
-704 checks in total. The browser suite drives the built single file with real
+748 checks in total. The browser suite drives the built single file with real
 mouse, touch and keyboard input, reads the rendered pixels back to confirm the
 renderer is actually drawing, exports every format through the real download
 path and re-imports the files in Node to verify them.

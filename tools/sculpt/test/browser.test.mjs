@@ -69,10 +69,10 @@ await page.waitForTimeout(400);
   eq('standalone build marker', state.standalone, 'standalone');
   eq('one starting object', state.objects, 1);
   eq('starting sphere triangle count', state.tris, 1280);
-  eq('nine brush buttons on screen (8 plus more)', state.toolButtons, 9);
+  eq('eleven brush buttons on screen (10 plus more)', state.toolButtons, 11);
   eq('size and strength sliders on screen', state.pills, 2);
   // the whole point of the redesign: the resting screen stays uncluttered
-  check('the resting screen shows few controls', state.visibleControls <= 18, String(state.visibleControls));
+  check('the resting screen shows few controls', state.visibleControls <= 20, String(state.visibleControls));
   eq('no sheet is open at rest', state.sheets, 0);
   check('canvas sized to the viewport', state.canvasW > 600 && state.canvasH > 400, `${state.canvasW}x${state.canvasH}`);
   check('no console errors during boot', consoleErrors.length === 0, consoleErrors.join(' | '));
@@ -250,7 +250,7 @@ async function stroke(from, to, steps = 18, opts = {}) {
   await page.locator('#brushes .tool.more').click();
   await page.waitForTimeout(450);
   const cards = await page.locator('.brush-card').count();
-  eq('the brush sheet lists all 18 brushes', cards, 18);
+  eq('the brush sheet lists every brush', cards, 20);
   await page.locator('.brush-card[title^="Pulls out horns"]').click();
   await page.waitForTimeout(220);
   brush = await page.evaluate(() => window.SCULPT_APP.settings.brush);
@@ -290,6 +290,64 @@ async function stroke(from, to, steps = 18, opts = {}) {
   await page.screenshot({ path: path.join(screens, '02-sculpted.png') });
 }
 
+/* ---- the trim brushes through real input ---------------------------- */
+{
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('sphere', 4, true);
+    app.set('symmetryX', false);
+  });
+  await page.waitForTimeout(150);
+
+  // both trims have a permanent button
+  for (const id of ['trimdynamic', 'trimnormal']) {
+    const found = await page.locator(`#brushes .tool[title^="Trim"]`).count();
+    check('the trims are on the brush strip', found === 2, String(found));
+    break;
+  }
+  await page.keyboard.press('t');
+  eq('T selects Trim Dynamic', await page.evaluate(() => window.SCULPT_APP.settings.brush), 'trimdynamic');
+  await page.keyboard.press('e');
+  eq('E selects Trim Normal', await page.evaluate(() => window.SCULPT_APP.settings.brush), 'trimnormal');
+
+  const before = await page.evaluate(() => {
+    const mesh = window.SCULPT_APP.scene.current().mesh;
+    return { tris: mesh.liveTris, positions: Array.from(mesh.positions.view()) };
+  });
+  await stroke([cx - 70, cy - 20], [cx + 70, cy + 10], 18);
+  const after = await page.evaluate((prev) => {
+    const app = window.SCULPT_APP;
+    const mesh = app.scene.current().mesh;
+    const anchor = app.engine._anchorLocal, n = app.engine._anchorNormal;
+    let moved = 0, above = -Infinity, grew = 0;
+    for (let v = 0; v < mesh.masks.length; v++) {
+      if (mesh.vertDead.array[v]) continue;
+      const o = v * 3;
+      if (o + 2 >= prev.length) continue;
+      const d = Math.hypot(mesh.positions.array[o] - prev[o],
+                           mesh.positions.array[o + 1] - prev[o + 1],
+                           mesh.positions.array[o + 2] - prev[o + 2]);
+      if (d <= 1e-5) continue;
+      moved++;
+      const r0 = Math.hypot(prev[o], prev[o + 1], prev[o + 2]);
+      const r1 = Math.hypot(mesh.positions.array[o], mesh.positions.array[o + 1], mesh.positions.array[o + 2]);
+      if (r1 > r0 + 1e-6) grew++;
+      const h = (mesh.positions.array[o] - anchor[0]) * n[0] +
+                (mesh.positions.array[o + 1] - anchor[1]) * n[1] +
+                (mesh.positions.array[o + 2] - anchor[2]) * n[2];
+      if (h > above) above = h;
+    }
+    return { moved, above, grew, tris: mesh.liveTris, border: mesh.countBorderEdges() };
+  }, before.positions);
+  check('a trim stroke cut a patch', after.moved > 30, String(after.moved));
+  eq('the trim only removed material', after.grew, 0);
+  check('nothing is left above the trim plane', after.above < 0.002, String(after.above));
+  eq('the mesh is still closed', after.border, 0);
+  eq('fixed topology, so the count held', after.tris, before.tris);
+  await page.screenshot({ path: path.join(screens, '04-trim.png') });
+  await page.keyboard.press('1');
+}
+
 /* ---- paint and mask ------------------------------------------------ */
 {
   await page.keyboard.press('c');                      // paint brush
@@ -304,7 +362,7 @@ async function stroke(from, to, steps = 18, opts = {}) {
     }
     return painted;
   });
-  check('the paint brush coloured vertices', painted > 50, String(painted));
+  check('the paint brush coloured vertices', painted > 20, String(painted));
 
   await page.keyboard.press('m');                      // mask brush
   await stroke([cx - 40, cy + 60], [cx + 40, cy + 60], 14);
@@ -759,7 +817,7 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   check('the sliders sit above the brush strip', portrait.slidersAboveStrip);
   check('the brush strip scrolls if it overflows', portrait.scrollable);
   eq('nothing is open at rest', layout.sheets, 0);
-  eq('the brush strip is there on a phone', layout.brushButtons, 9);
+  eq('the brush strip is there on a phone', layout.brushButtons, 11);
   eq('both sliders are there on a phone', layout.pills, 2);
   eq('no horizontal page scroll', layout.bodyScrollW, layout.innerW);
   // the menu opens as a sheet

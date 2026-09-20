@@ -45,7 +45,6 @@ await page.evaluate(() => {
   const w = app.canvas.clientWidth, h = app.canvas.clientHeight;
   const cx = w / 2, cy = h / 2;
   app.settings.symmetryX = true;
-  app.settings.dyntopo = true;
   function stroke(brush, from, to, radius, strength, steps = 16, invert = false) {
     app.settings.brush = brush;
     app.settings.radius = radius;
@@ -83,18 +82,60 @@ await page.mouse.move(700, 400);
 await shot('02-sculpting');
 
 /* each sheet */
+/* the trims: cut flat faces onto a ball */
+await page.evaluate(() => {
+  const app = window.SCULPT_APP;
+  const w = app.canvas.clientWidth, h = app.canvas.clientHeight;
+  const cx = w / 2, cy = h / 2;
+  app.setBudget(10000);
+  app.newScene('sphere', 4, true);
+  app.set('symmetryX', false);
+  app.set('flat', true);
+  function stroke(brush, from, to, radius, strength, steps = 16, invert = false) {
+    app.settings.brush = brush;
+    app.settings.radius = radius;
+    app.settings.strength = strength;
+    app.engine.begin({ x: from[0], y: from[1], pressure: 1, invert });
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      app.engine.move({ x: from[0] + (to[0] - from[0]) * t, y: from[1] + (to[1] - from[1]) * t, pressure: 1, invert });
+    }
+    app.engine.end();
+  }
+  // Trim Normal: one clean flat face per drag, from a few angles
+  stroke('trimnormal', [cx - 80, cy - 40], [cx + 80, cy - 30], 190, 1, 16);
+  app.camera.yaw = 1.15; app.camera.update();
+  stroke('trimnormal', [cx - 80, cy - 20], [cx + 80, cy - 10], 190, 1, 16);
+  app.camera.yaw = -0.9; app.camera.pitch = 0.5; app.camera.update();
+  stroke('trimnormal', [cx - 80, cy], [cx + 80, cy + 10], 180, 1, 16);
+  app.camera.yaw = 2.4; app.camera.pitch = -0.3; app.camera.update();
+  stroke('trimnormal', [cx - 80, cy], [cx + 80, cy + 10], 180, 1, 16);
+  // Trim Dynamic: facet what curve is left
+  app.camera.yaw = 0.4; app.camera.pitch = 0.2; app.camera.update();
+  stroke('trimdynamic', [cx - 60, cy + 60], [cx + 60, cy + 80], 110, 1, 18);
+  app.settings.brush = 'trimdynamic';
+  app.settings.radius = 62;
+  app.settings.strength = 0.6;
+  app.frameSelection(true);
+  app.refreshStatus();
+  app.draw();
+});
+await page.mouse.move(690, 420);
+await shot('03-trims');
+await page.evaluate(() => { window.SCULPT_APP.set('flat', false); window.SCULPT_APP.setBudget(2000); });
+
 await page.evaluate(() => window.SCULPT_APP.openMainMenu());
-await shot('03-menu');
+await shot('04-menu');
 await page.evaluate(() => window.SCULPT_APP.openBrushSheet());
-await shot('04-brushes');
+await shot('05-brushes');
 await page.evaluate(() => window.SCULPT_APP.openExportSheet());
-await shot('05-export');
+await shot('06-export');
 await page.evaluate(() => window.SCULPT_APP.openLookSheet());
-await shot('06-look');
+await shot('07-look');
 await page.evaluate(() => window.SCULPT_APP.openBrushSettingsSheet());
-await shot('07-brush-settings');
+await shot('08-brush-settings');
 await page.evaluate(() => window.SCULPT_APP.openObjectsSheet());
-await shot('08-objects');
+await shot('09-objects');
 await page.evaluate(() => { window.SCULPT_APP.closeSheet(); window.SCULPT_APP.dialogRemesh(); });
 await shot('09-remesh');
 await page.keyboard.press('Escape');
