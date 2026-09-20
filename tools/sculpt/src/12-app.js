@@ -31,15 +31,23 @@
     pressureRadius: true,
     pressureStrength: true,
     paintColorHex: '#d94f3d',
-    // topology — sized for game meshes, not for rendering.
-    // Roblox rejects a MeshPart over 10,000 triangles, so that is the
-    // default ceiling and the detail size is chosen to land inside it.
-    dyntopo: true,
+    /*
+     * Topology — sized for a game, not for rendering.
+     *
+     * Roblox refuses a MeshPart over 10,000 triangles, but that is a ceiling,
+     * not a target: props in a real game are usually 1k-4k so that hundreds
+     * of them can be on screen at once. So the default budget is 2,000 and
+     * dynamic topology starts switched OFF — the mesh keeps the triangles it
+     * started with and you move them around, which is how low-poly models
+     * are made. Turn it on (D, or Brush settings) when you want the brush to
+     * add detail, and it will still stop at the budget.
+     */
+    dyntopo: false,
     detailMode: 'relative',
-    detailPercent: 25,
+    detailPercent: 45,
     detailSize: 0.01,
-    maxTriangles: 10000,
-    triBudget: 10000,
+    maxTriangles: 2000,
+    triBudget: 2000,
     remeshResolution: 160,
     remeshSmooth: 2,
     decimateTarget: 30000,
@@ -98,7 +106,7 @@
     this.buildDom();
     this.initGL();
     this.bindInput();
-    this.newScene('sphere', 4, true);
+    this.newScene('sphere', null, true);
     this.restoreAutosaveOffer();
     this.loop();
   }
@@ -512,7 +520,8 @@
     this.openSheet({
       title: 'Export',
       rows: [
-        { icon: 'cube', label: 'Roblox', hint: 'OBJ, reduced to ' + S.formatCount(this.settings.triBudget) + ' triangles',
+        { icon: 'cube', label: 'Roblox', hint: 'OBJ, reduced to ' +
+            S.formatCount(Math.min(this.settings.triBudget || 10000, 10000)) + ' triangles',
           note: 'ready', onclick: function () { self.exportForRoblox(); } },
         { icon: 'file', label: 'OBJ', hint: 'Full detail, opens in anything',
           onclick: function () { self.quickExport('obj'); } },
@@ -738,18 +747,15 @@
       });
 
     var budgetSeg = UI.segment({ label: 'Budget', value: String(st.triBudget), options: [
-      { id: '10000', label: 'Roblox 10k', title: 'Roblox\u2019s limit for one MeshPart' },
-      { id: '50000', label: '50k' },
-      { id: '250000', label: '250k' }
-    ], onchange: function (v) {
-      var n = parseInt(v, 10);
-      self.set('triBudget', n);
-      self.set('maxTriangles', n);
-      // coarser triangles for a smaller budget, so sculpting stays inside it
-      self.set('detailPercent', n <= 10000 ? 25 : (n <= 50000 ? 12 : 6));
-      self.refreshStatus();
-      UI.toast('Budget ' + S.formatCount(n) + ' triangles');
-    } });
+      { id: '1000', label: '1k', title: 'Very light — small props' },
+      { id: '2000', label: '2k', title: 'A good Roblox prop' },
+      { id: '5000', label: '5k', title: 'A detailed Roblox model' },
+      { id: '10000', label: '10k', title: 'Roblox\u2019s hard limit for one MeshPart' }
+    ], onchange: function (v) { self.setBudget(parseInt(v, 10)); } });
+    var bigBudgetRow = el('div.btn-grid', null, [
+      UI.button('50k', { onclick: function () { self.setBudget(50000); } }),
+      UI.button('250k — other engines', { onclick: function () { self.setBudget(250000); } })
+    ]);
 
     this.openSheet({
       title: brush.label + ' settings',
@@ -811,10 +817,11 @@
     // the detail sliders belong with the dyntopo switch
     var body = this._sheet.querySelector('.sheet-body');
     body.appendChild(budgetSeg);
+    body.appendChild(bigBudgetRow);
     body.appendChild(detailRow);
     body.appendChild(maxRow);
     body.appendChild(el('p.sheet-note', {
-      text: 'Roblox will not accept a mesh over 10,000 triangles. Sculpt inside the budget, or sculpt freely and use Export \u2192 Roblox, which reduces a copy.'
+      text: 'Roblox refuses a mesh over 10,000 triangles, but a prop in a real game is usually 1k\u20134k. Picking a budget also sets how coarse dynamic topology works, and switches it off below 10k so the count cannot creep up.'
     }));
   };
 
@@ -1071,6 +1078,39 @@
    * Dynamic topology stops adding triangles at the budget. Say so once, with
    * the way out, rather than leaving the brush silently doing nothing.
    */
+  /**
+   * Apply a triangle budget. This is the one knob that matters for a game
+   * mesh, so it sets everything that follows from it: the ceiling, how
+   * coarse dynamic topology works, and whether dynamic topology runs at all
+   * (below 10k a fixed mesh is easier to keep inside the budget).
+   */
+  A.setBudget = function (n) {
+    n = Math.max(200, Math.round(n));
+    this.set('triBudget', n);
+    this.set('maxTriangles', n);
+    this.set('detailPercent', n <= 2000 ? 45 : (n <= 10000 ? 25 : (n <= 50000 ? 12 : 6)));
+    if (n <= 10000 && this.settings.dyntopo) this.set('dyntopo', false);
+    this.refreshStatus();
+    this.updateHud();
+    var obj = this.scene.current();
+    var msg = 'Budget ' + S.formatCount(n) + ' triangles';
+    if (obj && obj.mesh.liveTris > n) msg += ' — this mesh is over it; tap the counter to reduce';
+    UI.toast(msg, obj && obj.mesh.liveTris > n ? 'bad' : null, 3600);
+  };
+
+  /** A starting density that lands near the budget for a given primitive. */
+  A.detailForBudget = function (entry) {
+    var budget = this.settings.triBudget || 2000;
+    if (entry.id === 'sphere') {
+      // icosphere: 20 * 4^n triangles
+      var n = Math.round(Math.log(Math.max(budget * 0.65, 20) / 20) / Math.log(4));
+      return S.clamp(n, 1, entry.detailMax || 7);
+    }
+    // everything else is a grid: triangles grow with the square of the knob
+    var guess = Math.round(Math.sqrt(budget / 60));
+    return S.clamp(guess, 2, entry.detailMax || 12);
+  };
+
   A.warnIfBudgetFull = function () {
     var obj = this.scene.current();
     if (!obj || !this.settings.dyntopo) return;
@@ -1271,6 +1311,9 @@
 
   A.newScene = function (primId, detail, initial) {
     var self = this;
+    if (detail === undefined || detail === null) {
+      detail = this.detailForBudget(S.Prim.byId(primId || 'sphere'));
+    }
     for (var i = 0; i < this.scene.objects.length; i++) this.renderer.releaseObject(this.scene.objects[i]);
     this.scene.clear();
     this.history.clear();
@@ -1421,10 +1464,32 @@
     var obj = this.scene.current();
     if (!obj) return;
     var predicted = obj.mesh.liveTris * 4;
+    var budget = this.settings.triBudget || 10000;
     if (predicted > 6000000) {
-      UI.toast('That would make ' + S.formatCount(predicted) + ' triangles — decimate or remesh first', 'bad', 4200);
+      UI.toast('That would make ' + S.formatCount(predicted) + ' triangles — reduce or remesh first', 'bad', 4200);
       return;
     }
+    if (predicted > budget) {
+      UI.dialog({
+        title: 'Over your triangle budget',
+        icon: 'decimate',
+        content: [
+          el('p', { html: 'Subdividing would take this mesh from <b>' + S.formatCount(obj.mesh.liveTris) +
+            '</b> to <b>' + S.formatCount(predicted) + '</b> triangles. Your budget is <b>' +
+            S.formatCount(budget) + '</b>' + (budget <= 10000 ? ', and Roblox will not accept a MeshPart over 10,000.' : '.') }),
+          el('div.hint', { text: 'You can subdivide anyway and reduce on the way out — Export \u2192 Roblox always fits the file to the budget.' })
+        ],
+        buttons: [
+          { label: 'Cancel' },
+          { label: 'Subdivide anyway', class: 'accent', onclick: function () { self.doSubdivide(smooth); } }
+        ]
+      });
+      return;
+    }
+    this.doSubdivide(smooth);
+  };
+
+  A.doSubdivide = function (smooth) {
     this.withMesh(smooth ? 'Subdivide (smooth)' : 'Subdivide', function (o, mesh) {
       var before = mesh.liveTris;
       mesh.subdivide(!!smooth);
@@ -1811,7 +1876,10 @@
    */
   A.exportForRoblox = function (budget) {
     var self = this;
-    var limit = budget || this.settings.triBudget || 10000;
+    // Roblox's own ceiling is 10,000 per MeshPart, so this export never goes
+    // above that however high the working budget is set. A lower working
+    // budget is honoured, since that is what the model was made for.
+    var limit = Math.min(budget || this.settings.triBudget || 10000, 10000);
     var objs = this.exportTargets();
     if (!objs.length) { UI.toast('Nothing to export', 'bad'); return; }
     UI.busy('Preparing for Roblox', 'reducing to ' + S.formatCount(limit) + ' triangles', function (report) {
@@ -1995,7 +2063,7 @@
       chosen = id;
       for (var k in buttons) buttons[k].classList.toggle('on', k === id);
       var entry = S.Prim.byId(id);
-      detailRow.set(entry.detail);
+      detailRow.set(self.detailForBudget(entry));
       detailRow.querySelector('label').textContent = entry.detailLabel || 'Detail';
       updateEstimate();
     }
@@ -2003,7 +2071,11 @@
     function updateEstimate() {
       var entry = S.Prim.byId(chosen);
       var data = entry.build(detailRow.get());
-      estimate.textContent = 'About ' + S.formatCount(data.indices.length / 3) + ' triangles before welding.';
+      var tris = data.indices.length / 3;
+      var budget = self.settings.triBudget;
+      estimate.innerHTML = '<b>' + S.formatCount(tris) + '</b> triangles \u2014 your budget is ' +
+        S.formatCount(budget) + '.' +
+        (tris > budget ? ' <span style="color:var(--red)">Over budget; lower the detail, or reduce it afterwards.</span>' : '');
     }
     S.Prim.catalogue.forEach(function (entry) {
       var b = el('button.prim', { onclick: function () { select(entry.id); } }, [
@@ -2014,7 +2086,7 @@
       buttons[entry.id] = b;
       grid.appendChild(b);
     });
-    detailRow = UI.slider({ label: 'Detail', min: 0, max: 12, step: 1, value: 4,
+    detailRow = UI.slider({ label: 'Detail', min: 0, max: 12, step: 1, value: 3,
       onchange: function () { updateEstimate(); } });
 
     UI.dialog({
@@ -2022,7 +2094,7 @@
       icon: 'plus',
       wide: true,
       content: [grid, detailRow, estimate,
-        el('div.hint', { text: 'Sphere is the usual starting point: its triangles are all about the same size, which is what dynamic topology likes.' })],
+        el('div.hint', { text: 'Sphere is the usual starting point: its triangles are all about the same size. The detail is preset to suit your triangle budget.' })],
       buttons: [
         { label: 'Cancel' },
         { label: replaceScene ? 'Start sculpting' : 'Add object', class: 'accent', onclick: function () {

@@ -458,8 +458,12 @@
 
   S.formatCount = function (n) {
     if (n < 1000) return String(n);
-    if (n < 1e6) return (n / 1000).toFixed(n < 10000 ? 1 : 0) + 'k';
-    return (n / 1e6).toFixed(2) + 'M';
+    if (n < 1e6) {
+      // 1280 -> "1.3k" but 2000 -> "2k", not "2.0k"
+      var k = (n / 1000).toFixed(n < 10000 ? 1 : 0);
+      return k.replace(/\.0$/, '') + 'k';
+    }
+    return (n / 1e6).toFixed(2).replace(/\.00$/, '') + 'M';
   };
 
   S.formatBytes = function (n) {

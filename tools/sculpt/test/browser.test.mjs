@@ -68,7 +68,7 @@ await page.waitForTimeout(400);
   check('the app booted', state.gl === true);
   eq('standalone build marker', state.standalone, 'standalone');
   eq('one starting object', state.objects, 1);
-  eq('starting sphere triangle count', state.tris, 5120);
+  eq('starting sphere triangle count', state.tris, 1280);
   eq('nine brush buttons on screen (8 plus more)', state.toolButtons, 9);
   eq('size and strength sliders on screen', state.pills, 2);
   // the whole point of the redesign: the resting screen stays uncluttered
@@ -117,7 +117,7 @@ async function pixelStats() {
   const kLum = (s.corner[0] + s.corner[1] + s.corner[2]) / 3;
   check('the model is lit against the background', cLum > kLum + 25, `centre ${cLum.toFixed(0)} vs corner ${kLum.toFixed(0)}`);
   check('the clay matcap tints the model warm', s.centre[0] > s.centre[2], s.centre.join(','));
-  check('triangles were submitted', s.triangles >= 5120, String(s.triangles));
+  check('triangles were submitted', s.triangles >= 1280, String(s.triangles));
   await page.screenshot({ path: path.join(screens, '01-startup.png') });
 }
 
@@ -164,7 +164,9 @@ async function stroke(from, to, steps = 18, opts = {}) {
   const after = await meshState();
   check('a clay stroke pushed the surface out', after.far > before.far + 0.005,
     `${before.far.toFixed(4)} -> ${after.far.toFixed(4)}`);
-  check('dynamic topology added triangles', after.tris > before.tris, `${before.tris} -> ${after.tris}`);
+  // the default is a fixed low-poly mesh: sculpting must not grow the count,
+  // which is what keeps a model inside a Roblox budget
+  eq('fixed topology keeps the triangle count', after.tris, before.tris);
   eq('the mesh is still closed', after.borderEdges, 0);
   eq('one undo step recorded', after.undo, 1);
 
@@ -179,6 +181,58 @@ async function stroke(from, to, steps = 18, opts = {}) {
   await page.waitForTimeout(80);
   const redone = await meshState();
   eq('redo restored the sculpt', redone.tris, after.tris);
+}
+
+/* ---- the triangle budget ------------------------------------------- */
+{
+  const defaults = await page.evaluate(() => ({
+    dyntopo: window.SCULPT_APP.settings.dyntopo,
+    budget: window.SCULPT_APP.settings.triBudget,
+    cap: window.SCULPT_APP.settings.maxTriangles,
+    tris: window.SCULPT_APP.scene.current().mesh.liveTris
+  }));
+  eq('dynamic topology is off by default', defaults.dyntopo, false);
+  eq('the default budget suits a Roblox prop', defaults.budget, 2000);
+  check('the starting mesh is inside the budget', defaults.tris <= defaults.budget,
+    `${defaults.tris} of ${defaults.budget}`);
+
+  // with dynamic topology on, detail is added but capped at the budget
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('sphere', null, true);
+    app.set('dyntopo', true);
+  });
+  await page.waitForTimeout(150);
+  const start = await meshState();
+  for (let i = 0; i < 6; i++) {
+    await stroke([cx - 70 + i * 12, cy - 40 + i * 9], [cx + 70, cy + 30 + i * 6], 10);
+  }
+  const grown = await meshState();
+  check('dynamic topology adds detail when switched on', grown.tris > start.tris,
+    `${start.tris} -> ${grown.tris}`);
+  check('it never passes the budget', grown.tris <= defaults.cap + 8,
+    `${grown.tris} of ${defaults.cap}`);
+  eq('still closed at the budget', grown.borderEdges, 0);
+
+  // picking a budget sets everything that follows from it
+  const applied = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.setBudget(1000);
+    const low = { cap: app.settings.maxTriangles, dyntopo: app.settings.dyntopo, detail: app.settings.detailPercent };
+    app.setBudget(250000);
+    const high = { cap: app.settings.maxTriangles, dyntopo: app.settings.dyntopo, detail: app.settings.detailPercent };
+    app.setBudget(2000);
+    return { low, high, suggested: app.detailForBudget(window.SCULPT.Prim.byId('sphere')) };
+  });
+  eq('a 1k budget caps the mesh', applied.low.cap, 1000);
+  eq('a 1k budget switches dynamic topology off', applied.low.dyntopo, false);
+  check('a small budget uses coarser triangles', applied.low.detail > applied.high.detail,
+    `${applied.low.detail}% vs ${applied.high.detail}%`);
+  eq('a big budget raises the cap', applied.high.cap, 250000);
+  eq('a 2k budget suggests a 1.3k starting sphere', applied.suggested, 3);
+
+  await page.evaluate(() => { window.SCULPT_APP.newScene('sphere', null, true); window.SCULPT_APP.set('dyntopo', false); });
+  await page.waitForTimeout(150);
 }
 
 /* ---- brush switching, modifiers, symmetry -------------------------- */
@@ -345,11 +399,27 @@ async function stroke(from, to, steps = 18, opts = {}) {
   eq('decimated mesh is closed', decimated.borderEdges, 0);
   check('decimate reduced the count a lot', decimated.tris < remeshed / 2, `${remeshed} -> ${decimated.tris}`);
 
+  // subdividing would blow past the budget, so it must ask first
   await page.evaluate(() => window.SCULPT_APP.subdivide(true));
+  await page.waitForTimeout(250);
+  const guarded = await page.locator('.dialog > header > span').first().textContent();
+  eq('subdivide warns before exceeding the budget', guarded, 'Over your triangle budget');
+  const unchanged = await page.evaluate(() => window.SCULPT_APP.scene.current().mesh.liveTris);
+  eq('nothing happened while the warning was up', unchanged, decimated.tris);
+  // confirm it
+  await page.locator('.dialog footer .btn.accent').click();
   await page.waitForFunction((t) => document.getElementById('busy').hidden &&
     window.SCULPT_APP.scene.current().mesh.liveTris > t, decimated.tris, { timeout: 60000 });
   const subdivided = await meshState();
   eq('subdivide quadrupled the triangles', subdivided.tris, decimated.tris * 4);
+  // and within the budget it just runs
+  await page.evaluate(() => { window.SCULPT_APP.setBudget(250000); });
+  await page.evaluate(() => window.SCULPT_APP.subdivide(false));
+  await page.waitForFunction((t) => document.getElementById('busy').hidden &&
+    window.SCULPT_APP.scene.current().mesh.liveTris > t, subdivided.tris, { timeout: 60000 });
+  eq('inside the budget it subdivides without asking',
+    await page.evaluate(() => window.SCULPT_APP.scene.current().mesh.liveTris), subdivided.tris * 4);
+  eq('no dialog was shown', await page.locator('.dialog').count(), 0);
   await page.screenshot({ path: path.join(screens, '05-remeshed.png') });
 }
 
@@ -521,6 +591,7 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     app.newScene('sphere', 4, true);
     app.settings.dyntopo = true;
     app.settings.detailPercent = 20;
+    app.settings.maxTriangles = 400000;
   });
   await page.waitForTimeout(150);
   const brushes = ['1', '2', '3', '4', '6', '7', '8', 'p', 'h', 'n'];
@@ -745,6 +816,7 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   // has to come back under that whatever the sculpt is doing.
   const dense = await page.evaluate(() => {
     const app = window.SCULPT_APP;
+    app.setBudget(2000);                 // back to the Roblox-sized default
     app.newScene('sphere', 4, true);
     app.set('maxTriangles', 400000);
     app.scene.current().mesh.subdivide(false);      // 20480
@@ -768,8 +840,9 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     res.warnings.join(';'));
   const m = new S2.Mesh();
   m.setFromArrays(res.objects[0].positions, res.objects[0].indices, { weld: true });
-  check('the Roblox export fits in 10,000 triangles', m.liveTris <= 10000, `${dense} -> ${m.liveTris}`);
-  check('the Roblox export is not needlessly small', m.liveTris > 8000, String(m.liveTris));
+  // the working budget is 2k here, and the export honours the smaller number
+  check('the Roblox export fits the budget', m.liveTris <= 2000, `${dense} -> ${m.liveTris}`);
+  check('the Roblox export is not needlessly small', m.liveTris > 1600, String(m.liveTris));
   eq('the Roblox export is a closed surface', m.countBorderEdges(), 0);
   eq('the Roblox export is manifold', m.countNonManifoldEdges(), 0);
   const stillDense = await page.evaluate(() => window.SCULPT_APP.scene.current().mesh.liveTris);
@@ -780,7 +853,23 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     const c = document.getElementById('title-chip');
     return { text: c.textContent, over: c.classList.contains('over') };
   });
-  check('the budget chip shows the overrun', chip.over && /10k$/.test(chip.text), JSON.stringify(chip));
+  check("the budget chip shows the overrun", chip.over && /2k$/.test(chip.text), JSON.stringify(chip));
+
+  // and from a high working budget it still comes back Roblox-legal
+  await page.evaluate(() => window.SCULPT_APP.setBudget(250000));
+  const [download2] = await Promise.all([
+    page.waitForEvent('download', { timeout: 60000 }),
+    page.evaluate(() => window.SCULPT_APP.exportForRoblox())
+  ]);
+  const dest2 = path.join(tmp, 'roblox-high.obj');
+  await download2.saveAs(dest2);
+  const buf2 = fs.readFileSync(dest2);
+  const res2 = S2.IO.importBuffer('x.obj', buf2.buffer.slice(buf2.byteOffset, buf2.byteOffset + buf2.byteLength));
+  const m2 = new S2.Mesh();
+  m2.setFromArrays(res2.objects[0].positions, res2.objects[0].indices, { weld: true });
+  check('a 250k working budget still exports under Roblox\'s 10k limit', m2.liveTris <= 10000,
+    String(m2.liveTris));
+  await page.evaluate(() => window.SCULPT_APP.setBudget(2000));
 }
 
 /* ---- final state --------------------------------------------------- */

@@ -57,15 +57,15 @@ await page.evaluate(() => {
     }
     app.engine.end();
   }
-  stroke('clay', [cx + 35, cy - 95], [cx + 125, cy - 80], 80, 0.35);        // brow
-  stroke('clay', [cx + 58, cy - 50], [cx + 104, cy - 46], 60, 0.3, 14, true); // eye sockets
-  stroke('clay', [cx + 62, cy + 28], [cx + 118, cy + 8], 86, 0.3);          // cheeks
-  stroke('claystrips', [cx + 45, cy + 128], [cx + 115, cy + 80], 70, 0.3);  // jaw
+  stroke('clay', [cx + 30, cy - 90], [cx + 120, cy - 74], 90, 0.4);         // brow
+  stroke('clay', [cx + 55, cy - 44], [cx + 105, cy - 40], 66, 0.35, 14, true); // eye sockets
+  stroke('clay', [cx + 60, cy + 34], [cx + 120, cy + 10], 96, 0.35);        // cheeks
+  stroke('claystrips', [cx + 40, cy + 130], [cx + 118, cy + 84], 80, 0.35); // jaw
   app.settings.symmetryX = false;
-  stroke('draw', [cx, cy + 2], [cx - 2, cy + 30], 44, 0.4, 14);             // nose bridge
+  stroke('draw', [cx, cy + 4], [cx - 2, cy + 34], 52, 0.5, 14);             // nose
   app.settings.symmetryX = true;
-  stroke('crease', [cx + 8, cy + 86], [cx + 58, cy + 80], 42, 0.3, 12);     // mouth
-  stroke('smooth', [cx + 10, cy - 60], [cx + 120, cy + 60], 120, 0.6, 18);
+  stroke('crease', [cx + 10, cy + 88], [cx + 56, cy + 82], 48, 0.35, 12);   // mouth
+  stroke('smooth', [cx + 10, cy - 60], [cx + 120, cy + 60], 130, 0.5, 18);
   app.settings.paintColor = new Float32Array([0.86, 0.62, 0.5]);
   stroke('paint', [cx, cy - 20], [cx + 130, cy + 20], 170, 1, 10);
   app.settings.paintColor = new Float32Array([0.62, 0.24, 0.2]);
@@ -159,11 +159,11 @@ await phone.evaluate(() => {
     }
     app.engine.end();
   }
-  stroke('clay', [cx + 18, cy - 70], [cx + 66, cy - 58], 56, 0.4);
-  stroke('clay', [cx + 28, cy - 30], [cx + 56, cy - 28], 40, 0.35, 10, true);
-  stroke('draw', [cx, cy - 4], [cx, cy + 24], 36, 0.45, 12);
-  stroke('clay', [cx + 30, cy + 52], [cx + 62, cy + 30], 52, 0.35);
-  stroke('smooth', [cx + 10, cy - 50], [cx + 70, cy + 40], 90, 0.6, 14);
+  stroke('clay', [cx + 16, cy - 74], [cx + 62, cy - 62], 62, 0.45);
+  stroke('clay', [cx + 26, cy - 32], [cx + 54, cy - 30], 44, 0.4, 10, true);
+  stroke('draw', [cx, cy - 2], [cx, cy + 26], 40, 0.5, 12);
+  stroke('clay', [cx + 28, cy + 56], [cx + 60, cy + 34], 58, 0.4);
+  stroke('smooth', [cx + 10, cy - 50], [cx + 70, cy + 40], 100, 0.5, 14);
   app.settings.brush = 'clay';
   app.settings.radius = 60;
   app.frameSelection(true);

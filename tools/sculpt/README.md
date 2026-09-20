@@ -4,9 +4,10 @@ A digital sculpting app that runs in one HTML file, on a phone or a computer.
 Open it, sculpt, export. Nothing is locked, watermarked or limited —
 **import and export are free, in every format, at any triangle count.**
 
-Set up for **Roblox** out of the box: Roblox will not accept a MeshPart over
-10,000 triangles, so that is the default budget, it is shown on screen while
-you sculpt, and **Export → Roblox** writes an OBJ reduced to fit.
+Set up for **Roblox** out of the box, and low-poly on purpose: you start with
+a **1,280-triangle** ball, the budget is **2,000**, and the mesh keeps the
+triangles it started with while you sculpt. The count is on screen the whole
+time, and **Export → Roblox** writes an OBJ that fits.
 
 ```
 tools/sculpt/sculpt.html      ← the whole app; open it in a browser
@@ -60,16 +61,33 @@ needs them. It respects masks, and stops at a triangle limit you set.
 
 ## Roblox
 
-Roblox rejects a MeshPart over **10,000 triangles**. The app is set up for
-that:
+Roblox refuses a MeshPart over **10,000 triangles** — but that is a ceiling,
+not a target. A prop in a real game is usually 1k–4k, so that hundreds of them
+can be on screen at once. The app is set up for that:
 
-- The chip at the top reads `3.5k / 10k`. It turns amber as you approach the
-  budget and red if you pass it. Tap it to reduce the mesh.
-- Dynamic topology stops adding triangles at the budget, so you cannot
-  accidentally sculpt a model Studio will refuse.
-- **☰ → Export → Roblox** writes an OBJ reduced to fit. The reduction happens
-  on a copy, so your sculpt keeps its detail; each object comes out as its own
-  MeshPart inside the limit.
+- You start with a **1,280-triangle** sphere and a **2,000** budget. The chip
+  at the top reads `1.3k / 2k`, turns amber as it fills and red if you pass
+  it. Tap it to reduce the mesh.
+- **Dynamic topology is off.** The mesh keeps the triangles it started with
+  and you move them around, which is how low-poly models are made — the count
+  cannot creep up on you. Turn it on with `D` (or Brush settings) when you
+  want the brush to add detail; it will still stop at the budget.
+- **Subdividing warns you** before it quadruples the count past your budget.
+- **☰ → Export → Roblox** writes an OBJ reduced to fit, and never goes over
+  Roblox's 10,000 even if you raised the working budget. The reduction happens
+  on a copy, so your sculpt keeps its detail, and each object comes out as its
+  own MeshPart.
+
+**Budgets** live in ☰ → Brush settings: 1k, 2k, 5k, 10k, plus 50k and 250k for
+other engines. Picking one sets the ceiling, how coarse dynamic topology
+works, whether it runs at all, and the starting density of new shapes.
+
+| Budget | You get | Good for |
+| --- | --- | --- |
+| 1k | 1,280-triangle start, fixed topology | small props, lots of them |
+| 2k *(default)* | 1,280-triangle start, fixed topology | a normal Roblox prop |
+| 5k–10k | 5,120-triangle start, fixed topology | a detailed hero mesh |
+| 50k+ | dynamic topology on, fine detail | sculpting freely, reduce on export |
 
 Then in Studio: **Model → Insert → Insert 3D Model** (or right-click a
 MeshPart → set its MeshId) and pick the `.obj`. Roblox is Y-up like this app,
@@ -80,10 +98,6 @@ Two things worth knowing: Studio's mesh importer ignores vertex colour (so the
 Roblox export leaves it out to keep the file small — colour a MeshPart with
 its **Color** property or a texture), and one MeshPart is one mesh, so build a
 character as several objects and export them separately.
-
-If you want more detail than 10k while you work, **☰ → Brush settings →
-Budget** offers 50k and 250k as well; the Roblox export will still reduce to
-10k on the way out.
 
 ## Getting a model into another engine
 
@@ -172,6 +186,10 @@ A few decisions worth knowing about:
   its shortest**, then flips the diagonals that leave a badly shaped triangle
   behind. Without those three rules a long session slowly fills the surface
   with slivers, which read as speckles under cavity shading.
+- **The triangle budget drives everything.** It is one number, and it sets
+  the ceiling, the detail size dynamic topology aims for, whether dynamic
+  topology runs at all, the starting density of new shapes, and what the
+  export reduces to. A game mesh has a budget; the tool should know it.
 - **Undo is budgeted by memory, not by step count.** A plain stroke records
   only the vertices it touched; anything that changes topology stores a
   snapshot, because vertex indices move.
@@ -190,11 +208,11 @@ node test/remesh.test.mjs       # 76  watertight and manifold output, volume, co
 node test/io.test.mjs           # 120 round trips for every format, GLB structure, transforms
 node test/brush.test.mjs        # 239 every brush, symmetry, masking, undo, dyntopo
 node test/camera.test.mjs       # 18  projection, framing, ray casting
-node build.js && node test/browser.test.mjs   # 154 end-to-end in a real browser
+node build.js && node test/browser.test.mjs   # 170 end-to-end in a real browser
 node test/shots.mjs             # renders the screenshots in test/screens
 ```
 
-688 checks in total. The browser suite drives the built single file with real
+704 checks in total. The browser suite drives the built single file with real
 mouse, touch and keyboard input, reads the rendered pixels back to confirm the
 renderer is actually drawing, exports every format through the real download
 path and re-imports the files in Node to verify them.
