@@ -51,6 +51,24 @@
     this._vertStamp = new Int32Array(64);
     this._stamp = 0;
 
+    /*
+     * A serial number per vertex, handed out in order of creation.
+     *
+     * Dead slots get reused, so a plain vertex index is not a lasting name
+     * for a vertex: anything that remembers a vertex across a topology
+     * change — the brush engine's record of where a stroke first touched a
+     * vertex, for one — has to be able to tell that its index now means
+     * somebody else. Without it, a stroke pulled newly split vertices onto
+     * a sphere around a dead vertex's old position, which is exactly the
+     * fin-shaped glitch that made sculpting look broken.
+     *
+     * Because the numbers only ever go up, they also say *when* a vertex
+     * appeared, which is how the brush engine tells a vertex the
+     * refinement has just created from one it has only just reached.
+     */
+    this.vertBirth = new Float64Array(64);
+    this._birthClock = 0;
+
     // scratch query results, reused to stay allocation-free
     this.qTris = [];
     this.qVerts = [];
@@ -91,6 +109,11 @@
         vs.set(this._vertStamp);
         this._vertStamp = vs;
       }
+      if (this.vertBirth.length < this.masks.length) {
+        var ve = new Float64Array(Math.max(this.masks.length * 2, 64));
+        ve.set(this.vertBirth);
+        this.vertBirth = ve;
+      }
       this.vertTris.length = this.masks.length;
     }
     var i3 = v * 3, p = this.positions.array, n = this.normals.array, c = this.colors.array;
@@ -102,6 +125,7 @@
     this.masks.array[v] = m === undefined ? 0 : m;
     var lst = this.vertTris[v];
     if (lst) lst.length = 0; else this.vertTris[v] = [];
+    this.vertBirth[v] = ++this._birthClock;
     this.liveVerts++;
     this.markVertDirty(v);
     this._boundsDirty = true;
@@ -210,6 +234,7 @@
       if (l) l.length = 0; else this.vertTris[i] = [];
     }
     if (this._vertStamp.length < n) this._vertStamp = new Int32Array(n + 64);
+    if (this.vertBirth.length < n) this.vertBirth = new Float64Array(n + 64);
 
     // drop degenerate triangles while copying
     var nt = idx.length / 3, kept = 0;
@@ -514,12 +539,24 @@
     if (!this.liveTris) { this.grid = null; return; }
     this._boundsDirty = true;
     this.bounds();
+    /*
+     * Padding. The grid's box has to hold what the model is about to become,
+     * not only what it is: an Add brush grows the surface outwards, and
+     * geometry that leaves the box has to be clamped into the edge cells
+     * until the next rebuild (see `gridInsertTri`). A margin of a few per
+     * cent of the model means ordinary sculpting stays inside the box, so
+     * that clamping — and the rebuilds it triggers — stay rare.
+     */
     var pad = Math.max(1e-4, this.averageEdgeLength());
     var minx = this._bmin[0] - pad, miny = this._bmin[1] - pad, minz = this._bmin[2] - pad;
     var sx = (this._bmax[0] + pad) - minx;
     var sy = (this._bmax[1] + pad) - miny;
     var sz = (this._bmax[2] + pad) - minz;
     var maxSide = Math.max(sx, sy, sz, 1e-6);
+    var grow = maxSide * 0.06;
+    minx -= grow; miny -= grow; minz -= grow;
+    sx += grow * 2; sy += grow * 2; sz += grow * 2;
+    maxSide = Math.max(sx, sy, sz, 1e-6);
 
     var targetCells = Math.max(8, this.liveTris / GRID_TRIS_PER_CELL);
     var cell = maxSide / Math.min(GRID_MAX_DIM, Math.max(2, Math.cbrt(targetCells) * (maxSide / Math.cbrt(sx * sy * sz || 1e-9) > 8 ? 1 : 1)));
@@ -541,6 +578,7 @@
     }
     V3.set(g.min, minx, miny, minz);
     this.gridEntries = 0;
+    this.gridOutside = 0;
 
     var nt = this.triDead.length;
     for (var t = 0; t < nt; t++) {
@@ -564,9 +602,27 @@
     var y1 = Math.floor((Math.max(ay, by, cy) - mn[1]) * inv);
     var z0 = Math.floor((Math.min(az, bz, cz) - mn[2]) * inv);
     var z1 = Math.floor((Math.max(az, bz, cz) - mn[2]) * inv);
-    if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0; if (z0 < 0) z0 = 0;
-    if (x1 >= g.dx) x1 = g.dx - 1; if (y1 >= g.dy) y1 = g.dy - 1; if (z1 >= g.dz) z1 = g.dz - 1;
-    if (x1 < x0 || y1 < y0 || z1 < z0) return;    // wholly outside: found by rebuild later
+    /*
+     * A triangle outside the box goes into the nearest edge cells, never
+     * nowhere.
+     *
+     * Dropping it — which is what this used to do — made the geometry
+     * invisible to every grid query: the brush could not find those
+     * vertices, so it stopped working on the bump it had just built;
+     * dynamic topology could not refine them, so they stretched into fins;
+     * and a tap could not hit them. Measured on a sphere with Add at full
+     * strength, six passes grew the model past its own grid and a query
+     * that should have found 747 vertices found none. Clamping keeps every
+     * query honest, and `gridOutside` tells the caller to rebuild.
+     */
+    var outside = (x0 < 0 || y0 < 0 || z0 < 0 || x1 >= g.dx || y1 >= g.dy || z1 >= g.dz);
+    if (x0 < 0) x0 = 0; else if (x0 >= g.dx) x0 = g.dx - 1;
+    if (y0 < 0) y0 = 0; else if (y0 >= g.dy) y0 = g.dy - 1;
+    if (z0 < 0) z0 = 0; else if (z0 >= g.dz) z0 = g.dz - 1;
+    if (x1 >= g.dx) x1 = g.dx - 1; else if (x1 < 0) x1 = 0;
+    if (y1 >= g.dy) y1 = g.dy - 1; else if (y1 < 0) y1 = 0;
+    if (z1 >= g.dz) z1 = g.dz - 1; else if (z1 < 0) z1 = 0;
+    if (outside) this.gridOutside = (this.gridOutside || 0) + 1;
     var buckets = g.buckets, dxdy = g.dx * g.dy;
     for (var z = z0; z <= z1; z++) {
       var zo = z * dxdy;
@@ -599,14 +655,14 @@
         this.gridInsertTri(t);
       }
     }
-    // rebuild once the stale entries dominate, or the mesh outgrew the grid
-    if (this.gridEntries > this.liveTris * 6 + 4096) this.gridRebuild();
+    // rebuild once the stale entries dominate, or the mesh outgrew the box
+    if (this.gridOutside || this.gridEntries > this.liveTris * 6 + 4096) this.gridRebuild();
     return out;
   };
 
   P.gridMaybeRebuild = function () {
     if (!this.grid) { this.gridRebuild(); return; }
-    if (this.gridEntries > this.liveTris * 4 + 2048) this.gridRebuild();
+    if (this.gridOutside || this.gridEntries > this.liveTris * 4 + 2048) this.gridRebuild();
   };
 
   /**
@@ -626,9 +682,14 @@
     var x0 = Math.floor((cx - r - mn[0]) * inv), x1 = Math.floor((cx + r - mn[0]) * inv);
     var y0 = Math.floor((cy - r - mn[1]) * inv), y1 = Math.floor((cy + r - mn[1]) * inv);
     var z0 = Math.floor((cz - r - mn[2]) * inv), z1 = Math.floor((cz + r - mn[2]) * inv);
-    if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0; if (z0 < 0) z0 = 0;
-    if (x1 >= g.dx) x1 = g.dx - 1; if (y1 >= g.dy) y1 = g.dy - 1; if (z1 >= g.dz) z1 = g.dz - 1;
-    if (x1 < x0 || y1 < y0 || z1 < z0) return out;
+    // a sphere outside the box still has to look in the edge cells, because
+    // that is where geometry outside the box was clamped to
+    if (x0 < 0) x0 = 0; else if (x0 >= g.dx) x0 = g.dx - 1;
+    if (y0 < 0) y0 = 0; else if (y0 >= g.dy) y0 = g.dy - 1;
+    if (z0 < 0) z0 = 0; else if (z0 >= g.dz) z0 = g.dz - 1;
+    if (x1 >= g.dx) x1 = g.dx - 1; else if (x1 < 0) x1 = 0;
+    if (y1 >= g.dy) y1 = g.dy - 1; else if (y1 < 0) y1 = 0;
+    if (z1 >= g.dz) z1 = g.dz - 1; else if (z1 < 0) z1 = 0;
     this._stamp++;
     var st = this._stamp, stamps = this._triStamp, dead = this.triDead.array;
     var buckets = g.buckets, dxdy = g.dx * g.dy;
@@ -881,6 +942,8 @@
     }
     m._triStamp = new Int32Array(this._triStamp.length);
     m._vertStamp = new Int32Array(this._vertStamp.length);
+    m.vertBirth = new Float64Array(this.vertBirth.length);
+    m._birthClock = 0;
     m._boundsDirty = true;
     m.topoDirty = true;
     m.gridRebuild();
@@ -935,6 +998,10 @@
     }
     if (this._vertStamp.length < nv) this._vertStamp = new Int32Array(nv + 64);
     if (this._triStamp.length < nt) this._triStamp = new Int32Array(nt + 64);
+    // every slot may mean a different vertex now, so no remembered index
+    // from before the restore is allowed to look valid (see `vertBirth`)
+    if (this.vertBirth.length < nv) this.vertBirth = new Float64Array(nv + 64);
+    else this.vertBirth.fill(0);
     this._boundsDirty = true;
     this.topoDirty = true;
     this.dirtyMinVert = 0; this.dirtyMaxVert = nv - 1;

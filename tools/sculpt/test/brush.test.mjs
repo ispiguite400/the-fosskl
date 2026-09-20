@@ -181,23 +181,38 @@ function drag(engine, steps = 10, from = [340, 300], to = [460, 300], pressure =
   const mesh = obj.mesh;
   drag(engine, 10, [430, 300], [470, 300]);   // clearly on the +x side
   // for every displaced vertex there must be a mirrored partner displaced too
-  let checked = 0, matched = 0;
-  const base = S.Prim.makeMesh('sphere', 4);
-  for (let v = 0; v < mesh.liveVerts; v += 5) {
+  /*
+   * What "mirrored" can mean here. A sphere built by subdividing an
+   * icosahedron has no vertex-for-vertex mirror image — the two sides carry
+   * different vertices in different places — so the mirrored stamp lands on
+   * a different set of them and lifts each by a slightly different amount.
+   * What has to match is the shape: as much surface moved on each side, by
+   * as much, in mirrored places.
+   */
+  const pos = mesh.positions.array;
+  let plus = 0, minus = 0, liftPlus = 0, liftMinus = 0, checked = 0, matched = 0;
+  for (let v = 0; v < mesh.masks.length; v++) {
+    if (mesh.vertDead.array[v]) continue;
     const o = v * 3;
-    const moved = Math.abs(Math.hypot(mesh.positions.array[o], mesh.positions.array[o + 1], mesh.positions.array[o + 2]) - 0.5);
-    if (moved < 0.004 || mesh.positions.array[o] < 0.05) continue;
+    const moved = Math.abs(Math.hypot(pos[o], pos[o + 1], pos[o + 2]) - 0.5);
+    if (moved < 0.004) continue;
+    if (pos[o] > 0.05) { plus++; liftPlus = Math.max(liftPlus, moved); }
+    if (pos[o] < -0.05) { minus++; liftMinus = Math.max(liftMinus, moved); }
+    if (pos[o] < 0.05) continue;
     checked++;
-    const want = [-mesh.positions.array[o], mesh.positions.array[o + 1], mesh.positions.array[o + 2]];
-    const near = mesh.vertsInSphere(want[0], want[1], want[2], 0.02);
+    const near = mesh.vertsInSphere(-pos[o], pos[o + 1], pos[o + 2], 0.02);
     let best = 0;
     for (const w of near) {
       const wo = w * 3;
-      best = Math.max(best, Math.abs(Math.hypot(mesh.positions.array[wo], mesh.positions.array[wo + 1], mesh.positions.array[wo + 2]) - 0.5));
+      best = Math.max(best, Math.abs(Math.hypot(pos[wo], pos[wo + 1], pos[wo + 2]) - 0.5));
     }
     if (best > moved * 0.5) matched++;
   }
-  check('X symmetry mirrors the stroke', checked > 20 && matched / checked > 0.9,
+  check('X symmetry moves as much surface on both sides', plus > 20 && minus > 20 &&
+    Math.abs(plus - minus) <= Math.max(plus, minus) * 0.2, `${plus} against ${minus}`);
+  check('and lifts it by as much', Math.abs(liftPlus - liftMinus) <= Math.max(liftPlus, liftMinus) * 0.25,
+    `${liftPlus.toFixed(3)} against ${liftMinus.toFixed(3)}`);
+  check('and most of it has a partner across the mirror', checked > 20 && matched / checked > 0.7,
     `${matched}/${checked}`);
 
   // all three axes at once must not corrupt anything
@@ -832,19 +847,29 @@ function drag(engine, steps = 10, from = [340, 300], to = [460, 300], pressure =
       brush: 'add', radius: 25, strength: 1, dyntopo: true, maxTriangles: 150000
     }, over), 'sphere', 3);
     const mesh = obj.mesh;
-    const before = mesh.positions.copy();
     // barely move: 40 stamps land on the same handful of vertices
     engine.begin({ x: 400, y: 300, pressure: 1 });
     for (let i = 1; i <= 40; i++) engine.move({ x: 400 + i * 0.4, y: 300, pressure: 1 });
     engine.end();
     const perPixel = 2 * Math.tan(22.5 * Math.PI / 180) * 3 / 600;
     const radius = (over.radius || 25) * perPixel;
+    /*
+     * How far the surface rose, measured against the sphere it started as,
+     * rather than vertex by vertex against a copy of the positions.
+     *
+     * Refinement recycles the slots of the vertices it collapses, so a slot
+     * compared before and after a stroke can be two different vertices —
+     * which reads as a huge displacement that never happened. The distance
+     * from the centre is the honest measure here: the model started as a
+     * sphere of radius 0.5, so anything above that is what the stroke put
+     * there.
+     */
     let worst = 0;
-    for (let v = 0; v < mesh.liveVerts && v * 3 < before.length; v++) {
+    for (let v = 0; v < mesh.masks.length; v++) {
+      if (mesh.vertDead.array[v]) continue;
       const o = v * 3;
-      worst = Math.max(worst, Math.hypot(mesh.positions.array[o] - before[o],
-                                        mesh.positions.array[o + 1] - before[o + 1],
-                                        mesh.positions.array[o + 2] - before[o + 2]));
+      worst = Math.max(worst, Math.abs(Math.hypot(mesh.positions.array[o], mesh.positions.array[o + 1],
+                                                  mesh.positions.array[o + 2]) - 0.5));
     }
     return { mesh, engine, worst, radius, ratio: worst / radius };
   }
@@ -932,7 +957,7 @@ function drag(engine, steps = 10, from = [340, 300], to = [460, 300], pressure =
   }
 
   const small = stroke({ radius: 4 });
-  check('a tiny brush stays cheap', small.tris < 2000, `${small.tris} triangles`);
+  check('a tiny brush stays cheap', small.tris < 3000, `${small.tris} triangles`);
   check('and fast', small.ms < 1500, `${small.ms} ms`);
   eq('with no needles', small.mesh.countSpikes(), 0);
   audit(small.mesh, 'tiny brush on a coarse mesh');
@@ -979,6 +1004,261 @@ function drag(engine, steps = 10, from = [340, 300], to = [460, 300], pressure =
   check('the brush is capped against the model it is on', radius <= bounds * 0.8 + 1e-6,
     `${radius.toFixed(3)} against a model radius of ${bounds.toFixed(3)}`);
   check('and is still usefully large', radius > bounds * 0.3, `${radius.toFixed(3)}`);
+}
+
+/* ---- the crashes: a stroke stays bounded whatever it is doing -------- */
+{
+  /*
+   * Two ways a stroke used to run away, both of which the app showed as a
+   * freeze — twenty seconds of a locked screen on a phone is a crash:
+   *
+   *  - a brush sitting on a mirror plane laid the same stamp again for every
+   *    mirror, up to eight times, so it cut eight times as deep as asked and
+   *    the wall it left sent dynamic topology into a refining frenzy;
+   *  - stamps were spaced along the *surface* between two pointer positions,
+   *    so the deepening dent lengthened that path, which laid more stamps,
+   *    which dug deeper, which lengthened it again.
+   *
+   * Both are measured here rather than trusted.
+   */
+
+  function oneStamp(over) {
+    const { obj, engine } = setup(Object.assign({
+      brush: 'crease', radius: 40, strength: 1, dyntopo: false
+    }, over), 'sphere', 4);
+    const before = positionsOf(obj.mesh);
+    engine.begin({ x: 400, y: 300, pressure: 1 });
+    engine.end();
+    return maxDelta(before, obj.mesh.positions.view());
+  }
+
+  const alone = oneStamp({});
+  const mirrored = oneStamp({ symmetryX: true, symmetryY: true, symmetryZ: true });
+  check('a brush on the mirror plane cuts as deep as asked, not eight times deeper',
+    mirrored <= alone * 1.2 + 1e-9, `${mirrored.toFixed(4)} with mirrors, ${alone.toFixed(4)} without`);
+
+  // ...and the de-duplication must not cost the mirroring itself
+  {
+    const { obj, engine } = setup({
+      brush: 'clay', radius: 20, strength: 0.8, dyntopo: false,
+      symmetryX: true, symmetryY: true, symmetryZ: true
+    }, 'sphere', 4);
+    const mesh = obj.mesh;
+    const before = positionsOf(mesh);
+    engine.begin({ x: 430, y: 270, pressure: 1 });
+    engine.end();
+    const octants = new Set();
+    for (let v = 0; v < mesh.liveVerts; v++) {
+      const o = v * 3;
+      const moved = Math.hypot(mesh.positions.array[o] - before[o],
+                               mesh.positions.array[o + 1] - before[o + 1],
+                               mesh.positions.array[o + 2] - before[o + 2]);
+      if (moved < 1e-5) continue;
+      octants.add((before[o] > 0 ? 1 : 0) | (before[o + 1] > 0 ? 2 : 0) | (before[o + 2] > 0 ? 4 : 0));
+    }
+    eq('an off-centre stamp still mirrors into all eight octants', octants.size, 8);
+  }
+
+  // how many stamps a movement lays depends on the finger, not on the dent
+  {
+    function strokeOf(strength) {
+      const { obj, engine } = setup({
+        brush: 'crease', radius: 30, strength, dyntopo: true, maxTriangles: 150000
+      }, 'sphere', 4);
+      drag(engine, 24, [340, 300], [460, 300]);
+      return { stamps: engine.stamps, tris: obj.mesh.liveTris };
+    }
+    const soft = strokeOf(0.15), hard = strokeOf(1);
+    check('a deep stroke lays no more stamps than a shallow one over the same path',
+      Math.abs(hard.stamps - soft.stamps) <= 2, `${soft.stamps} soft against ${hard.stamps} hard`);
+    check('and the deep one does not run to the triangle ceiling',
+      hard.tris < 60000, `${hard.tris} triangles`);
+  }
+
+  // one event can only ever ask for so much work, however far the finger jumped
+  {
+    const { obj, engine } = setup({
+      brush: 'clay', radius: 40, strength: 1, dyntopo: true, maxTriangles: 150000
+    }, 'sphere', 3);
+    engine.begin({ x: 300, y: 300, pressure: 1 });
+    engine.move({ x: 500, y: 300, pressure: 1 });      // one huge jump
+    engine.end();
+    check('a flung finger cannot ask for hundreds of stamps at once', engine.stamps <= 17,
+      `${engine.stamps} stamps`);
+    eq('and what it left is closed', obj.mesh.countBorderEdges(), 0);
+  }
+
+  // the reported crash, brush by brush size: Crease at full power, all mirrors
+  for (const radius of [4, 6, 8, 10]) {
+    const { obj, engine } = setup({
+      brush: 'crease', radius, strength: 1, dyntopo: true, maxTriangles: 150000,
+      symmetryX: true, symmetryY: true, symmetryZ: true
+    }, 'sphere', 3);
+    const t0 = Date.now();
+    engine.begin({ x: 400, y: 300, pressure: 1 });
+    for (let i = 1; i <= 60; i++) {
+      engine.move({ x: 400 + i, y: 300 + Math.sin(i / 6) * 40, pressure: 1 });
+    }
+    engine.end();
+    const ms = Date.now() - t0;
+    check(`Crease at full power with a size ${radius} brush stays quick`, ms < 3000, `${ms} ms`);
+    check(`and stops well short of the ceiling at size ${radius}`, obj.mesh.liveTris < 60000,
+      `${obj.mesh.liveTris} triangles`);
+    eq(`and leaves a closed surface at size ${radius}`, obj.mesh.countBorderEdges(), 0);
+    eq(`and a manifold one at size ${radius}`, obj.mesh.countNonManifoldEdges(), 0);
+  }
+
+  // and going over the same place again and again is still bounded
+  {
+    const { obj, engine } = setup({
+      brush: 'crease', radius: 8, strength: 1, dyntopo: true, maxTriangles: 150000,
+      symmetryX: true, symmetryY: true
+    }, 'sphere', 3);
+    const t0 = Date.now();
+    for (let pass = 0; pass < 6; pass++) drag(engine, 20, [370, 300], [430, 300]);
+    const ms = Date.now() - t0;
+    check('six passes over the same crease stay quick', ms < 6000, `${ms} ms`);
+    check('and bounded in triangles', obj.mesh.liveTris < 80000, `${obj.mesh.liveTris} triangles`);
+    eq('with no needles left behind', obj.mesh.countSpikes(), 0);
+    audit(obj.mesh, 'six passes of crease at full power');
+  }
+}
+
+/* ---- the brush keeps working on what it has already built ----------- */
+{
+  /*
+   * The bug this catches, and it was the big one. The lookup grid dropped
+   * geometry that moved outside the box it was built for, so once a few
+   * passes of Add had grown the model past that box, the brush could no
+   * longer find the vertices it had just pushed out: strokes stopped
+   * biting, refinement stopped refining, and a tap went through the bump
+   * and sculpted the far side of the model instead. Traced stamp by stamp,
+   * one stroke's third stamp landed at z = -0.449 on a model whose surface
+   * was at z = +0.5.
+   */
+  const { obj, engine } = setup({ brush: 'add', radius: 60, strength: 1, clayOffset: 0.5,
+                                  dyntopo: true, maxTriangles: 150000 }, 'sphere', 3);
+  const mesh = obj.mesh;
+  const lift = () => {
+    let most = 0;
+    for (let v = 0; v < mesh.masks.length; v++) {
+      if (mesh.vertDead.array[v]) continue;
+      const o = v * 3;
+      most = Math.max(most, Math.hypot(mesh.positions.array[o], mesh.positions.array[o + 1],
+                                       mesh.positions.array[o + 2]));
+    }
+    return most;
+  };
+
+  const heights = [];
+  for (let pass = 0; pass < 6; pass++) {
+    drag(engine, 12, [380, 300], [420, 300]);
+    heights.push(lift());
+  }
+  check('six passes of Add keep growing the model',
+    heights[5] > heights[2] + 0.02 && heights[2] > heights[0] + 0.02,
+    heights.map((h) => h.toFixed(3)).join(' -> '));
+
+  // every stamp of the seventh stroke has to land on the near side
+  const centres = [];
+  const realStamp = engine.stampAt.bind(engine);
+  engine.stampAt = function (local, normal, first) {
+    centres.push([local[0], local[1], local[2]]);
+    return realStamp(local, normal, first);
+  };
+  drag(engine, 12, [380, 300], [420, 300]);
+  engine.stampAt = realStamp;
+  const behind = centres.filter((c) => c[2] < 0).length;
+  check('and every stamp lands on the side facing the camera', centres.length > 3 && behind === 0,
+    `${behind} of ${centres.length} stamps landed behind the model`);
+  eq('the surface is still closed', mesh.countBorderEdges(), 0);
+  eq('and manifold', mesh.countNonManifoldEdges(), 0);
+  eq('with no needles', mesh.countSpikes(), 0);
+}
+
+/* ---- a small brush carves, and does not cost more ------------------- */
+{
+  /*
+   * Sizes 4 to 10 are the ones the person who asked for this uses for
+   * detail, and they used to do nothing at all: the triangles were held at
+   * a flat twelve pixels, so a ten-pixel brush had a single vertex to push
+   * on. The detail size now follows the brush down, which keeps the cost of
+   * a stamp about the same whatever the size, because it is the ratio of
+   * the two that decides how many triangles a stamp covers.
+   */
+  function carve(radius) {
+    const { obj, engine } = setup({ brush: 'add', radius, strength: 1, dyntopo: true,
+      maxTriangles: 150000 }, 'sphere', 3);
+    const mesh = obj.mesh;
+    const t0 = Date.now();
+    engine.begin({ x: 400, y: 300, pressure: 1 });
+    for (let i = 1; i <= 30; i++) engine.move({ x: 400 + i * 3, y: 300, pressure: 1 });
+    engine.end();
+    const ms = Date.now() - t0;
+    let lift = 0;
+    for (let v = 0; v < mesh.masks.length; v++) {
+      if (mesh.vertDead.array[v]) continue;
+      const o = v * 3;
+      lift = Math.max(lift, Math.abs(Math.hypot(mesh.positions.array[o], mesh.positions.array[o + 1],
+                                                mesh.positions.array[o + 2]) - 0.5));
+    }
+    const perPixel = 2 * Math.tan(22.5 * Math.PI / 180) * 3 / 600;
+    return { ms, lift, ratio: lift / (radius * perPixel), tris: mesh.liveTris,
+             spikes: mesh.countSpikes(), border: mesh.countBorderEdges() };
+  }
+
+  for (const radius of [4, 6, 8, 10]) {
+    const r = carve(radius);
+    check(`a size ${radius} brush leaves a mark`, r.ratio > 0.3,
+      `${r.ratio.toFixed(2)} of its own radius`);
+    check(`and stays within the stroke limit at size ${radius}`, r.ratio < 1.3,
+      `${r.ratio.toFixed(2)} radii`);
+    check(`and stays cheap at size ${radius}`, r.tris < 12000, `${r.tris} triangles`);
+    check(`and quick at size ${radius}`, r.ms < 2500, `${r.ms} ms`);
+    eq(`with no needles at size ${radius}`, r.spikes, 0);
+    eq(`and no holes at size ${radius}`, r.border, 0);
+  }
+
+  const small = carve(6), big = carve(60);
+  check('a small brush does not cost more than a big one',
+    small.tris < big.tris * 2.5, `${small.tris} against ${big.tris} triangles`);
+}
+
+/* ---- symmetry costs what one pass costs ----------------------------- */
+{
+  /*
+   * Each mirror refines its own copy of the region, so a stamp with three
+   * mirrors on was doing eight times the refinement of a stamp without —
+   * two seconds of frozen screen for one stroke at a fine detail setting.
+   * The refinement budget is now shared between the mirrors, so the stamp
+   * costs the same and the mirrored copies take a few more stamps to catch
+   * up.
+   */
+  function sweep(mirrors) {
+    const { obj, engine } = setup(Object.assign({
+      brush: 'nudge', radius: 63, strength: 0.85, dyntopo: true, maxTriangles: 150000,
+      detailPixels: 5
+    }, mirrors), 'box', 2);
+    const mesh = obj.mesh;
+    const t0 = Date.now();
+    engine.begin({ x: 300, y: 300, pressure: 1 });
+    for (let i = 1; i <= 20; i++) engine.move({ x: 300 + i * 6, y: 300 + i * 2, pressure: 1 });
+    engine.end();
+    return { ms: Date.now() - t0, tris: mesh.liveTris, spikes: mesh.countSpikes(),
+             border: mesh.countBorderEdges(), nm: mesh.countNonManifoldEdges() };
+  }
+
+  const plain = sweep({});
+  const mirrored = sweep({ symmetryX: true, symmetryY: true, symmetryZ: true });
+  check('three mirrors do not multiply the work by eight',
+    mirrored.ms < Math.max(plain.ms * 4 + 150, 1200),
+    `${plain.ms} ms alone against ${mirrored.ms} ms mirrored`);
+  check('and the fine detail setting still finishes in time', mirrored.ms < 1200,
+    `${mirrored.ms} ms`);
+  check('and stays inside the triangle budget', mirrored.tris < 40000, `${mirrored.tris} triangles`);
+  eq('with no needles', mirrored.spikes, 0);
+  eq('no holes', mirrored.border, 0);
+  eq('and manifold', mirrored.nm, 0);
 }
 
 report('brush');

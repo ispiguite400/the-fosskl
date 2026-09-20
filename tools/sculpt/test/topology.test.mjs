@@ -552,4 +552,135 @@ const S = load();
   check('a tighter ceiling does less', r2.split <= 20, `${r2.split} splits`);
 }
 
+/* ---- the grid never loses geometry that has moved ------------------- */
+{
+  /*
+   * What this caught. The grid dropped any triangle that fell outside the
+   * box it was built for, on the grounds that a later rebuild would pick it
+   * up. Until that rebuild, every query was blind there: the brush could
+   * not find the vertices of the bump it had just pushed out, refinement
+   * could not refine them, and a tap went straight through to the far side
+   * of the model. Measured before the fix, a query that should have found
+   * 747 vertices found none.
+   */
+  function brute(mesh, cx, cy, cz, r) {
+    const out = new Set();
+    const p = mesh.positions.array, T = mesh.tris.array, r2 = r * r;
+    for (let t = 0; t < mesh.triDead.length; t++) {
+      if (mesh.triDead.array[t]) continue;
+      for (let k = 0; k < 3; k++) {
+        const v = T[t * 3 + k], o = v * 3;
+        const d = (p[o] - cx) ** 2 + (p[o + 1] - cy) ** 2 + (p[o + 2] - cz) ** 2;
+        if (d <= r2) out.add(v);
+      }
+    }
+    return out;
+  }
+
+  const m = S.Prim.makeMesh('sphere', 3);
+  // push a cap of the sphere a long way out, without telling the grid to
+  // rebuild — exactly what a stroke does between stamps
+  const pos = m.positions.array;
+  const moved = [];
+  for (let v = 0; v < m.masks.length; v++) {
+    if (m.vertDead.array[v]) continue;
+    const o = v * 3;
+    if (pos[o + 2] < 0.4) continue;
+    pos[o] *= 2.5; pos[o + 1] *= 2.5; pos[o + 2] *= 2.5;
+    moved.push(v);
+  }
+  m.gridUpdateVerts(Uint32Array.from(moved), moved.length);
+
+  const want = brute(m, 0, 0, 1.25, 0.8);
+  const got = new Set(Array.from(m.vertsInSphere(0, 0, 1.25, 0.8)));
+  let missing = 0;
+  want.forEach((v) => { if (!got.has(v)) missing++; });
+  check('a query finds the geometry a stroke pushed outside the grid',
+    want.size > 20 && missing === 0, `${want.size} wanted, ${missing} missing`);
+
+  // and a ray finds the near side of it, not the far side of the model
+  const hit = { t: 0, tri: -1, x: 0, y: 0, z: 0 };
+  const found = m.raycast(0, 0, 6, 0, 0, -1, hit, true);
+  check('and a ray hits the near side of what was pushed out', found && hit.z > 1,
+    found ? `hit at z ${hit.z.toFixed(2)}` : 'no hit at all');
+}
+
+/* ---- a recycled vertex slot is not the vertex it used to be --------- */
+{
+  /*
+   * The brush engine remembers where a stroke first touched each vertex, so
+   * it can stop the stroke running away with it. Slots get reused, so the
+   * record has to say *which* vertex it belongs to: without that, a stroke
+   * pulled vertices that refinement had only just created back towards a
+   * dead vertex's starting point, which is what left fins standing off the
+   * surface.
+   */
+  const m = S.Prim.makeMesh('sphere', 2);
+  const T = m.tris.array;
+  const a = T[0], b = T[1];
+  const wasA = m.vertBirth[a];
+  const mid = m.splitEdge(a, b);
+  check('a new vertex has a serial number of its own', m.vertBirth[mid] > wasA,
+    `${m.vertBirth[mid]} against ${wasA}`);
+
+  // collapse it away, then split something else: the slot comes back with a
+  // number that says it is somebody new
+  const gone = m.vertBirth[mid];
+  m.collapseEdge(mid, a, 0, 0, 0.5, false);
+  const T2 = m.tris.array;
+  const again = m.splitEdge(T2[3], T2[4]);
+  if (again === mid) {
+    check('a reused slot carries a new serial number', m.vertBirth[mid] !== gone,
+      `${m.vertBirth[mid]} against ${gone}`);
+  } else {
+    check('a reused slot carries a new serial number', m.vertBirth[again] > gone,
+      `${m.vertBirth[again]} against ${gone}`);
+  }
+  audit(m, 'after a split, a collapse and a split');
+}
+
+/* ---- what counts as a needle, at any resolution -------------------- */
+{
+  /*
+   * The score is the vertex's distance from the middle of its ring against
+   * how wide that ring is. Measured against the *spacing* between the
+   * ring's vertices instead, a cone's apex scored higher the finer the cone
+   * was — 3.3 at detail 2, 8.0 at detail 5 — so the repair blunted every
+   * cone it was allowed to touch.
+   */
+  for (const d of [2, 3, 4, 5]) {
+    const cone = S.Prim.makeMesh('cone', d);
+    eq(`a cone at detail ${d} has no needles`, cone.countSpikes(), 0);
+  }
+  for (const prim of ['box', 'cylinder', 'sphere', 'torus', 'plane']) {
+    eq(`a fresh ${prim} has no needles`, S.Prim.makeMesh(prim, 3).countSpikes(), 0);
+  }
+
+  // one vertex pulled half a radius out of a sphere is a needle
+  const m = S.Prim.makeMesh('sphere', 4);
+  const pos = m.positions.array;
+  const v = 100, o = v * 3;
+  const len = Math.hypot(pos[o], pos[o + 1], pos[o + 2]);
+  for (let k = 0; k < 3; k++) pos[o + k] *= 1 + 0.25 / len;
+  m.computeNormals();
+  eq('a vertex pulled out of a sphere is one', m.countSpikes(), 1);
+
+  // and the repair can be held to one region
+  const far = S.Prim.makeMesh('sphere', 4);
+  const fpos = far.positions.array;
+  for (const t of [100, 900]) {
+    const to = t * 3;
+    const l = Math.hypot(fpos[to], fpos[to + 1], fpos[to + 2]);
+    for (let k = 0; k < 3; k++) fpos[to + k] *= 1 + 0.25 / l;
+  }
+  far.computeNormals();
+  eq('two needles to start with', far.countSpikes(), 2);
+  const ring = [];
+  far.ringVerts(100, ring);
+  const region = Uint32Array.from([100].concat(ring));
+  far.relaxSpikesAt(region, region.length);
+  eq('a region repair fixes the one in the region', far.countSpikes(), 1);
+  audit(far, 'after a region repair');
+}
+
 report('topology');

@@ -102,8 +102,10 @@ work and more of them.
 
 ### What keeps a stroke from going wrong
 
-Four rules, each of them there because of a specific way the tool used to
-break:
+Every rule here is in the code because of a specific way the tool used to
+break, and each one has a test that fails if it is taken out.
+
+**Where a stroke is allowed to go**
 
 - **One stroke can move a vertex about one brush radius, and no further.** A
   brush that builds up measures each stamp against the surface the last stamp
@@ -111,23 +113,80 @@ break:
   hold, a stroke that doubles back — used to lift them again and again until
   they shot out as a spike. Lift your finger and the next stroke starts
   again, so material still builds up pass after pass.
-- **Detail is a flat number of pixels, not a fraction of the brush.** A tiny
-  brush asking for triangles a fifth of its size asks for microscopic ones:
-  one dab could spend minutes adding a hundred thousand triangles. In pixels,
-  a small brush refines the surface to the detail size and then has triangles
-  its own scale to work with.
+- **A vertex the refinement creates mid-stroke inherits where its neighbours
+  started.** Its birthplace is already part-way through the stroke, so
+  counting from there would hand every new generation of vertices a fresh
+  allowance — and refinement makes new ones every stamp, so a stroke could
+  creep on for ever.
+- **One stamp can only move the surface a few triangle widths.** Further than
+  that and the refinement cannot describe what the stamp left: a cliff where
+  the brush lifts, a fold where it pushes sideways. A stroke lays several
+  stamps per brush width, so the movement simply accumulates over them.
+- **Stamps are spaced along the path your finger took on screen.** Spacing
+  them along the surface fed back on itself: a deepening dent lengthened the
+  surface path, which laid more stamps, which dug deeper. One measured stroke
+  of Crease turned into five hundred stamps and twenty seconds of frozen
+  screen.
+
+**What the brush can find and refine**
+
+- **The lookup grid never loses geometry, wherever it has moved to.** This
+  was the big one. The grid dropped any triangle that had moved outside the
+  box it was built for, so once a few passes of Add had grown the model past
+  that box, the brush could not find the bump it had just built: strokes
+  stopped biting, refinement stopped refining, and a tap went straight
+  through the bump and sculpted the far side of the model. Traced stamp by
+  stamp, one stroke's third stamp landed at z = −0.449 on a model whose
+  surface was at z = +0.5. Geometry outside the box now goes into the nearest
+  edge cells and the grid rebuilds itself around the new shape.
+- **A vertex index is not a lasting name for a vertex.** Refinement collapses
+  vertices and hands their slots to new ones, so everything that remembers a
+  vertex across a stroke carries its serial number too. Without that, strokes
+  pulled freshly created vertices back towards a dead vertex's starting point
+  — fins standing off the surface, from geometry that had never been touched.
+- **Detail is measured in pixels, and follows the brush down when the brush
+  is smaller.** A fraction of the brush means microscopic triangles for a
+  small brush; a flat twelve pixels means a ten-pixel brush has a single
+  vertex to push on and leaves no mark at all. Following the brush down to a
+  floor of three pixels keeps a stamp's cost about the same at every size,
+  because it is the ratio of the two that decides how many triangles a stamp
+  covers.
 - **A brush can always refine what it sits on.** A triangle bigger than the
   brush has its longest edge running right past it, so a rule of "the split
   has to land inside the brush" refuses to refine at all — and then the brush
   drags one lone vertex of a huge triangle and leaves a star of stretched
   fins. Instead a split may land up to its own edge length away, so a big
   triangle can halve even though the cut falls outside, and the allowance
-  shrinks with the pieces so the work funnels in towards the brush. There is
-  also a ceiling on how much one stamp may refine.
-- **A stroke settles when you lift your finger.** A brush only a couple of
-  triangles wide leaves the surface faceted; a light relax over what the
-  stroke touched turns that into a bump. The trims and anything working
-  through a stencil are left alone, where the crisp edge is the point.
+  shrinks with the pieces so the work funnels in towards the brush.
+- **Vertices the refinement has not reached yet move less.** Refinement is
+  rationed per stamp, so on a coarse model the first stamps land while parts
+  of the footprint still carry edges many times the detail size. Such a
+  vertex moves in proportion to how refined it is, and catches up over the
+  next stamps.
+
+**What symmetry costs**
+
+- **A stamp that lands on a mirror plane is only laid once.** A brush sitting
+  on the plane produced the same stamp twice, and with all three mirrors on
+  up to eight times, so it cut eight times as deep as asked.
+- **One stamp's refinement budget is shared between the mirrors.** Each
+  mirrored pass refines its own copy of the region, so three mirrors used to
+  mean eight times the work — two seconds of frozen screen for one stroke at
+  a fine detail setting. The mirrors take a few more stamps to catch up
+  instead.
+
+**And when the stroke ends**
+
+- **A stroke settles when you lift your finger.** The last stamp stretches
+  the surface and then nothing refines it, so one refinement pass runs over
+  the region the stroke covered. A brush only a couple of triangles wide also
+  leaves the surface faceted; a light relax turns that into a bump. The trims
+  and anything working through a stencil are left alone, where the crisp edge
+  is the point.
+- **Any needle left behind is pulled back in.** Bounded to what the stroke
+  touched, and only for shapes far sharper than anything anyone makes on
+  purpose — a cone's apex scores 2.5 on the measure used, and the repair
+  starts at 3.2.
 
 And when something does go wrong: **☰ → Fix glitches** pulls needle vertices
 back onto the surface, relaxes the slivers a torn surface is made of, drops
@@ -386,8 +445,10 @@ A few decisions worth knowing about:
   of view alone (or the bounding sphere) either runs a model off the sides of
   a phone held vertically or leaves a third of the screen empty.
 - **Stroke spacing does not change how deep a stroke cuts.** Stamps are laid
-  every `spacing × radius` along the path and their strength is scaled to
-  match, so spacing is a quality control, not a strength control.
+  every `spacing × radius` along the path your finger takes *on screen*, and
+  their strength is scaled to match, so spacing is a quality control, not a
+  strength control. Measuring that path along the surface instead is what let
+  a deepening dent ask for more and more stamps.
 - **Dynamic topology only ever splits a triangle's longest edge and collapses
   its shortest**, then flips the diagonals that leave a badly shaped triangle
   behind. Without those three rules a long session slowly fills the surface
@@ -399,12 +460,17 @@ A few decisions worth knowing about:
   already had, so sculpting felt like stretching rubber instead of adding
   clay. Now you sculpt at whatever density the shape needs and the count comes
   down on export.
-- **Spikes are prevented, not repaired.** A needle vertex left by a runaway
-  stroke scores *lower* on every "is this a spike" measure than a cone's apex
-  does — so a repair pass aggressive enough to catch it would blunt every
-  point anyone made on purpose. The stroke reach limit stops it happening;
-  Fix glitches only touches the genuinely extreme cases, well above anything
-  a primitive contains.
+- **A needle is measured against how wide its ring is, not how finely that
+  ring is divided.** The first measure — distance from the middle of the ring
+  against the spacing between the ring's own vertices — grew with the
+  resolution: a cone's apex scored 3.3 at detail 2 and 8.0 at detail 5, so
+  any threshold that caught real needles blunted fine cones. Against the
+  ring's width the same apex scores 2.5 at every resolution, a hard edge
+  0.75, a box corner 0.98, and a vertex pulled half a radius out of a sphere
+  7.1. The threshold sits at 4, in the gap. That is what made repair safe
+  enough to run at the end of every stroke, on the region the stroke touched;
+  prevention still does most of the work, and Fix glitches is there for a
+  model that arrives broken.
 - **The handles turn and resize about the middle of the shape.** A shape's
   origin is wherever it happened to be built, which is usually not inside it;
   rotating around a point outside the shape is not what anyone means by
@@ -414,6 +480,17 @@ A few decisions worth knowing about:
   the triangles they captured, which leaves the surface thin behind them; with
   adding on, the region between where the pull started and where it ended is
   rebuilt when you let go.
+- **The lookup grid holds everything, even what has left its box.** Geometry
+  that moves outside the box the grid was built for goes into the nearest
+  edge cells rather than being dropped, and the grid rebuilds around the new
+  shape at the next opportunity. The alternative — dropping it until a
+  rebuild happens to come along — makes the brush, the refinement and picking
+  all silently blind exactly where you are working.
+- **A vertex is named by a serial number, not by its index.** Indices are
+  slots and slots get reused, so anything that remembers a vertex from one
+  stamp to the next stores the number the vertex was created with. It is the
+  difference between "this is the vertex whose stroke started there" and
+  "this is whoever holds that slot now".
 - **Undo is budgeted by memory, not by step count.** A plain stroke records
   only the vertices it touched; anything that changes topology stores a
   snapshot, because vertex indices move.
@@ -427,19 +504,19 @@ A few decisions worth knowing about:
 ## Tests
 
 ```bash
-node test/topology.test.mjs     # 116  mesh invariants, split/collapse/flip, spikes, slivers, decimate
+node test/topology.test.mjs     # 134  mesh invariants, split/collapse/flip, the grid, needles, decimate
 node test/remesh.test.mjs       # 76   watertight and manifold output, volume, colour transfer
 node test/io.test.mjs           # 120  round trips for every format, GLB structure, transforms
-node test/brush.test.mjs        # 347  every brush, adding vs stretching, the stroke limits, masking, undo
+node test/brush.test.mjs        # 411  every brush, adding vs stretching, the stroke limits, masking, undo
 node test/camera.test.mjs       # 18   projection, framing, ray casting
 node test/boolean.test.mjs      # 51   union / subtract / intersect against analytic volumes
 node test/texture.test.mjs      # 362  PNG writer, unwrap, bake, textured export, stencils, presets
 node test/gizmo.test.mjs        # 52   handle layout, hit testing, move/turn/resize maths
-node build.js && node test/browser.test.mjs   # 367 end-to-end in a real browser
+node build.js && node test/browser.test.mjs   # 402 end-to-end in a real browser
 node test/shots.mjs             # renders the screenshots in test/screens
 ```
 
-1,509 checks in total. Some of them are worth naming, because they are the
+1,626 checks in total. Some of them are worth naming, because they are the
 ones that catch a regression you would otherwise ship:
 
 - **Brushes have to add, not stretch.** The same pull is run with dynamic
@@ -469,6 +546,26 @@ ones that catch a regression you would otherwise ship:
   it fails if that leaves a needle, a hole, a non-manifold edge, a runaway
   triangle count or a ballooned shape. So are both slider ceilings — from the
   slider, the keyboard, a preset and an old settings file.
+- **The reported crash is a test, at the sizes reported.** Crease at full
+  power and sizes 4 to 10 with all three mirrors on, in the browser, timed:
+  it fails if a stroke takes longer than a few seconds, runs to the triangle
+  ceiling, leaves a needle or a hole, or loses the canvas.
+- **"The brush keeps working on what it built" is a test.** Seven passes of
+  Add on the same spot: each pass has to grow the model further out, and a
+  tap in the middle afterwards has to hit the near side of the bump rather
+  than the far side of the model.
+- **The grid is checked against brute force.** Vertices are pushed a long way
+  outside the box the grid was built for, without a rebuild, and every query
+  has to return exactly what a scan over every triangle returns.
+- **Randomised strokes hunt for the rest.** A fuzz harness drives thousands
+  of strokes with random brushes, sizes, strengths, falloffs, stencils,
+  symmetry combinations, detail settings and gestures across six primitives,
+  and after every round it checks the mesh is closed, manifold, free of
+  non-finite coordinates, no further from the detail size than asked, and
+  that the stroke added no needles — and that no round took longer than a
+  fraction of a second. It is what found most of the bugs listed above; it
+  lives outside the repository because it is a search, not a test, but each
+  thing it found is a test now.
 
 Every mesh test runs a structural audit: adjacency agreeing with the triangle
 list, no triangle referencing a dead vertex, no edge with more than two faces,
@@ -491,6 +588,12 @@ live counts matching, no non-finite coordinates.
   the voxel count before you commit.
 - No sculpt layers and no multiresolution levels; dynamic topology and
   remeshing cover the same ground differently.
+- Sculpting right up against a sharp tip — the apex of a cone, the point of a
+  horn you have pulled out — can round it off very slightly. Refining around
+  a tip tightens the ring of triangles that meets there, which makes the tip
+  itself read as a needle to the repair that runs when you lift your finger.
+  It is a fraction of a triangle's worth of rounding, and it only happens
+  where you are actually sculpting.
 - Roblox's own importer, not this app, decides what it accepts. The 10,000
   triangle ceiling is current at the time of writing; if that changes, set
   your own budget in Brush settings.

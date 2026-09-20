@@ -2185,6 +2185,105 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   await page.waitForTimeout(200);
 }
 
+/* ---- the crash: small brushes, full power, every mirror on ---------- */
+{
+  /*
+   * Reported as "the game always crashes when I use a brush on size 4 - 10,
+   * and crease on max power crashes it too". Driven here with real input, at
+   * the settings named, with every mirror switched on — the worst case for
+   * the refinement — and timed: a stroke that takes twenty seconds is a
+   * crash as far as anybody holding the phone is concerned.
+   */
+  const timings = [];
+  for (const [brush, radius] of [['crease', 4], ['crease', 8], ['add', 6], ['claystrips', 10],
+                                 ['crease', 95]]) {
+    await page.evaluate(([b, r]) => {
+      const app = window.SCULPT_APP;
+      app.setTransformMode(false);       // earlier tests left the handles on
+      app.newScene('sphere', 3, true);
+      app.selectBrush(b);
+      app.set('radius', r);
+      app.set('strength', 1);
+      app.set('dyntopo', true);
+      app.set('symmetryX', true);
+      app.set('symmetryY', true);
+      app.set('symmetryZ', true);
+    }, [brush, radius]);
+    await page.waitForTimeout(150);
+
+    const t0 = Date.now();
+    await stroke([cx - 70, cy - 30], [cx + 70, cy + 30], 24);
+    await stroke([cx + 70, cy + 30], [cx - 70, cy + 60], 24);
+    const ms = Date.now() - t0;
+    const state = await page.evaluate(() => {
+      const m = window.SCULPT_APP.scene.current().mesh;
+      return { tris: m.liveTris, spikes: m.countSpikes(), border: m.countBorderEdges(),
+               nonManifold: m.countNonManifoldEdges(), alive: !!window.SCULPT_APP.renderer.gl };
+    });
+    timings.push(`${brush} r${radius}: ${ms} ms, ${state.tris} tris`);
+    check(`${brush} at size ${radius} with three mirrors stays responsive`, ms < 9000, `${ms} ms`);
+    check(`and bounded in triangles at ${brush} r${radius}`, state.tris < 90000, `${state.tris} triangles`);
+    eq(`no needles from ${brush} r${radius}`, state.spikes, 0);
+    eq(`no holes from ${brush} r${radius}`, state.border, 0);
+    eq(`still manifold after ${brush} r${radius}`, state.nonManifold, 0);
+    check(`the canvas is still alive after ${brush} r${radius}`, state.alive === true);
+  }
+  console.log('     ' + timings.join(' | '));
+  await page.screenshot({ path: path.join(screens, '34-small-brush-mirrors.png') });
+}
+
+/* ---- the brush keeps working on what it has built ------------------- */
+{
+  /*
+   * The bug underneath most of the glitching: geometry that grew outside
+   * the lookup grid's box became invisible to it, so the brush stopped
+   * finding the bump it had just built and a stroke sculpted the far side
+   * of the model instead. Six passes of Add here, then a seventh that has
+   * to still bite on the near side.
+   */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.setTransformMode(false);
+    app.newScene('sphere', 3, true);
+    app.selectBrush('add');
+    app.set('radius', 60);
+    app.set('strength', 1);
+    app.set('clayOffset', 0.5);
+    app.set('dyntopo', true);
+    app.set('symmetryX', false);
+    app.set('symmetryY', false);
+    app.set('symmetryZ', false);
+  });
+  await page.waitForTimeout(150);
+
+  const heights = [];
+  for (let pass = 0; pass < 7; pass++) {
+    await stroke([cx - 30, cy], [cx + 30, cy], 12);
+    heights.push((await meshState()).far);
+  }
+  check('each pass of Add grows the model further out',
+    heights[6] > heights[3] + 0.01 && heights[3] > heights[0] + 0.01,
+    heights.map((h) => h.toFixed(3)).join(' -> '));
+
+  // and a tap lands on the bump, not on the far side of the model
+  const tap = await page.evaluate(([x, y]) => {
+    const app = window.SCULPT_APP;
+    const box = app.canvas.getBoundingClientRect();
+    const hit = app.engine.pick(x - box.left, y - box.top, true);
+    return hit ? { z: hit.localPoint[2], world: hit.point[2] } : null;
+  }, [cx, cy]);
+  check('and a tap in the middle hits the near side of it', tap && tap.z > 0.4,
+    tap ? `hit at z ${tap.z.toFixed(3)}` : 'nothing was hit');
+  const sound = await page.evaluate(() => {
+    const m = window.SCULPT_APP.scene.current().mesh;
+    return { border: m.countBorderEdges(), nm: m.countNonManifoldEdges(), spikes: m.countSpikes() };
+  });
+  eq('seven passes leave no holes', sound.border, 0);
+  eq('nothing non-manifold', sound.nm, 0);
+  eq('and no needles', sound.spikes, 0);
+  await page.screenshot({ path: path.join(screens, '35-builds-on-itself.png') });
+}
+
 /* ---- settings saved by the old build are migrated ------------------- */
 {
   /*

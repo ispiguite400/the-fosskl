@@ -1506,6 +1506,24 @@ input[type=color] {
     this._vertStamp = new Int32Array(64);
     this._stamp = 0;
 
+    /*
+     * A serial number per vertex, handed out in order of creation.
+     *
+     * Dead slots get reused, so a plain vertex index is not a lasting name
+     * for a vertex: anything that remembers a vertex across a topology
+     * change — the brush engine's record of where a stroke first touched a
+     * vertex, for one — has to be able to tell that its index now means
+     * somebody else. Without it, a stroke pulled newly split vertices onto
+     * a sphere around a dead vertex's old position, which is exactly the
+     * fin-shaped glitch that made sculpting look broken.
+     *
+     * Because the numbers only ever go up, they also say *when* a vertex
+     * appeared, which is how the brush engine tells a vertex the
+     * refinement has just created from one it has only just reached.
+     */
+    this.vertBirth = new Float64Array(64);
+    this._birthClock = 0;
+
     // scratch query results, reused to stay allocation-free
     this.qTris = [];
     this.qVerts = [];
@@ -1546,6 +1564,11 @@ input[type=color] {
         vs.set(this._vertStamp);
         this._vertStamp = vs;
       }
+      if (this.vertBirth.length < this.masks.length) {
+        var ve = new Float64Array(Math.max(this.masks.length * 2, 64));
+        ve.set(this.vertBirth);
+        this.vertBirth = ve;
+      }
       this.vertTris.length = this.masks.length;
     }
     var i3 = v * 3, p = this.positions.array, n = this.normals.array, c = this.colors.array;
@@ -1557,6 +1580,7 @@ input[type=color] {
     this.masks.array[v] = m === undefined ? 0 : m;
     var lst = this.vertTris[v];
     if (lst) lst.length = 0; else this.vertTris[v] = [];
+    this.vertBirth[v] = ++this._birthClock;
     this.liveVerts++;
     this.markVertDirty(v);
     this._boundsDirty = true;
@@ -1665,6 +1689,7 @@ input[type=color] {
       if (l) l.length = 0; else this.vertTris[i] = [];
     }
     if (this._vertStamp.length < n) this._vertStamp = new Int32Array(n + 64);
+    if (this.vertBirth.length < n) this.vertBirth = new Float64Array(n + 64);
 
     // drop degenerate triangles while copying
     var nt = idx.length / 3, kept = 0;
@@ -1969,12 +1994,24 @@ input[type=color] {
     if (!this.liveTris) { this.grid = null; return; }
     this._boundsDirty = true;
     this.bounds();
+    /*
+     * Padding. The grid's box has to hold what the model is about to become,
+     * not only what it is: an Add brush grows the surface outwards, and
+     * geometry that leaves the box has to be clamped into the edge cells
+     * until the next rebuild (see `gridInsertTri`). A margin of a few per
+     * cent of the model means ordinary sculpting stays inside the box, so
+     * that clamping — and the rebuilds it triggers — stay rare.
+     */
     var pad = Math.max(1e-4, this.averageEdgeLength());
     var minx = this._bmin[0] - pad, miny = this._bmin[1] - pad, minz = this._bmin[2] - pad;
     var sx = (this._bmax[0] + pad) - minx;
     var sy = (this._bmax[1] + pad) - miny;
     var sz = (this._bmax[2] + pad) - minz;
     var maxSide = Math.max(sx, sy, sz, 1e-6);
+    var grow = maxSide * 0.06;
+    minx -= grow; miny -= grow; minz -= grow;
+    sx += grow * 2; sy += grow * 2; sz += grow * 2;
+    maxSide = Math.max(sx, sy, sz, 1e-6);
 
     var targetCells = Math.max(8, this.liveTris / GRID_TRIS_PER_CELL);
     var cell = maxSide / Math.min(GRID_MAX_DIM, Math.max(2, Math.cbrt(targetCells) * (maxSide / Math.cbrt(sx * sy * sz || 1e-9) > 8 ? 1 : 1)));
@@ -1996,6 +2033,7 @@ input[type=color] {
     }
     V3.set(g.min, minx, miny, minz);
     this.gridEntries = 0;
+    this.gridOutside = 0;
 
     var nt = this.triDead.length;
     for (var t = 0; t < nt; t++) {
@@ -2019,9 +2057,27 @@ input[type=color] {
     var y1 = Math.floor((Math.max(ay, by, cy) - mn[1]) * inv);
     var z0 = Math.floor((Math.min(az, bz, cz) - mn[2]) * inv);
     var z1 = Math.floor((Math.max(az, bz, cz) - mn[2]) * inv);
-    if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0; if (z0 < 0) z0 = 0;
-    if (x1 >= g.dx) x1 = g.dx - 1; if (y1 >= g.dy) y1 = g.dy - 1; if (z1 >= g.dz) z1 = g.dz - 1;
-    if (x1 < x0 || y1 < y0 || z1 < z0) return;    // wholly outside: found by rebuild later
+    /*
+     * A triangle outside the box goes into the nearest edge cells, never
+     * nowhere.
+     *
+     * Dropping it — which is what this used to do — made the geometry
+     * invisible to every grid query: the brush could not find those
+     * vertices, so it stopped working on the bump it had just built;
+     * dynamic topology could not refine them, so they stretched into fins;
+     * and a tap could not hit them. Measured on a sphere with Add at full
+     * strength, six passes grew the model past its own grid and a query
+     * that should have found 747 vertices found none. Clamping keeps every
+     * query honest, and `gridOutside` tells the caller to rebuild.
+     */
+    var outside = (x0 < 0 || y0 < 0 || z0 < 0 || x1 >= g.dx || y1 >= g.dy || z1 >= g.dz);
+    if (x0 < 0) x0 = 0; else if (x0 >= g.dx) x0 = g.dx - 1;
+    if (y0 < 0) y0 = 0; else if (y0 >= g.dy) y0 = g.dy - 1;
+    if (z0 < 0) z0 = 0; else if (z0 >= g.dz) z0 = g.dz - 1;
+    if (x1 >= g.dx) x1 = g.dx - 1; else if (x1 < 0) x1 = 0;
+    if (y1 >= g.dy) y1 = g.dy - 1; else if (y1 < 0) y1 = 0;
+    if (z1 >= g.dz) z1 = g.dz - 1; else if (z1 < 0) z1 = 0;
+    if (outside) this.gridOutside = (this.gridOutside || 0) + 1;
     var buckets = g.buckets, dxdy = g.dx * g.dy;
     for (var z = z0; z <= z1; z++) {
       var zo = z * dxdy;
@@ -2054,14 +2110,14 @@ input[type=color] {
         this.gridInsertTri(t);
       }
     }
-    // rebuild once the stale entries dominate, or the mesh outgrew the grid
-    if (this.gridEntries > this.liveTris * 6 + 4096) this.gridRebuild();
+    // rebuild once the stale entries dominate, or the mesh outgrew the box
+    if (this.gridOutside || this.gridEntries > this.liveTris * 6 + 4096) this.gridRebuild();
     return out;
   };
 
   P.gridMaybeRebuild = function () {
     if (!this.grid) { this.gridRebuild(); return; }
-    if (this.gridEntries > this.liveTris * 4 + 2048) this.gridRebuild();
+    if (this.gridOutside || this.gridEntries > this.liveTris * 4 + 2048) this.gridRebuild();
   };
 
   /**
@@ -2081,9 +2137,14 @@ input[type=color] {
     var x0 = Math.floor((cx - r - mn[0]) * inv), x1 = Math.floor((cx + r - mn[0]) * inv);
     var y0 = Math.floor((cy - r - mn[1]) * inv), y1 = Math.floor((cy + r - mn[1]) * inv);
     var z0 = Math.floor((cz - r - mn[2]) * inv), z1 = Math.floor((cz + r - mn[2]) * inv);
-    if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0; if (z0 < 0) z0 = 0;
-    if (x1 >= g.dx) x1 = g.dx - 1; if (y1 >= g.dy) y1 = g.dy - 1; if (z1 >= g.dz) z1 = g.dz - 1;
-    if (x1 < x0 || y1 < y0 || z1 < z0) return out;
+    // a sphere outside the box still has to look in the edge cells, because
+    // that is where geometry outside the box was clamped to
+    if (x0 < 0) x0 = 0; else if (x0 >= g.dx) x0 = g.dx - 1;
+    if (y0 < 0) y0 = 0; else if (y0 >= g.dy) y0 = g.dy - 1;
+    if (z0 < 0) z0 = 0; else if (z0 >= g.dz) z0 = g.dz - 1;
+    if (x1 >= g.dx) x1 = g.dx - 1; else if (x1 < 0) x1 = 0;
+    if (y1 >= g.dy) y1 = g.dy - 1; else if (y1 < 0) y1 = 0;
+    if (z1 >= g.dz) z1 = g.dz - 1; else if (z1 < 0) z1 = 0;
     this._stamp++;
     var st = this._stamp, stamps = this._triStamp, dead = this.triDead.array;
     var buckets = g.buckets, dxdy = g.dx * g.dy;
@@ -2336,6 +2397,8 @@ input[type=color] {
     }
     m._triStamp = new Int32Array(this._triStamp.length);
     m._vertStamp = new Int32Array(this._vertStamp.length);
+    m.vertBirth = new Float64Array(this.vertBirth.length);
+    m._birthClock = 0;
     m._boundsDirty = true;
     m.topoDirty = true;
     m.gridRebuild();
@@ -2390,6 +2453,10 @@ input[type=color] {
     }
     if (this._vertStamp.length < nv) this._vertStamp = new Int32Array(nv + 64);
     if (this._triStamp.length < nt) this._triStamp = new Int32Array(nt + 64);
+    // every slot may mean a different vertex now, so no remembered index
+    // from before the restore is allowed to look valid (see `vertBirth`)
+    if (this.vertBirth.length < nv) this.vertBirth = new Float64Array(nv + 64);
+    else this.vertBirth.fill(0);
     this._boundsDirty = true;
     this.topoDirty = true;
     this.dirtyMinVert = 0; this.dirtyMaxVert = nv - 1;
@@ -3549,19 +3616,28 @@ input[type=color] {
    * Find the spikes: vertices sitting far off the surface their own ring
    * describes.
    *
-   * The measure is the distance from the middle of the ring, against how far
-   * apart the ring's own vertices are — deliberately not against the edges
-   * that reach the vertex itself, because a spike stretches those and would
-   * then hide behind them.
+   * The measure is the distance from the middle of the ring, against how
+   * wide that ring is — deliberately not against the edges that reach the
+   * vertex itself, because a spike stretches those and would then hide
+   * behind them.
+   *
+   * Measuring against the ring's width rather than the spacing between its
+   * vertices is what makes the score mean the same thing at any resolution:
+   * a cone's apex scores 2.5 whether its ring holds eight vertices or
+   * eighty, where the spacing measure grew with the count and eventually
+   * called the apex a fault. It also needs no ring ordering, so it reads
+   * a border vertex correctly too.
    *
    * With `out`, appends [vertex, x, y, z] for each one, where x,y,z is where
    * it should go. Returns how many were found.
    */
-  function scanSpikes(mesh, factor, strength, out) {
+  function scanSpikes(mesh, factor, strength, out, only, onlyCount) {
     var pos = mesh.positions.array;
     var ring = [];
     var found = 0;
-    for (var v = 0; v < mesh.masks.length; v++) {
+    var n = only ? (onlyCount === undefined ? only.length : onlyCount) : mesh.masks.length;
+    for (var vi = 0; vi < n; vi++) {
+      var v = only ? only[vi] : vi;
       if (mesh.vertDead.array[v]) continue;
       ring.length = 0;
       mesh.ringVerts(v, ring);
@@ -3575,13 +3651,13 @@ input[type=color] {
       var inv = 1 / ring.length;
       cx *= inv; cy *= inv; cz *= inv;
 
-      // how far apart the ring's own neighbours are — the local scale
+      // how wide the ring is — the local scale
       var span = 0;
       for (var k = 0; k < ring.length; k++) {
-        var a = ring[k] * 3, b = ring[(k + 1) % ring.length] * 3;
-        span += Math.sqrt((pos[b] - pos[a]) * (pos[b] - pos[a]) +
-                          (pos[b + 1] - pos[a + 1]) * (pos[b + 1] - pos[a + 1]) +
-                          (pos[b + 2] - pos[a + 2]) * (pos[b + 2] - pos[a + 2]));
+        var a = ring[k] * 3;
+        span += Math.sqrt((pos[a] - cx) * (pos[a] - cx) +
+                          (pos[a + 1] - cy) * (pos[a + 1] - cy) +
+                          (pos[a + 2] - cz) * (pos[a + 2] - cz));
       }
       span *= inv;
       if (span < 1e-12) continue;
@@ -3598,21 +3674,22 @@ input[type=color] {
   }
 
   /*
-   * Where the threshold comes from.
+   * Where the threshold comes from, measured on the primitives themselves:
    *
-   * A cone's apex sits about five times its ring spacing off that ring's
-   * middle — and it is a feature, not a fault. Measured spikes left by a
-   * stroke that piled up in one place score under two. So a threshold that
-   * catches "spikes" from sculpting would blunt every cone, pyramid and
-   * horn tip in the scene, which is worse than the problem.
+   *   sphere          0.1     a smooth surface
+   *   cylinder rim    0.75    a hard edge
+   *   box corner      0.98    a corner
+   *   plane border    1.44    an open edge
+   *   cone apex       2.50    the sharpest thing anyone makes on purpose
+   *   a real needle   7.1     one vertex pulled half a radius out
    *
-   * The default is therefore set well above a cone: it catches the genuine
-   * needles — a vertex flung out of an imported mesh, or left behind by a
-   * boolean — and leaves sharp features that were made on purpose alone.
-   * Prevention is what deals with sculpting spikes: the stroke reach limit
-   * in the brush engine.
+   * Four sits in the gap: it leaves every sharp feature that was made on
+   * purpose alone, and still catches the genuine needles — a vertex flung
+   * out of an imported mesh, or left behind by a boolean. Prevention is
+   * what deals with sculpting spikes: the stroke reach limit and the
+   * refinement damping in the brush engine.
    */
-  var SPIKE_FACTOR = 6;
+  var SPIKE_FACTOR = 4;
 
   /**
    * Pull needle vertices back onto the surface. Returns how many moved.
@@ -3620,15 +3697,22 @@ input[type=color] {
    * Runs a few passes, because pulling a needle most of the way back can
    * leave it just over the threshold still.
    */
-  P.relaxSpikes = function (factor, strength) {
+  P.relaxSpikes = function (factor, strength, only, onlyCount) {
     factor = factor === undefined ? SPIKE_FACTOR : factor;
     strength = strength === undefined ? 0.85 : strength;
     var pos = this.positions.array;
     var moved = 0;
     var ring = [];
+    /*
+     * When the caller names a region, the region has to grow with the
+     * repair: pulling a needle back relaxes its neighbours too, and that
+     * can leave the vertex just outside the region slightly out of shape.
+     * So each pass looks at what the last one moved, and at their rings.
+     */
+    var work = only, workCount = onlyCount;
     for (var pass = 0; pass < 4; pass++) {
       var targets = [];
-      scanSpikes(this, factor, strength, targets);
+      scanSpikes(this, factor, strength, targets, work, workCount);
       if (!targets.length) break;
       // collect first, apply after: moving as we go would let one needle drag
       // its neighbour's idea of the surface with it
@@ -3662,14 +3746,51 @@ input[type=color] {
         }
       }
       if (near.length) this.smoothVerts(Uint32Array.from(near), near.length, 0.5, false);
+
+      if (only) {
+        // the next pass watches everything this one could have disturbed
+        var grown = near.slice();
+        var seenGrown = seen;
+        for (var g = 0; g < near.length; g++) {
+          ring.length = 0;
+          this.ringVerts(near[g], ring);
+          for (var gr = 0; gr < ring.length; gr++) {
+            if (!seenGrown[ring[gr]]) { seenGrown[ring[gr]] = 1; grown.push(ring[gr]); }
+          }
+        }
+        work = grown; workCount = grown.length;
+      }
     }
     if (moved) { this._boundsDirty = true; this.computeNormals(); }
     return moved;
   };
 
+  /**
+   * Pull back any needle a stroke left behind, looking only at the vertices
+   * the stroke touched.
+   *
+   * The same repair as `relaxSpikes`, but bounded to a region: a stroke has
+   * no business straightening geometry at the other end of the model, and
+   * scanning the whole mesh at the end of every stroke is work the phone
+   * does not have to spare.
+   */
+  P.relaxSpikesAt = function (verts, count, factor, strength) {
+    if (!verts || !count) return 0;
+    /*
+     * Repairs go a little below the threshold that reports a needle. Pulling
+     * a needle back to exactly the threshold leaves it there, one rounding
+     * error from being flagged again, and each pass of the repair nudges
+     * its neighbours too; a margin means anything worth reporting is
+     * comfortably gone in one go. Even so this stays well clear of a cone's
+     * apex, which scores 2.5.
+     */
+    if (factor === undefined) factor = SPIKE_FACTOR * 0.8;
+    return this.relaxSpikes(factor, strength, verts, count);
+  };
+
   /** Count the needle vertices without touching anything. */
-  P.countSpikes = function (factor) {
-    return scanSpikes(this, factor === undefined ? SPIKE_FACTOR : factor, 0.85, null);
+  P.countSpikes = function (factor, only, onlyCount) {
+    return scanSpikes(this, factor === undefined ? SPIKE_FACTOR : factor, 0.85, null, only, onlyCount);
   };
 
   /**
@@ -8086,6 +8207,7 @@ input[type=color] {
     this.frontFacing = true;
     this.autoSmooth = 0;
     this.clay = 0.2;
+    this.detail = 0;                      // refinement target, 0 = not refining
     // the stencil, and the two in-surface axes it is read along
     this.alpha = null;
     this.alphaU = V3.create(1, 0, 0);
@@ -8153,6 +8275,48 @@ input[type=color] {
   }
   S.computeWeights = computeWeights;
 
+  /*
+   * Hold back the vertices the refinement has not reached yet.
+   *
+   * Dynamic topology refines a little per stamp — it has to, or one stroke
+   * eats the whole triangle budget — so on a coarse model the first stamps
+   * land while parts of the footprint still carry edges many times the
+   * detail size. Moving such a vertex by a full brush step drags a long
+   * edge with it and leaves a fin: measured on a box, one stamp moved a
+   * vertex 0.29 while its ring sat 0.64 away, which is the spike that made
+   * sculpted models look broken.
+   *
+   * So a vertex moves in proportion to how refined it is: fully once its
+   * edges are down near the detail size, barely at all while they are ten
+   * times too long. Nothing is lost — the next stamps refine further and it
+   * catches up — and the surface stays a surface the whole way.
+   */
+  function dampUnderRefined(ctx) {
+    var detail = ctx.detail;
+    if (!(detail > 0)) return;
+    var mesh = ctx.mesh, verts = ctx.verts, n = ctx.count, w = ctx.weights;
+    var pos = mesh.positions.array;
+    var ring = ctx._ring || (ctx._ring = []);
+    var full = detail * 2;                 // at or under this: move freely
+    for (var i = 0; i < n; i++) {
+      if (w[i] <= 0) continue;
+      var v = verts[i], o = v * 3;
+      ring.length = 0;
+      mesh.ringVerts(v, ring);
+      if (ring.length < 2) continue;
+      var sum = 0;
+      for (var k = 0; k < ring.length; k++) {
+        var ro = ring[k] * 3;
+        sum += Math.sqrt((pos[o] - pos[ro]) * (pos[o] - pos[ro]) +
+                         (pos[o + 1] - pos[ro + 1]) * (pos[o + 1] - pos[ro + 1]) +
+                         (pos[o + 2] - pos[ro + 2]) * (pos[o + 2] - pos[ro + 2]));
+      }
+      var avg = sum / ring.length;
+      if (avg > full) w[i] *= full / avg;
+    }
+  }
+  S.dampUnderRefined = dampUnderRefined;
+
   /**
    * Weighted average position and normal of the vertices under the brush —
    * the "area plane" the clay, flatten, fill and scrape brushes work against.
@@ -8210,15 +8374,82 @@ input[type=color] {
    * stroke found it back onto that sphere. This is what keeps a stroke from
    * growing spikes, and it costs one distance check per touched vertex.
    */
+  /*
+   * A ceiling on what one stamp may move a vertex, measured in triangle
+   * widths.
+   *
+   * A stamp that moves the surface further than the triangles are wide
+   * leaves geometry the refinement cannot describe: a cliff where a brush
+   * lifts, a fold where it pushes sideways. Measured with the Nudge brush
+   * at a fine detail setting, one stroke left 323 needles and 38,000
+   * triangles; holding each stamp to a few triangle widths leaves the same
+   * stroke smooth, and costs nothing visible, because a stroke lays several
+   * stamps per brush width and the movement simply accumulates over them.
+   */
+  /**
+   * The mirror combinations the settings ask for: [1,1,1] on its own, and a
+   * sign flip per axis that is switched on, so all eight octants when all
+   * three are.
+   */
+  function symmetryCombos(st) {
+    var symmetry = [st.symmetryX, st.symmetryY, st.symmetryZ];
+    var combos = [[1, 1, 1]];
+    for (var axis = 0; axis < 3; axis++) {
+      if (!symmetry[axis]) continue;
+      var extra = [];
+      for (var i = 0; i < combos.length; i++) {
+        var c = combos[i].slice();
+        c[axis] = -1;
+        extra.push(c);
+      }
+      combos = combos.concat(extra);
+    }
+    return combos;
+  }
+  S.symmetryCombos = symmetryCombos;
+
+  function limitStampStep(mesh, verts, count, snap, cap) {
+    if (!(cap > 0)) return 0;
+    var pos = mesh.positions.array;
+    var held = 0;
+    for (var i = 0; i < count; i++) {
+      var v = verts[i], o = v * 3, s3 = i * 3;
+      var dx = pos[o] - snap[s3], dy = pos[o + 1] - snap[s3 + 1], dz = pos[o + 2] - snap[s3 + 2];
+      var d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      if (d <= cap || d < 1e-12) continue;
+      var k = cap / d;
+      pos[o] = snap[s3] + dx * k;
+      pos[o + 1] = snap[s3 + 1] + dy * k;
+      pos[o + 2] = snap[s3 + 2] + dz * k;
+      mesh.markVertDirty(v);
+      held++;
+    }
+    return held;
+  }
+  S.limitStampStep = limitStampStep;
+
   function limitStrokeReach(mesh, verts, count, origins, limit) {
     if (!(limit > 0)) return 0;
     var pos = mesh.positions.array;
+    var birth = mesh.vertBirth;
     var pulled = 0;
     for (var i = 0; i < count; i++) {
       var v = verts[i];
       var start = origins.get(v);
       if (!start) continue;
       var o = v * 3;
+      /*
+       * The slot may have been handed to a different vertex since — a
+       * collapse kills a vertex and the next split takes its index. Pulling
+       * the newcomer back towards where the dead one started is how a
+       * stroke came to leave fins standing off the surface, so the record
+       * is replaced with this vertex's own starting point instead.
+       */
+      if (start[3] !== birth[v]) {
+        start[0] = pos[o]; start[1] = pos[o + 1]; start[2] = pos[o + 2];
+        start[3] = birth[v];
+        continue;
+      }
       var dx = pos[o] - start[0], dy = pos[o + 1] - start[1], dz = pos[o + 2] - start[2];
       var d = Math.sqrt(dx * dx + dy * dy + dz * dz);
       if (d <= limit || d < 1e-12) continue;
@@ -8266,9 +8497,21 @@ input[type=color] {
     // how thick one pass lays down, as a share of the brush size
     var target = ctx.radius * S.clamp(ctx.clay, 0.02, 0.6) * 1.6 * s;
     var strength = ctx.strength;
+    /*
+     * A floor under each stamp, so material keeps building.
+     *
+     * Filling to a plateau above the local average saturates: once the bump
+     * is that high the sum stops moving, and going over the same place again
+     * does nothing. A small guaranteed lift per stamp keeps it growing pass
+     * after pass, which is what a clay brush is for — and it is safe to do
+     * because the stroke reach limit bounds how far one stroke can take it.
+     */
+    var floor = ctx.radius * 0.05 * strength * s;
     eachVert(ctx, function (v, o, f, pos) {
       var height = (pos[o] - px) * nx + (pos[o + 1] - py) * ny + (pos[o + 2] - pz) * nz;
       var move = (target - height) * strength * f;
+      var least = floor * f;
+      move = s > 0 ? Math.max(move, least) : Math.min(move, least);
       // never cut while adding (or add while cutting): that is what makes it
       // build up rather than drag the whole surface along
       if (s > 0 ? move < 0 : move > 0) return;
@@ -8494,10 +8737,11 @@ input[type=color] {
     var nx = ctx.planeNormal[0], ny = ctx.planeNormal[1], nz = ctx.planeNormal[2];
     var origin = ctx.origin;
     if (!origin) return BrushFns.draw(ctx);
+    var birth = ctx.mesh.vertBirth;
     eachVert(ctx, function (v, o, f, pos) {
       var base = origin.get(v);
-      if (!base) {
-        base = [pos[o], pos[o + 1], pos[o + 2], 0];
+      if (!base || base[4] !== birth[v]) {
+        base = [pos[o], pos[o + 1], pos[o + 2], 0, birth[v]];
         origin.set(v, base);
       }
       var target = Math.max(base[3], f);        // the layer only ever rises
@@ -8513,8 +8757,10 @@ input[type=color] {
     var dx = ctx.delta[0], dy = ctx.delta[1], dz = ctx.delta[2];
     if (dx === 0 && dy === 0 && dz === 0) return;
     var origin = ctx.origin;
+    var birth = ctx.mesh.vertBirth;
     eachVert(ctx, function (v, o, f, pos) {
       var base = origin && origin.get(v);
+      if (base && base[4] !== birth[v]) base = null;
       if (base) {
         pos[o] = base[0] + dx * f;
         pos[o + 1] = base[1] + dy * f;
@@ -8565,8 +8811,10 @@ input[type=color] {
     var cx = ctx.center[0], cy = ctx.center[1], cz = ctx.center[2];
     var ax = ctx.normal[0], ay = ctx.normal[1], az = ctx.normal[2];
     var origin = ctx.origin;
+    var birth = ctx.mesh.vertBirth;
     eachVert(ctx, function (v, o, f, pos) {
       var base = origin && origin.get(v);
+      if (base && base[4] !== birth[v]) base = null;
       var x = base ? base[0] : pos[o];
       var y = base ? base[1] : pos[o + 1];
       var z = base ? base[2] : pos[o + 2];
@@ -8755,6 +9003,8 @@ input[type=color] {
     V3.copy(this._prevWorld, hit.point);
     this._screen[0] = this._prevScreen[0] = this._smoothScreen[0] = input.x;
     this._screen[1] = this._prevScreen[1] = this._smoothScreen[1] = input.y;
+    if (!this._prevStamp) this._prevStamp = [input.x, input.y];
+    this._prevStamp[0] = input.x; this._prevStamp[1] = input.y;
     this.pendingDistance = 0;
 
     var topo = this.usesDyntopo();
@@ -8779,6 +9029,13 @@ input[type=color] {
      * displacement brushes — the ones that can pile material up.
      */
     this.strokeOrigins = (brush.grab || brush.paint || brush.mask) ? null : new Map();
+    // everything created from here on is the refinement's work, not the
+    // model's own geometry (see the seeding of `strokeOrigins` below)
+    this._strokeBirth = hit.object.mesh._birthClock;
+    // where a grab began, so the region it pulled through can be found again
+    // at the end of the stroke: a snake hook carries the anchor along with it
+    if (!this._grabStart) this._grabStart = V3.create(0, 0, 0);
+    V3.copy(this._grabStart, hit.localPoint);
     this.grabVerts = null;
 
     // grab brushes capture their vertex set once, so the same material moves
@@ -8821,13 +9078,23 @@ input[type=color] {
     }
     var perPixel = this.camera.worldPerPixel(worldPoint) / this.obj.uniformScale();
     /*
-     * A flat size in pixels, deliberately not scaled down to match a small
-     * brush. Letting a tiny brush ask for tiny triangles is how a few dabs
-     * turned into tens of thousands of them: the brush refines the surface
-     * to this size first, and once the triangles here are this big, even a
-     * small brush has two or three of them to work with.
+     * A size in pixels — so the triangles are as fine as the screen can
+     * show, whatever the model's scale — that follows the brush down when
+     * the brush is smaller than that.
+     *
+     * The size has to follow, because a ten-pixel brush working against
+     * twelve-pixel triangles has one vertex to push on and leaves no mark
+     * at all. It has to stop following at some point, because triangles
+     * finer than a pixel are invisible and not free. And following keeps
+     * the cost flat rather than raising it: how many triangles fit under
+     * one stamp is (radius / detail) squared, so a size proportional to the
+     * brush means a small brush refines a small patch finely and a big
+     * brush a big patch coarsely, for about the same number of triangles.
      */
-    return Math.max(perPixel * S.clamp(st.detailPixels || 12, 3, 60), 1e-6);
+    var px = S.clamp(st.detailPixels || 12, 3, 60);
+    var byBrush = (st.radius || px) * 0.6;
+    if (byBrush < px) px = Math.max(byBrush, 3);
+    return Math.max(perPixel * px, 1e-6);
   };
 
   StrokeEngine.prototype.usesDyntopo = function () {
@@ -8860,6 +9127,20 @@ input[type=color] {
     return (cap > 1e-6 && local > cap) ? cap : local;
   };
 
+  /**
+   * The region a grab stroke pulled through, in object space: a sphere
+   * covering where it started and where it ended up.
+   */
+  StrokeEngine.prototype.grabRegion = function () {
+    var a = this._grabStart || this._anchorLocal;
+    var b = this._grabEnd || (this._grabEnd = V3.create(0, 0, 0));
+    V3.copy(b, this._anchorLocal);
+    if (this.grabTotal) V3.add(b, b, this.grabTotal);
+    var base = this.grabRadius || this.anchorRadius || 0;
+    return { x: (a[0] + b[0]) * 0.5, y: (a[1] + b[1]) * 0.5, z: (a[2] + b[2]) * 0.5,
+             r: base + V3.dist(a, b) * 0.6 };
+  };
+
   StrokeEngine.prototype.captureGrabSet = function () {
     var mesh = this.obj.mesh;
     var r = this.localRadius(this._anchorWorld);
@@ -8870,7 +9151,7 @@ input[type=color] {
     var pos = mesh.positions.array;
     for (var i = 0; i < this.grabVerts.length; i++) {
       var v = this.grabVerts[i], o = v * 3;
-      origin.set(v, [pos[o], pos[o + 1], pos[o + 2], 0]);
+      origin.set(v, [pos[o], pos[o + 1], pos[o + 2], 0, mesh.vertBirth[v]]);
     }
   };
 
@@ -8886,18 +9167,23 @@ input[type=color] {
     this.obj.localToWorldPoint(worldPoint, local);
     var radius = brush.grab && !brush.follow ? this.grabRadius : this.localRadius(worldPoint);
 
-    var symmetry = [st.symmetryX, st.symmetryY, st.symmetryZ];
-    var combos = [[1, 1, 1]];
-    for (var axis = 0; axis < 3; axis++) {
-      if (!symmetry[axis]) continue;
-      var extra = [];
-      for (var i = 0; i < combos.length; i++) {
-        var c = combos[i].slice();
-        c[axis] = -1;
-        extra.push(c);
-      }
-      combos = combos.concat(extra);
-    }
+    var combos = symmetryCombos(st);
+
+    /*
+     * Mirrored passes that land on top of each other.
+     *
+     * A brush sitting on a mirror plane produces the same stamp twice — and
+     * with all three mirrors on, up to eight times. Every pass then moved
+     * the same vertices again, so a stroke cut eight times as deep as asked
+     * and the curvature it left sent dynamic topology into a refining
+     * frenzy: measured, one stroke of Crease at full strength went from
+     * 4,500 triangles to the 150,000 ceiling and took eighteen seconds,
+     * which on a phone is a crash. So a pass whose centre has already been
+     * stamped is skipped.
+     */
+    var seen = this._symSeen || (this._symSeen = []);
+    seen.length = 0;
+    var dupSq = radius * radius * 0.0625;        // within a quarter of the brush
 
     var strengthScale = st.pressureStrength ? S.lerp(0.25, 1, this.pressure) : 1;
     // A stroke lays a stamp every `spacing * radius`, so without this the
@@ -8912,15 +9198,34 @@ input[type=color] {
       var m = combos[ci];
       var cx = local[0] * m[0], cy = local[1] * m[1], cz = local[2] * m[2];
 
+      var duplicate = false;
+      for (var sy = 0; sy < seen.length; sy += 3) {
+        var sdx = seen[sy] - cx, sdy = seen[sy + 1] - cy, sdz = seen[sy + 2] - cz;
+        if (sdx * sdx + sdy * sdy + sdz * sdz < dupSq) { duplicate = true; break; }
+      }
+      if (duplicate) continue;
+      seen.push(cx, cy, cz);
+
       if (this.usesDyntopo() && !(brush.grab && !brush.follow)) {
         var detail = this.detailSize(worldPoint, radius);
+        /*
+         * One stamp's worth of refinement, shared between the mirrors.
+         *
+         * Each mirrored pass refines its own copy of the region, so without
+         * this a stamp with all three mirrors on does eight times the work
+         * of one without — and that is how a fine detail setting with a big
+         * brush turned a single stroke into a two-second freeze. Sharing
+         * the budget keeps a stamp's cost the same whatever symmetry is on;
+         * the mirrors simply take a few more stamps to catch up.
+         */
+        var share = Math.max(120, Math.round(600 / combos.length));
         /*
          * Refine a little wider than the brush. Refining exactly the
          * footprint leaves a dense island inside a ring of untouched
          * triangles, and the seam between them is where slivers and torn
          * shading come from; a wider ring grades the change instead.
          */
-        mesh.dyntopo(cx, cy, cz, radius * 1.25, detail, st.maxTriangles);
+        mesh.dyntopo(cx, cy, cz, radius * 1.25, detail, st.maxTriangles, undefined, share);
       }
 
       var verts;
@@ -8944,6 +9249,13 @@ input[type=color] {
       ctx.falloff = S.falloffById(st.falloff).fn;
       ctx.frontFacing = st.frontFacing !== false && !brush.grab;
       ctx.clay = st.clayOffset === undefined ? 0.18 : st.clayOffset;
+      /*
+       * Grab brushes drag a whole region by the pointer, so "how refined is
+       * this vertex" is not a reason to hold them back; everything else is
+       * damped where the refinement has not caught up (see
+       * `dampUnderRefined`).
+       */
+      ctx.detail = (this.usesDyntopo() && !brush.grab) ? this.detailSize(worldPoint, radius) : 0;
       ctx.pressure = this.pressure;
       V3.set(ctx.center, cx, cy, cz);
       V3.set(ctx.normal, localNormal[0] * m[0], localNormal[1] * m[1], localNormal[2] * m[2]);
@@ -8991,6 +9303,7 @@ input[type=color] {
       }
 
       computeWeights(ctx);
+      dampUnderRefined(ctx);
       this.history.captureVerts(verts, ctx.count);
 
       // remember where these vertices were when the stroke first touched
@@ -8998,12 +9311,59 @@ input[type=color] {
       var origins = this.strokeOrigins;
       if (origins) {
         var opos = mesh.positions.array;
+        var obirth = mesh.vertBirth;
+        var oring = this._oring || (this._oring = []);
         for (var oi = 0; oi < ctx.count; oi++) {
           var ov = verts[oi];
-          if (!origins.has(ov)) {
-            var oo = ov * 3;
-            origins.set(ov, [opos[oo], opos[oo + 1], opos[oo + 2]]);
+          var had = origins.get(ov);
+          if (had && had[3] === obirth[ov]) continue;
+          var oo = ov * 3;
+          var ax = 0, ay = 0, az = 0, an = 0;
+          /*
+           * A vertex the refinement created during this stroke inherits
+           * where its neighbours started, rather than where it was born.
+           *
+           * Its birthplace is already part-way through the stroke, so taking
+           * that as its starting point would hand it a fresh allowance of
+           * travel — and since refinement creates new vertices every stamp,
+           * a stroke could creep on for ever, one generation at a time.
+           *
+           * A vertex that was here all along and has only just come within
+           * reach of the brush is a different matter: it starts from where
+           * it is, or the limit below would drag it somewhere it was never
+           * pushed. That is why this asks when the vertex appeared.
+           */
+          if (obirth[ov] > this._strokeBirth) {
+            oring.length = 0;
+            mesh.ringVerts(ov, oring);
+            for (var ri = 0; ri < oring.length; ri++) {
+              var rec = origins.get(oring[ri]);
+              if (!rec || rec[3] !== obirth[oring[ri]]) continue;
+              ax += rec[0]; ay += rec[1]; az += rec[2]; an++;
+            }
           }
+          if (an) origins.set(ov, [ax / an, ay / an, az / an, obirth[ov]]);
+          else origins.set(ov, [opos[oo], opos[oo + 1], opos[oo + 2], obirth[ov]]);
+        }
+      }
+
+      /*
+       * Where these vertices were before this stamp, so the step ceiling
+       * below has something to measure against. Only worth keeping while
+       * the refinement is running, since the ceiling is measured in
+       * triangle widths.
+       */
+      var stepCap = (ctx.detail > 0 && !brush.paint && !brush.mask) ? ctx.detail * 3 : 0;
+      var snap = null;
+      if (stepCap > 0) {
+        snap = this._stepSnap;
+        if (!snap || snap.length < ctx.count * 3) {
+          snap = this._stepSnap = new Float64Array(S.nextPow2(ctx.count * 3));
+        }
+        var spos = mesh.positions.array;
+        for (var si = 0; si < ctx.count; si++) {
+          var so2 = verts[si] * 3, d3 = si * 3;
+          snap[d3] = spos[so2]; snap[d3 + 1] = spos[so2 + 1]; snap[d3 + 2] = spos[so2 + 2];
         }
       }
 
@@ -9018,6 +9378,7 @@ input[type=color] {
         mesh.smoothVerts(verts, ctx.count, autoSmooth * 0.5, true, ctx.weights);
       }
 
+      if (snap) limitStampStep(mesh, verts, ctx.count, snap, stepCap);
       if (origins) limitStrokeReach(mesh, verts, ctx.count, origins, radius * STROKE_REACH);
 
       var arr = verts;
@@ -9096,36 +9457,61 @@ input[type=color] {
       return false;
     }
 
-    var target = hit.localPoint;
-    var prev = this._prevLocal;
-    var dist = V3.dist(target, prev);
+    /*
+     * Stamps are spaced along the path the finger took on screen, and each
+     * one finds the surface under that point for itself.
+     *
+     * Spacing them along the *surface* between two pointer positions reads
+     * well until the stroke digs in: the surface path between two points
+     * grows as the dent deepens, so the same finger movement lays more and
+     * more stamps, which digs deeper, which lays more again. Measured on a
+     * Crease stroke at full strength with three mirrors on, that loop turned
+     * one stroke into five hundred stamps, a hundred and fifty thousand
+     * triangles and twenty seconds — a crash, on a phone.
+     *
+     * On screen there is no such feedback: how many stamps a movement lays
+     * depends only on how far the finger moved.
+     */
+    if (!this._prevStamp) this._prevStamp = [this._prevScreen[0], this._prevScreen[1]];
+    var fromX = this._prevStamp[0], fromY = this._prevStamp[1];
+    var pxDist = Math.sqrt((sx - fromX) * (sx - fromX) + (sy - fromY) * (sy - fromY));
     var radius = this.localRadius(hit.point);
-    var step = Math.max(radius * S.clamp(st.spacing || 0.2, 0.02, 2), 1e-7);
+    var stepPx = Math.max(st.radius * S.clamp(st.spacing || 0.2, 0.02, 2), 1.5);
 
     if (!this.strokeDir) this.strokeDir = V3.create(0, 0, 0);
-    if (dist > 1e-12) {
-      V3.sub(this.strokeDir, target, prev);
+    var target = hit.localPoint;
+    if (V3.dist(target, this._prevLocal) > 1e-12) {
+      V3.sub(this.strokeDir, target, this._prevLocal);
       V3.normalize(this.strokeDir, this.strokeDir);
     }
 
-    var travelled = this.pendingDistance + dist;
-    if (travelled < step) {
+    var travelled = this.pendingDistance + pxDist;
+    if (travelled < stepPx) {
       this.pendingDistance = travelled;
       this._prevScreen[0] = sx; this._prevScreen[1] = sy;
       return true;
     }
 
-    var steps = Math.min(Math.floor(travelled / step), 64);
-    var startOffset = step - this.pendingDistance;
+    // a hard bound per event as well, so a flung finger or a dropped frame
+    // cannot ask for hundreds of stamps at once
+    var steps = Math.min(Math.floor(travelled / stepPx), 16);
+    var startOffset = stepPx - this.pendingDistance;
+    var laid = 0;
     for (var i = 0; i < steps; i++) {
-      var t = (startOffset + i * step) / (dist || 1);
+      var t = (startOffset + i * stepPx) / (pxDist || 1);
       if (t > 1) t = 1;
-      V3.lerp(this._tmp, prev, target, t);
-      this.stampAt(this._tmp, hit.localNormal, false);
+      var atX = fromX + (sx - fromX) * t, atY = fromY + (sy - fromY) * t;
+      var stepHit = (t >= 1) ? hit : this.pick(atX, atY, true);
+      if (!stepHit || stepHit.object !== obj) continue;
+      V3.sub(this.strokeDir, stepHit.localPoint, this._prevLocal);
+      if (V3.lenSq(this.strokeDir) > 1e-14) V3.normalize(this.strokeDir, this.strokeDir);
+      this.stampAt(stepHit.localPoint, stepHit.localNormal, false);
+      V3.copy(this._prevLocal, stepHit.localPoint);
+      V3.copy(this._prevWorld, stepHit.point);
+      laid++;
     }
-    this.pendingDistance = travelled - steps * step;
-    V3.copy(this._prevLocal, target);
-    V3.copy(this._prevWorld, hit.point);
+    this.pendingDistance = travelled - steps * stepPx;
+    this._prevStamp[0] = sx; this._prevStamp[1] = sy;
     this._prevScreen[0] = sx; this._prevScreen[1] = sy;
     return true;
   };
@@ -9143,18 +9529,31 @@ input[type=color] {
      * pull ends up looking like added material instead of a thinned mesh.
      */
     if (this.usesDyntopo() && this.brush.grab && !this.brush.follow && !this.brush.rotate) {
-      var total = this.grabTotal;
-      var pulled = total ? V3.len(total) : 0;
-      var base = this.grabRadius || this.anchorRadius || 0;
-      // a sphere covering both ends of the pull
-      var reach = base + pulled * 0.6;
-      if (reach > 1e-6) {
-        var detail = this.detailSize(this._anchorWorld, base);
-        mesh.dyntopo(this._anchorLocal[0] + (total ? total[0] * 0.5 : 0),
-                     this._anchorLocal[1] + (total ? total[1] * 0.5 : 0),
-                     this._anchorLocal[2] + (total ? total[2] * 0.5 : 0),
-                     reach, detail, st.maxTriangles);
+      var pull = this.grabRegion();
+      if (pull.r > 1e-6) {
+        var detail = this.detailSize(this._anchorWorld, this.grabRadius || this.anchorRadius || 0);
+        mesh.dyntopo(pull.x, pull.y, pull.z, pull.r, detail, st.maxTriangles);
         mesh.computeNormals();
+      }
+    }
+
+    /*
+     * A grab stroke keeps no record of the vertices it touched — it drags a
+     * captured set, and the reach limit does not apply to it — so the
+     * needle repair below has nothing to work from. The region it pulled
+     * through is the sphere covering the anchor and where the pointer ended
+     * up, which is where any needle it left will be.
+     */
+    if (!this.strokeOrigins && this.brush.grab) {
+      var pulled = this.grabRegion();
+      if (pulled.r > 1e-6) {
+        var gcombos = symmetryCombos(st);
+        for (var gi = 0; gi < gcombos.length; gi++) {
+          var gm = gcombos[gi];
+          var gv = mesh.vertsInSphere(pulled.x * gm[0], pulled.y * gm[1], pulled.z * gm[2],
+                                      pulled.r * 1.2);
+          if (gv.length) mesh.relaxSpikesAt(Uint32Array.from(gv), gv.length);
+        }
       }
     }
 
@@ -9168,12 +9567,75 @@ input[type=color] {
      * to anything working through a stencil, where the crisp edge is the
      * whole point.
      */
-    if (this.strokeOrigins && this.strokeOrigins.size && !this.brush.crisp && !this.alpha) {
+    if (this.strokeOrigins && this.strokeOrigins.size) {
       var settle = [];
       this.strokeOrigins.forEach(function (start, v) { settle.push(v); });
-      if (settle.length) {
-        mesh.smoothVerts(Uint32Array.from(settle), settle.length, 0.18, true);
-        mesh.computeNormals(Uint32Array.from(settle), settle.length);
+
+      /*
+       * The last stamp of a stroke stretches the surface and then the stroke
+       * ends, so nothing refines what it left. One pass over the region the
+       * stroke covered puts the triangles back near the detail size.
+       */
+      if (this.usesDyntopo() && settle.length) {
+        var pos = mesh.positions.array;
+        var bx = 0, by = 0, bz = 0, n = 0, i;
+        for (i = 0; i < settle.length; i++) {
+          if (mesh.vertDead.array[settle[i]]) continue;
+          var so = settle[i] * 3;
+          bx += pos[so]; by += pos[so + 1]; bz += pos[so + 2];
+          n++;
+        }
+        if (n) {
+          bx /= n; by /= n; bz /= n;
+          var spread = 0;
+          for (i = 0; i < settle.length; i++) {
+            if (mesh.vertDead.array[settle[i]]) continue;
+            var to = settle[i] * 3;
+            var d = (pos[to] - bx) * (pos[to] - bx) + (pos[to + 1] - by) * (pos[to + 1] - by) +
+                    (pos[to + 2] - bz) * (pos[to + 2] - bz);
+            if (d > spread) spread = d;
+          }
+          spread = Math.sqrt(spread) * 1.05 + 1e-6;
+          mesh.dyntopo(bx, by, bz, spread, this.detailSize(this._prevWorld, this.anchorRadius),
+                       st.maxTriangles, undefined, 900);
+        }
+      }
+
+      var live = [];
+      for (var k = 0; k < settle.length; k++) {
+        if (!mesh.vertDead.array[settle[k]]) live.push(settle[k]);
+      }
+      var arr = live.length ? Uint32Array.from(live) : null;
+
+      /* then settle the faceting, except where a crisp edge is the point */
+      if (arr && !this.brush.crisp && !this.alpha) {
+        mesh.smoothVerts(arr, arr.length, 0.18, true);
+        mesh.computeNormals(arr, arr.length);
+      }
+
+      /*
+       * Last, pull back anything that ended up a needle anyway. The stroke
+       * engine works hard not to make them — the step ceiling, the reach
+       * limit, the refinement damping — but a stroke that crosses a hard
+       * edge with three mirrors on can still leave one, and one needle is
+       * what someone sees. Bounded to what this stroke touched, and to
+       * shapes far sharper than anything made on purpose.
+       */
+      if (arr) {
+        // one ring beyond the stroke: the needle a stroke leaves is often
+        // just outside the last stamp, where the surface was stretched but
+        // not itself pushed
+        var edge = [], mark = {};
+        for (var e = 0; e < arr.length; e++) mark[arr[e]] = 1;
+        for (var e2 = 0; e2 < arr.length; e2++) {
+          edge.length = 0;
+          mesh.ringVerts(arr[e2], edge);
+          for (var e3 = 0; e3 < edge.length; e3++) {
+            if (!mark[edge[e3]] && !mesh.vertDead.array[edge[e3]]) { mark[edge[e3]] = 1; live.push(edge[e3]); }
+          }
+        }
+        var wide = Uint32Array.from(live);
+        mesh.relaxSpikesAt(wide, wide.length);
       }
     }
 

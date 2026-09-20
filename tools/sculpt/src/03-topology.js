@@ -900,19 +900,28 @@
    * Find the spikes: vertices sitting far off the surface their own ring
    * describes.
    *
-   * The measure is the distance from the middle of the ring, against how far
-   * apart the ring's own vertices are — deliberately not against the edges
-   * that reach the vertex itself, because a spike stretches those and would
-   * then hide behind them.
+   * The measure is the distance from the middle of the ring, against how
+   * wide that ring is — deliberately not against the edges that reach the
+   * vertex itself, because a spike stretches those and would then hide
+   * behind them.
+   *
+   * Measuring against the ring's width rather than the spacing between its
+   * vertices is what makes the score mean the same thing at any resolution:
+   * a cone's apex scores 2.5 whether its ring holds eight vertices or
+   * eighty, where the spacing measure grew with the count and eventually
+   * called the apex a fault. It also needs no ring ordering, so it reads
+   * a border vertex correctly too.
    *
    * With `out`, appends [vertex, x, y, z] for each one, where x,y,z is where
    * it should go. Returns how many were found.
    */
-  function scanSpikes(mesh, factor, strength, out) {
+  function scanSpikes(mesh, factor, strength, out, only, onlyCount) {
     var pos = mesh.positions.array;
     var ring = [];
     var found = 0;
-    for (var v = 0; v < mesh.masks.length; v++) {
+    var n = only ? (onlyCount === undefined ? only.length : onlyCount) : mesh.masks.length;
+    for (var vi = 0; vi < n; vi++) {
+      var v = only ? only[vi] : vi;
       if (mesh.vertDead.array[v]) continue;
       ring.length = 0;
       mesh.ringVerts(v, ring);
@@ -926,13 +935,13 @@
       var inv = 1 / ring.length;
       cx *= inv; cy *= inv; cz *= inv;
 
-      // how far apart the ring's own neighbours are — the local scale
+      // how wide the ring is — the local scale
       var span = 0;
       for (var k = 0; k < ring.length; k++) {
-        var a = ring[k] * 3, b = ring[(k + 1) % ring.length] * 3;
-        span += Math.sqrt((pos[b] - pos[a]) * (pos[b] - pos[a]) +
-                          (pos[b + 1] - pos[a + 1]) * (pos[b + 1] - pos[a + 1]) +
-                          (pos[b + 2] - pos[a + 2]) * (pos[b + 2] - pos[a + 2]));
+        var a = ring[k] * 3;
+        span += Math.sqrt((pos[a] - cx) * (pos[a] - cx) +
+                          (pos[a + 1] - cy) * (pos[a + 1] - cy) +
+                          (pos[a + 2] - cz) * (pos[a + 2] - cz));
       }
       span *= inv;
       if (span < 1e-12) continue;
@@ -949,21 +958,22 @@
   }
 
   /*
-   * Where the threshold comes from.
+   * Where the threshold comes from, measured on the primitives themselves:
    *
-   * A cone's apex sits about five times its ring spacing off that ring's
-   * middle — and it is a feature, not a fault. Measured spikes left by a
-   * stroke that piled up in one place score under two. So a threshold that
-   * catches "spikes" from sculpting would blunt every cone, pyramid and
-   * horn tip in the scene, which is worse than the problem.
+   *   sphere          0.1     a smooth surface
+   *   cylinder rim    0.75    a hard edge
+   *   box corner      0.98    a corner
+   *   plane border    1.44    an open edge
+   *   cone apex       2.50    the sharpest thing anyone makes on purpose
+   *   a real needle   7.1     one vertex pulled half a radius out
    *
-   * The default is therefore set well above a cone: it catches the genuine
-   * needles — a vertex flung out of an imported mesh, or left behind by a
-   * boolean — and leaves sharp features that were made on purpose alone.
-   * Prevention is what deals with sculpting spikes: the stroke reach limit
-   * in the brush engine.
+   * Four sits in the gap: it leaves every sharp feature that was made on
+   * purpose alone, and still catches the genuine needles — a vertex flung
+   * out of an imported mesh, or left behind by a boolean. Prevention is
+   * what deals with sculpting spikes: the stroke reach limit and the
+   * refinement damping in the brush engine.
    */
-  var SPIKE_FACTOR = 6;
+  var SPIKE_FACTOR = 4;
 
   /**
    * Pull needle vertices back onto the surface. Returns how many moved.
@@ -971,15 +981,22 @@
    * Runs a few passes, because pulling a needle most of the way back can
    * leave it just over the threshold still.
    */
-  P.relaxSpikes = function (factor, strength) {
+  P.relaxSpikes = function (factor, strength, only, onlyCount) {
     factor = factor === undefined ? SPIKE_FACTOR : factor;
     strength = strength === undefined ? 0.85 : strength;
     var pos = this.positions.array;
     var moved = 0;
     var ring = [];
+    /*
+     * When the caller names a region, the region has to grow with the
+     * repair: pulling a needle back relaxes its neighbours too, and that
+     * can leave the vertex just outside the region slightly out of shape.
+     * So each pass looks at what the last one moved, and at their rings.
+     */
+    var work = only, workCount = onlyCount;
     for (var pass = 0; pass < 4; pass++) {
       var targets = [];
-      scanSpikes(this, factor, strength, targets);
+      scanSpikes(this, factor, strength, targets, work, workCount);
       if (!targets.length) break;
       // collect first, apply after: moving as we go would let one needle drag
       // its neighbour's idea of the surface with it
@@ -1013,14 +1030,51 @@
         }
       }
       if (near.length) this.smoothVerts(Uint32Array.from(near), near.length, 0.5, false);
+
+      if (only) {
+        // the next pass watches everything this one could have disturbed
+        var grown = near.slice();
+        var seenGrown = seen;
+        for (var g = 0; g < near.length; g++) {
+          ring.length = 0;
+          this.ringVerts(near[g], ring);
+          for (var gr = 0; gr < ring.length; gr++) {
+            if (!seenGrown[ring[gr]]) { seenGrown[ring[gr]] = 1; grown.push(ring[gr]); }
+          }
+        }
+        work = grown; workCount = grown.length;
+      }
     }
     if (moved) { this._boundsDirty = true; this.computeNormals(); }
     return moved;
   };
 
+  /**
+   * Pull back any needle a stroke left behind, looking only at the vertices
+   * the stroke touched.
+   *
+   * The same repair as `relaxSpikes`, but bounded to a region: a stroke has
+   * no business straightening geometry at the other end of the model, and
+   * scanning the whole mesh at the end of every stroke is work the phone
+   * does not have to spare.
+   */
+  P.relaxSpikesAt = function (verts, count, factor, strength) {
+    if (!verts || !count) return 0;
+    /*
+     * Repairs go a little below the threshold that reports a needle. Pulling
+     * a needle back to exactly the threshold leaves it there, one rounding
+     * error from being flagged again, and each pass of the repair nudges
+     * its neighbours too; a margin means anything worth reporting is
+     * comfortably gone in one go. Even so this stays well clear of a cone's
+     * apex, which scores 2.5.
+     */
+    if (factor === undefined) factor = SPIKE_FACTOR * 0.8;
+    return this.relaxSpikes(factor, strength, verts, count);
+  };
+
   /** Count the needle vertices without touching anything. */
-  P.countSpikes = function (factor) {
-    return scanSpikes(this, factor === undefined ? SPIKE_FACTOR : factor, 0.85, null);
+  P.countSpikes = function (factor, only, onlyCount) {
+    return scanSpikes(this, factor === undefined ? SPIKE_FACTOR : factor, 0.85, null, only, onlyCount);
   };
 
   /**
