@@ -8,6 +8,9 @@ The brushes **add material**. Draw on a ball and the surface rises; go over it
 again and it thickens; keep dragging and it pulls out a horn — and the new
 volume gets its own triangles as it grows, so nothing is ever stretched thin.
 
+Build from shapes as well as by sculpting: drop in a sphere, box or cylinder,
+place it with the move/turn/resize handles, and weld it into the model.
+
 Set up for **Roblox** out of the box: you start with a **1,280-triangle** ball
 and the export budget is **2,000**, so sculpt as dense as the shape needs and
 **Export → Roblox** writes an OBJ reduced to fit. The count is on screen the
@@ -36,10 +39,11 @@ edge and the sliders sit along the bottom.
 | Where | What |
 | --- | --- |
 | Top left | **☰** — everything: files, shapes, remesh, settings, help |
-| Next to it | Triangles now, and what it exports as — tap it to change either |
+| Next to it | **+** — add a shape to the sculpt |
+| Next to that | Triangles now, and what it exports as — tap it to change either |
 | Top right | Undo, redo |
 | Brush row | The ten brushes you use most, plus one button for the other eleven |
-| Near the sliders | Mirror on/off, frame the model, and Look (material, wireframe) |
+| Near the sliders | The move/turn/resize handles, mirror, frame the model, and Look |
 | Bottom | **Size** and **Strength** — the only two numbers you change often |
 
 Drag on the model to sculpt. Drag off it — or two fingers, or right-drag — to
@@ -52,6 +56,7 @@ orbit. That is the whole interface.
 - **Shift + wheel** brush size · **Ctrl + wheel** strength
 - One finger sculpts, two fingers orbit and pinch, three fingers pan
 - `A` Add, `S` smooth, `T` / `E` the trims, `C` paint, `M` mask
+- `V` the move/turn/resize handles · `Shift+A` add a shape
 - `[` `]` size, `{` `}` strength, `X` `Y` `Z` mirror, `D` adding on/off,
   `F` frame, `W` wireframe, `?` for the full list
 
@@ -103,6 +108,47 @@ them the tools for armour plates, cut stone and blocky props.
 
 Neither is auto-smoothed, whatever the Smoothing setting says: rounding the
 edge off afterwards would undo the face you just cut.
+
+## Building with shapes
+
+A model is usually several shapes before it is one shape. Tap **+** in the top
+bar (or ☰ → Add a shape), pick a sphere, box, cylinder, cone, torus, capsule
+or plane, and choose:
+
+- **Add to this sculpt** — the shape drops in beside what you are working on,
+  sized to about half of it and touching its side, and the move/turn/resize
+  handles come up straight away. Place it, then:
+  - **Union** welds it into the sculpt as one continuous surface, which is
+    what you want for a body, a limb, a horn or a socket. It runs through the
+    same distance field the booleans use, so the result is watertight.
+  - **Join** puts it in the same mesh without welding — instant, and right
+    when the parts do not need to merge (a bolt sitting on a plate).
+- **Separate object** — keep it as its own object, to sculpt and export on its
+  own. One Roblox MeshPart is one object, so a character built as head, body
+  and arms exports as three parts.
+
+### The handles
+
+Tap the **handles button** down the right edge (or press `V`) to get them for
+the selected shape. Three modes, from the strip along the bottom:
+
+| Mode | What you drag |
+| --- | --- |
+| **Move** | an arrow to slide along one axis, or the ball in the middle to slide it across the screen |
+| **Turn** | a ring to turn around that axis. Rings you are looking at edge-on fade out, because there is nothing to drag there |
+| **Size** | a square to stretch one axis, or the middle to resize evenly |
+
+- **Tap any shape** to work on that one instead — that is how you select.
+- The handles keep the same size on screen however far you zoom, and they
+  follow the shape's own axes, so stretching does what it looks like.
+- Turning and resizing happen about the middle of the shape, not its origin.
+- Every drag is one undo step, named Move, Turn or Resize.
+- The sliders button on the strip opens exact numbers, snapping (15° and 5%
+  steps), duplicate, reset, freeze the transform into the mesh, centre the
+  origin, and delete.
+
+While the handles are up the brushes are put away, so a drag can never
+accidentally sculpt.
 
 ## Stencils
 
@@ -273,8 +319,9 @@ file that works offline.
 | `src/12-camera.js` | Orbit camera, screen-space ray casting |
 | `src/13-render.js` | WebGL2 renderer with procedurally generated matcaps |
 | `src/14-boolean.js` | Join, and union / subtract / intersect through the distance field |
-| `src/15-widgets.js` | DOM helpers, icons, sheets and dialogs |
-| `src/16-app.js` | The app: interface, input, commands |
+| `src/15-gizmo.js` | The move/turn/resize handles: where they are, what a tap hits, what a drag does |
+| `src/16-widgets.js` | DOM helpers, icons, sheets and dialogs |
+| `src/17-app.js` | The app: interface, input, commands |
 
 `index.html` loads the modules for development; `node build.js` inlines
 everything into `sculpt.html`.
@@ -302,6 +349,11 @@ A few decisions worth knowing about:
   already had, so sculpting felt like stretching rubber instead of adding
   clay. Now you sculpt at whatever density the shape needs and the count comes
   down on export.
+- **The handles turn and resize about the middle of the shape.** A shape's
+  origin is wherever it happened to be built, which is usually not inside it;
+  rotating around a point outside the shape is not what anyone means by
+  "turn it". The transform's position is corrected after every change so the
+  middle of the shape stays where it was.
 - **A grab stroke re-tessellates what it pulled.** Move and Snake Hook drag
   the triangles they captured, which leaves the surface thin behind them; with
   adding on, the region between where the pull started and where it ended is
@@ -326,11 +378,12 @@ node test/brush.test.mjs        # 323  every brush, adding vs stretching, symmet
 node test/camera.test.mjs       # 18   projection, framing, ray casting
 node test/boolean.test.mjs      # 51   union / subtract / intersect against analytic volumes
 node test/texture.test.mjs      # 362  PNG writer, unwrap, bake, textured export, stencils, presets
-node build.js && node test/browser.test.mjs   # 288 end-to-end in a real browser
+node test/gizmo.test.mjs        # 52   handle layout, hit testing, move/turn/resize maths
+node build.js && node test/browser.test.mjs   # 328 end-to-end in a real browser
 node test/shots.mjs             # renders the screenshots in test/screens
 ```
 
-1,319 checks in total. Some of them are worth naming, because they are the
+1,411 checks in total. Some of them are worth naming, because they are the
 ones that catch a regression you would otherwise ship:
 
 - **Brushes have to add, not stretch.** The same pull is run with dynamic
@@ -348,6 +401,13 @@ ones that catch a regression you would otherwise ship:
 - **The phone layout is measured, not eyeballed**: at 412×915 nothing may sit
   off either edge, no button may be under 22px tall, and no sheet may run past
   the bottom of the screen.
+- **What is hidden is measured too.** Three separate elements were staying on
+  screen after being told to hide — an element with its own `display` ignores
+  the `hidden` attribute, and SVG elements have no `hidden` property at all.
+  The tests now read the computed style rather than trusting the flag.
+- **The handles are checked as geometry**: a drag on an arrow has to land the
+  shape under the finger, a quarter turn around a ring has to be 90°, and the
+  middle of a shape must not wander while it turns or resizes.
 
 Every mesh test runs a structural audit: adjacency agreeing with the triangle
 list, no triangle referencing a dead vertex, no edge with more than two faces,

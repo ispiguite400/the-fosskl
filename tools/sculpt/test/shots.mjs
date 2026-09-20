@@ -171,6 +171,28 @@ await page.evaluate(() => window.SCULPT_APP.openLookSheet());
 await shot('09-look');
 await page.evaluate(() => window.SCULPT_APP.openBrushSettingsSheet());
 await shot('10-brush-settings');
+await page.evaluate(() => {
+  const app = window.SCULPT_APP;
+  app.closeSheet();
+  app.insertShape('cylinder', 3);
+  app.frameAll(true);
+  app.draw();
+});
+await shot('10b-shape-added');
+await page.evaluate(() => {
+  const app = window.SCULPT_APP;
+  app.setGizmoMode('rotate');
+  app.draw();
+});
+await shot('10c-gizmo-turn');
+await page.evaluate(() => {
+  const app = window.SCULPT_APP;
+  app.joinPendingShape('join');
+});
+await page.waitForFunction(() => document.getElementById('busy').hidden, null, { timeout: 30000 });
+await page.evaluate(() => { window.SCULPT_APP.setTransformMode(false); window.SCULPT_APP.draw(); });
+await shot('10d-shape-joined');
+
 await page.evaluate(() => window.SCULPT_APP.openPresetSheet());
 await shot('11-presets');
 await page.evaluate(() => {
@@ -275,6 +297,17 @@ await phone.keyboard.press('Escape');
 await phone.evaluate(() => window.SCULPT_APP.openLookSheet());
 await pshot('22-phone-look');
 await phone.keyboard.press('Escape');
+await phone.evaluate(() => {
+  const app = window.SCULPT_APP;
+  app.closeSheet();
+  app.insertShape('capsule', 3);
+  app.frameAll(true);
+  app.draw();
+});
+await pshot('22b-phone-shape');
+await phone.evaluate(() => { window.SCULPT_APP.setGizmoMode('scale'); window.SCULPT_APP.draw(); });
+await pshot('22c-phone-gizmo-size');
+await phone.evaluate(() => { window.SCULPT_APP.setTransformMode(false); window.SCULPT_APP.draw(); });
 await phone.evaluate(() => window.SCULPT_APP.openPresetSheet());
 await pshot('23-phone-presets');
 await phone.evaluate(() => window.SCULPT_APP.openTextureSheet());

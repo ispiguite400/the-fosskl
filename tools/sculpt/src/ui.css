@@ -442,6 +442,67 @@ input[type=color] {
 }
 .swatch.on { box-shadow: 0 0 0 2px var(--accent); }
 
+/* ------------------------------------------------- the transform gizmo */
+
+#gizmo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;                 /* the canvas does the hit-testing */
+  /* no z-index: document order already puts it over the canvas and under
+     the bars, which is where a handle belongs */
+}
+
+#bar-transform {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: calc(100% - 20px);
+  padding: 7px 9px;
+  border-radius: 14px;
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+}
+#gizmo-object {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 7px 11px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 550;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#gizmo-object:hover { border-color: var(--accent-dim); }
+#bar-transform .seg { flex: 0 0 auto; }
+.gizmo-join { display: flex; gap: 6px; }
+.gizmo-tools { display: flex; gap: 6px; align-items: center; }
+.gizmo-tools .btn { padding: 8px 10px; }
+
+/*
+ * An explicit display beats the browser's own [hidden] rule, so anything
+ * that gets hidden by attribute needs this said out loud. The transform
+ * strip, the brush row and the two sliders swap places, and without these
+ * three lines they would all be on screen at once.
+ */
+#bar-transform[hidden], #brushes[hidden], #bar-bottom[hidden] { display: none; }
+/* and the same again for the SVG overlay, which the browser's own [hidden]
+   rule does not cover */
+#gizmo[hidden] { display: none; }
+
 /* ------------------------------------------------- stencils */
 
 .alpha-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; padding: 4px 10px 6px; }
@@ -861,6 +922,18 @@ input[type=color] {
   .sheet-row { padding: 12px 10px; }
   .sheet-label b { font-size: 14px; }
   #toasts { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+  /* the transform strip replaces the sliders and the brush row */
+  #bar-transform {
+    left: 8px;
+    right: 8px;
+    transform: none;
+    max-width: none;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+  #bar-transform .seg { flex: 1 1 100%; }
+  #bar-transform .seg button { flex: 1 1 0; }
+  .gizmo-join, .gizmo-tools { flex: 1 1 auto; }
+  .gizmo-join .btn, .gizmo-tools .btn { flex: 1 1 auto; }
   .backdrop { padding: 10px; align-items: flex-end; }
   .dialog { max-height: 86vh; width: 100%; }
 }

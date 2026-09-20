@@ -104,6 +104,9 @@
     exportSelectedOnly: false,
     textureSize: 1024,
     textureCavity: 0.45,
+    // transform
+    gizmoMode: 'move',
+    gizmoSnap: false,
     // misc
     historyBudgetMB: 384,
     autosave: true,
@@ -143,6 +146,11 @@
     this.lastAutosave = 0;
     this.panelRefs = {};
     this.statusTip = '';
+    /*
+     * Transform mode: the gizmo, its current handle drag, and the shape
+     * waiting to be joined into the sculpt (if one was just added).
+     */
+    this.transform = { active: false, mode: 'move', drag: null, layout: null, pending: null, snap: false };
 
     this.buildDom();
     this.initGL();
@@ -247,10 +255,14 @@
       title: 'Triangle budget',
       onclick: function () { self.dialogDecimate(); }
     });
+    this.shapeBtn = el('button.round', { title: 'Add a shape to the sculpt', onclick: function (e) {
+      e.stopPropagation();
+      self.dialogPrimitive();
+    } }, UI.icon('plus'));
     this.undoBtn = el('button.round', { title: 'Undo (Ctrl+Z)', onclick: function () { self.undo(); } }, UI.icon('undo'));
     this.redoBtn = el('button.round', { title: 'Redo (Ctrl+Shift+Z)', onclick: function () { self.redo(); } }, UI.icon('redo'));
     var topBar = el('div#bar-top', null, [
-      this.menuBtn, this.titleChip, el('div.spring'), this.undoBtn, this.redoBtn
+      this.menuBtn, this.shapeBtn, this.titleChip, el('div.spring'), this.undoBtn, this.redoBtn
     ]);
 
     /* left column: brushes */
@@ -264,7 +276,11 @@
       UI.icon('frame'));
     this.lookBtn = el('button.round', { title: 'Look', onclick: function (e) { e.stopPropagation(); self.openLookSheet(); } },
       UI.icon('palette'));
-    var rightBar = el('div#bar-right', null, [this.symBtn, this.frameBtn, this.lookBtn]);
+    this.moveBtn = el('button.round', { title: 'Move, turn and resize the shape (V)', onclick: function (e) {
+      e.stopPropagation();
+      self.setTransformMode(!self.transform.active);
+    } }, UI.icon('gizmo'));
+    var rightBar = el('div#bar-right', null, [this.moveBtn, this.symBtn, this.frameBtn, this.lookBtn]);
 
     /* bottom: size and strength, the only two numbers that matter */
     this.sizePill = this.makePill('radius', 'Size', 4, 400, 1, this.settings.radius, function (v) {
@@ -276,14 +292,27 @@
       self.refreshStatus();
     }, function (v) { return Number(v).toFixed(2); });
     var bottomBar = el('div#bar-bottom', null, [this.sizePill, this.strengthPill]);
+    this.bottomBar = bottomBar;
+
+    /*
+     * The transform strip takes the place of the two sliders while the gizmo
+     * is up: in transform mode brush size and strength are not what you are
+     * adjusting, and a phone has no room for both.
+     */
+    this.transformBar = this.buildTransformBar();
 
     this.sheetHost = el('div#sheets');
     this.panelEl = this.sheetHost;        // Escape closes whatever is open
 
-    var ui = el('div#ui', null, [topBar, this.toolsEl, rightBar, bottomBar, this.hudEl]);
+    /* the gizmo is an SVG overlay: crisp at any zoom, and easy to hit-test */
+    this.gizmoEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.gizmoEl.setAttribute('id', 'gizmo');
+    this.gizmoEl.setAttribute('hidden', 'hidden');
+
+    var ui = el('div#ui', null, [topBar, this.toolsEl, rightBar, bottomBar, this.transformBar, this.hudEl]);
 
     UI.append(this.mount, [
-      el('div#app', null, [this.canvas, this.radiusPreview, ui]),
+      el('div#app', null, [this.canvas, this.gizmoEl, this.radiusPreview, ui]),
       this.sheetHost,
       el('div#toasts'),
       el('div#busy', { hidden: true }, el('div.card', null, [
@@ -519,8 +548,10 @@
         { group: 'Model' },
         { icon: 'plus', label: 'New shape', hint: 'Start again from a sphere, box, cylinder…',
           chevron: true, onclick: function () { self.dialogPrimitive(true); } },
-        { icon: 'cube', label: 'Add a shape', hint: 'Put another object in the scene',
+        { icon: 'plus', label: 'Add a shape', hint: 'Drop a sphere, box or cylinder in and place it with the handles',
           chevron: true, onclick: function () { self.dialogPrimitive(); } },
+        { icon: 'gizmo', label: 'Move, turn, resize', hint: 'The handles for the selected shape (V)',
+          onclick: function () { self.setTransformMode(true); } },
         { icon: 'layers', label: 'Objects', hint: 'Switch between, hide, rename, delete',
           chevron: true, onclick: function () { self.openObjectsSheet(); } },
         { icon: 'boolean', label: 'Combine', hint: 'Join, union, subtract or intersect two objects',
@@ -661,6 +692,7 @@
    * the pointer — which swallowed the click that caused it — and flickered.
    */
   A.refreshObjects = function () {
+    this.refreshTransformBar();
     var self = this;
     var host = this.objectsHost;
     if (!host || !host.parentNode) return;
@@ -993,6 +1025,380 @@
       el('input', { type: 'color', value: st.bgTop, oninput: function (e) { self.set('bgTop', e.target.value); } }),
       el('input', { type: 'color', value: st.bgBottom, oninput: function (e) { self.set('bgBottom', e.target.value); } })
     ]));
+  };
+
+  /* ================================================================ *
+   * transform mode: select a shape, then move, turn or resize it
+   * ================================================================ */
+
+  A.buildTransformBar = function () {
+    var self = this;
+    this.transformName = el('button#gizmo-object', {
+      title: 'Which shape the gizmo is on — tap for the list',
+      onclick: function (e) { e.stopPropagation(); self.openObjectsSheet(); }
+    });
+    this.transformModeSeg = UI.segment({
+      value: this.settings.gizmoMode || 'move',
+      options: S.Gizmo.MODES.map(function (m) { return { id: m.id, label: m.label, title: m.hint }; }),
+      onchange: function (v) { self.setGizmoMode(v); }
+    });
+    this.transformJoin = el('div.gizmo-join', { hidden: true }, [
+      UI.button('Union', { class: 'accent', title: 'Weld the shape into the sculpt as one surface',
+        onclick: function () { self.joinPendingShape('union'); } }),
+      UI.button('Join', { title: 'Put the shape in the same mesh without welding — instant',
+        onclick: function () { self.joinPendingShape('join'); } })
+    ]);
+    var bar = el('div#bar-transform', { hidden: true }, [
+      this.transformName,
+      this.transformModeSeg,
+      this.transformJoin,
+      el('div.gizmo-tools', null, [
+        UI.button('', { icon: 'plus', title: 'Add another shape',
+          onclick: function () { self.dialogPrimitive(); } }),
+        UI.button('', { icon: 'sliders', title: 'Exact numbers, and what to do with it',
+          onclick: function () { self.openTransformSheet(); } }),
+        UI.button('Done', { class: 'accent', onclick: function () { self.setTransformMode(false); } })
+      ])
+    ]);
+    return bar;
+  };
+
+  A.setTransformMode = function (on) {
+    var t = this.transform;
+    t.active = !!on;
+    t.drag = null;
+    if (!t.active) t.pending = null;
+    if (this.moveBtn) this.moveBtn.classList.toggle('on', t.active);
+    if (this.transformBar) this.transformBar.hidden = !t.active;
+    if (this.bottomBar) this.bottomBar.hidden = t.active;
+    if (this.toolsEl) this.toolsEl.hidden = t.active;
+    if (this.gizmoEl) {
+      /*
+       * The overlay is an SVG element, and `hidden` is a property of HTML
+       * elements only: assigning it here would set a harmless JavaScript
+       * property and leave the gizmo on screen. The attribute is what counts.
+       */
+      if (t.active) {
+        this.gizmoEl.removeAttribute('hidden');
+      } else {
+        this.gizmoEl.setAttribute('hidden', 'hidden');
+        // leave nothing behind: the last handles drawn would otherwise sit
+        // there until the next time the gizmo comes up
+        while (this.gizmoEl.firstChild) this.gizmoEl.removeChild(this.gizmoEl.firstChild);
+      }
+    }
+    if (t.active) {
+      t.mode = this.settings.gizmoMode || 'move';
+      if (this.transformModeSeg && this.transformModeSeg.set) this.transformModeSeg.set(t.mode);
+      this.cursor.valid = false;
+      var obj = this.scene.current();
+      this.statusTip = obj ? 'Drag a handle to move it; tap another shape to pick that one instead' : '';
+    } else {
+      var brush = S.brushById(this.settings.brush);
+      this.statusTip = brush.hint;
+    }
+    this.refreshTransformBar();
+    this.refreshStatus();
+    this.needsRender = true;
+  };
+
+  A.setGizmoMode = function (mode) {
+    this.transform.mode = mode;
+    this.set('gizmoMode', mode);
+    if (this.transformModeSeg && this.transformModeSeg.set) this.transformModeSeg.set(mode);
+    var entry = null;
+    for (var i = 0; i < S.Gizmo.MODES.length; i++) if (S.Gizmo.MODES[i].id === mode) entry = S.Gizmo.MODES[i];
+    if (entry) { this.statusTip = entry.hint; this.refreshStatus(); }
+    this.needsRender = true;
+  };
+
+  A.refreshTransformBar = function () {
+    if (!this.transformBar) return;
+    var obj = this.scene.current();
+    if (this.transformName) {
+      this.transformName.textContent = obj ? obj.name : 'Nothing selected';
+    }
+    if (this.transformJoin) {
+      // the Join buttons only mean anything while a freshly added shape is
+      // still sitting loose in the scene
+      var pending = this.transform.pending;
+      var live = pending && this.scene.objects.indexOf(pending.shape) >= 0 &&
+                 this.scene.objects.indexOf(pending.target) >= 0;
+      this.transformJoin.hidden = !live;
+    }
+  };
+
+  /** Draw the gizmo. Called from the frame loop while transform mode is on. */
+  A.updateGizmo = function () {
+    var t = this.transform;
+    if (!t.active || !this.gizmoEl) return;
+    var obj = this.scene.current();
+    var svg = this.gizmoEl;
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    if (!obj || !obj.visible) { t.layout = null; return; }
+
+    var layout = S.Gizmo.layout(obj, this.camera, t.mode);
+    t.layout = layout;
+    if (layout.behindCamera) return;
+    svg.setAttribute('viewBox', '0 0 ' + this.camera.width + ' ' + this.camera.height);
+
+    function node(name, attrs) {
+      var n = document.createElementNS('http://www.w3.org/2000/svg', name);
+      for (var k in attrs) n.setAttribute(k, attrs[k]);
+      return n;
+    }
+    var active = t.drag && t.drag.handle ? t.drag.handle.id : null;
+
+    for (var i = 0; i < layout.handles.length; i++) {
+      var h = layout.handles[i];
+      var on = h.id === active;
+      if (h.kind === 'axis') {
+        svg.appendChild(node('line', { x1: h.from[0], y1: h.from[1], x2: h.to[0], y2: h.to[1],
+          stroke: h.colour, 'stroke-width': on ? 5 : 3, 'stroke-linecap': 'round',
+          opacity: on ? 1 : 0.9 }));
+        svg.appendChild(node('circle', { cx: h.to[0], cy: h.to[1], r: on ? 9 : 7,
+          fill: h.colour, stroke: '#0d1014', 'stroke-width': 1.5 }));
+      } else if (h.kind === 'point') {
+        svg.appendChild(node('line', { x1: h.from[0], y1: h.from[1], x2: h.to[0], y2: h.to[1],
+          stroke: h.colour, 'stroke-width': on ? 4 : 2.5, 'stroke-linecap': 'round', opacity: 0.85 }));
+        var side = on ? 16 : 13;
+        svg.appendChild(node('rect', { x: h.to[0] - side / 2, y: h.to[1] - side / 2,
+          width: side, height: side, rx: 3, fill: h.colour, stroke: '#0d1014', 'stroke-width': 1.5 }));
+      } else if (h.kind === 'ring') {
+        svg.appendChild(node('polyline', { points: h.points.map(function (p) { return p[0] + ',' + p[1]; }).join(' '),
+          fill: 'none', stroke: h.colour, 'stroke-width': on ? 5 : (h.flat ? 1.5 : 3),
+          opacity: on ? 1 : (h.flat ? 0.3 : 0.75) }));
+      } else if (h.kind === 'disc') {
+        svg.appendChild(node('circle', { cx: h.at[0], cy: h.at[1], r: h.radius,
+          fill: on ? 'rgba(255,255,255,0.22)' : 'rgba(232,237,244,0.12)',
+          stroke: '#e8edf4', 'stroke-width': on ? 2.5 : 1.5 }));
+        if (layout.mode === 'scale') {
+          svg.appendChild(node('circle', { cx: h.at[0], cy: h.at[1], r: 4, fill: '#e8edf4' }));
+        }
+      }
+    }
+  };
+
+  /* ---- input, from the canvas handlers ---- */
+
+  /**
+   * A press while the gizmo is up. Returns true when it was handled, so the
+   * canvas does not start a brush stroke.
+   */
+  A.transformPointerDown = function (p, e) {
+    var t = this.transform;
+    if (!t.active) return false;
+    var obj = this.scene.current();
+    if (obj && t.layout) {
+      var handle = S.Gizmo.pick(t.layout, p.x, p.y, e && e.pointerType === 'touch' ? 24 : 16);
+      if (handle) {
+        var drag = S.Gizmo.beginDrag(obj, this.camera, handle, p.x, p.y);
+        if (!drag) {
+          UI.toast('That handle is edge-on — turn the view a little', null, 1800);
+          return true;
+        }
+        drag.before = S.Gizmo.captureTransform(obj);
+        t.drag = drag;
+        this.needsRender = true;
+        return true;
+      }
+    }
+    // not a handle: tap a shape to work on that one instead
+    var hit = this.engine.pick(p.x, p.y, false);
+    if (hit && hit.object) {
+      var index = this.scene.objects.indexOf(hit.object);
+      if (index >= 0 && index !== this.scene.selected) {
+        this.scene.selected = index;
+        this.refreshObjects();
+        this.refreshTransformBar();
+        this.refreshStatus();
+        UI.toast(hit.object.name, null, 1200);
+      }
+      this.needsRender = true;
+      return true;
+    }
+    return false;                      // empty space: let the camera orbit
+  };
+
+  A.transformPointerMove = function (p) {
+    var t = this.transform;
+    if (!t.active || !t.drag) return false;
+    if (S.Gizmo.drag(t.drag, p.x, p.y, { snap: this.settings.gizmoSnap })) {
+      this.dirtySinceSave = true;
+      this.needsRender = true;
+      if (this._sheet && this.sheetRefresh) this.sheetRefresh();
+    }
+    return true;
+  };
+
+  A.transformPointerUp = function () {
+    var self = this;
+    var t = this.transform;
+    if (!t.drag) return false;
+    var drag = t.drag;
+    t.drag = null;
+    var obj = drag.obj;
+    if (!drag.moved) { this.needsRender = true; return true; }
+
+    var after = S.Gizmo.captureTransform(obj);
+    var before = drag.before;
+    var label = t.mode === 'move' ? 'Move' : (t.mode === 'rotate' ? 'Turn' : 'Resize');
+    // the transform is already applied; record it so undo can put it back
+    this.history.runSceneOp(label,
+      function () { return { obj: obj, t: before }; },
+      function (state) {
+        S.Gizmo.applyTransform(state.obj, state.t);
+        self.refreshTransformBar();
+        self.refreshStatus();
+        self.needsRender = true;
+      },
+      function () { S.Gizmo.applyTransform(obj, after); });
+    this.refreshStatus();
+    this.needsRender = true;
+    return true;
+  };
+
+  /* ---- adding a shape into the sculpt ---- */
+
+  /**
+   * Put a new shape into the scene next to the current one, sized to match,
+   * and go straight into transform mode with it selected. The shape stays a
+   * separate object until it is joined, so it can be moved, resized and
+   * thrown away freely.
+   */
+  A.insertShape = function (primId, detail) {
+    var self = this;
+    var entry = S.Prim.byId(primId);
+    var target = this.scene.current();
+    var shape = null;
+
+    this.sceneOp('Add ' + entry.label, function () {
+      var mesh = S.Prim.makeMesh(primId, detail);
+      shape = new S.SceneObject(entry.label, mesh);
+      if (target) {
+        // match it to the sculpt: a bit under half its size, sitting against
+        // its side so it overlaps enough to weld
+        var mn = V3.create(0, 0, 0), mx = V3.create(0, 0, 0);
+        target.worldBounds(mn, mx);
+        var span = Math.max(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]) || 1;
+        var smn = mesh.boundsMin(), smx = mesh.boundsMax();
+        var own = Math.max(smx[0] - smn[0], smx[1] - smn[1], smx[2] - smn[2]) || 1;
+        var want = span * 0.45;
+        var f = want / own;
+        V3.set(shape.scale, f, f, f);
+        var right = self.camera.right();
+        var centre = V3.create((mn[0] + mx[0]) * 0.5, (mn[1] + mx[1]) * 0.5, (mn[2] + mx[2]) * 0.5);
+        var reach = span * 0.5 + want * 0.3;
+        var pivot = V3.create(centre[0] + right[0] * reach,
+                              centre[1] + right[1] * reach,
+                              centre[2] + right[2] * reach);
+        S.Gizmo.keepPivot(shape, pivot, S.Gizmo.localCentre(shape, V3.create(0, 0, 0)));
+        V3.copy(shape.baseColor, target.baseColor);
+      }
+      shape.touch();
+      self.scene.add(shape);
+      self.scene.selected = self.scene.objects.length - 1;
+    });
+
+    this.transform.pending = target ? { target: target, shape: shape } : null;
+    this.setTransformMode(true);
+    this.setGizmoMode('move');
+    this.refreshObjects();
+    this.refreshStatus();
+    this.dirtySinceSave = true;
+    this.needsRender = true;
+    UI.toast(target
+      ? 'Drag it into place, resize it, then tap Union to make it part of the sculpt'
+      : entry.label + ' added', null, 4200);
+  };
+
+  /** Weld (or merge) the shape that was just added into the sculpt. */
+  A.joinPendingShape = function (mode) {
+    var t = this.transform;
+    var pending = t.pending;
+    if (!pending) { UI.toast('Nothing waiting to be joined', null, 1800); return; }
+    var targetIndex = this.scene.objects.indexOf(pending.target);
+    var shapeIndex = this.scene.objects.indexOf(pending.shape);
+    if (targetIndex < 0 || shapeIndex < 0) {
+      t.pending = null;
+      this.refreshTransformBar();
+      UI.toast('That shape is no longer in the scene', 'bad');
+      return;
+    }
+    this.scene.selected = targetIndex;
+    t.pending = null;
+    this.refreshTransformBar();
+    this.applyCombine(mode === 'union' ? 'union' : 'join', shapeIndex, {
+      resolution: this.settings.booleanResolution,
+      smooth: this.settings.booleanSmooth,
+      keep: false,
+      reduce: false                    // a sculpt should not be decimated by a join
+    });
+  };
+
+  /* ---- the transform sheet: exact numbers and the shape commands ---- */
+
+  A.openTransformSheet = function () {
+    var self = this;
+    var obj = this.scene.current();
+    if (!obj) { UI.toast('Nothing selected', 'bad'); return; }
+    var readout = el('p.sheet-note');
+    var rows = [];
+
+    function refresh() {
+      var d = S.Gizmo.describe(obj);
+      readout.textContent = 'Position ' + d.position + '   ·   Turn ' + d.rotation +
+                            '   ·   Size ' + d.scale;
+    }
+
+    var uniform = UI.slider({ label: 'Size', min: 0.05, max: 5, step: 0.01,
+      value: (obj.scale[0] + obj.scale[1] + obj.scale[2]) / 3,
+      title: 'Resize the shape evenly',
+      onchange: function (v) {
+        V3.set(obj.scale, v, v, v);
+        obj.touch();
+        refresh();
+        self.needsRender = true;
+      } });
+
+    var axisRows = ['X', 'Y', 'Z'].map(function (name, i) {
+      return UI.slider({ label: name, min: -3, max: 3, step: 0.01, value: obj.position[i],
+        title: 'Position along ' + name,
+        onchange: function (v) {
+          obj.position[i] = v;
+          obj.touch();
+          refresh();
+          self.needsRender = true;
+        } });
+    });
+
+    this.openSheet({
+      title: obj.name,
+      content: [readout, uniform].concat(axisRows, [
+        UI.check({ label: 'Snap to steps', value: !!this.settings.gizmoSnap,
+          title: 'Turning snaps to 15°, resizing to 5% steps',
+          onchange: function (v) { self.set('gizmoSnap', v); } })
+      ]),
+      rows: [
+        { group: 'This shape' },
+        { icon: 'boolean', label: 'Union with the sculpt', hint: 'Weld it into the selected sculpt as one surface',
+          onclick: function () { self.openCombineSheet(); } },
+        { icon: 'copy', label: 'Duplicate', onclick: function () { self.duplicateObject(); } },
+        { icon: 'reset', label: 'Reset the transform', hint: 'Back to no move, no turn, original size',
+          onclick: function () { self.resetTransform(); } },
+        { icon: 'save', label: 'Freeze the transform', hint: 'Bake it into the mesh and start from scratch',
+          onclick: function () { self.applyTransform(); } },
+        { icon: 'frame', label: 'Centre the origin', onclick: function () { self.centerOrigin(); } },
+        { icon: 'trash', label: 'Delete this shape', danger: true,
+          onclick: function () { self.deleteObject(); self.refreshTransformBar(); } }
+      ]
+    });
+    refresh();
+    this.sheetRefresh = function () {
+      refresh();
+      uniform.set((obj.scale[0] + obj.scale[1] + obj.scale[2]) / 3);
+      for (var i = 0; i < 3; i++) axisRows[i].set(obj.position[i]);
+    };
   };
 
   /* ---- stencils ---- */
@@ -1542,6 +1948,7 @@
   };
 
   A.draw = function () {
+    if (this.transform.active) this.updateGizmo();
     var st = this.settings;
     var scene = this.scene;
     var obj = scene.current();
@@ -1595,6 +2002,9 @@
           self.engine.cancel();
           self.needsRender = true;
         }
+        // a gizmo drag is committed rather than thrown away: the shape has
+        // already visibly moved, so undo should have something to undo
+        if (self.transform.drag) self.transformPointerUp();
         self.startTouchNav();
         return;
       }
@@ -1610,6 +2020,15 @@
 
       if (self.pickingColor) {
         self.finishColorPick(p);
+        return;
+      }
+
+      // with the gizmo up, a press is either a handle, a shape to select, or
+      // empty space to orbit from — never a brush stroke
+      if (self.transform.active) {
+        if (self.transformPointerDown(p, e)) return;
+        self.navigating = { mode: 'orbit', x: p.x, y: p.y };
+        canvas.classList.add('navigating');
         return;
       }
 
@@ -1635,6 +2054,11 @@
       if (tracked) { tracked.x = p.x; tracked.y = p.y; }
 
       if (self.pointers.size >= 2) { self.updateTouchNav(); return; }
+
+      if (self.transform.active && self.transform.drag) {
+        self.transformPointerMove(p);
+        return;
+      }
 
       if (self.navigating) {
         var dx = p.x - self.navigating.x, dy = p.y - self.navigating.y;
@@ -1662,6 +2086,10 @@
 
     function endPointer(e) {
       self.pointers.delete(e.pointerId);
+      if (self.transform.drag) {
+        self.transformPointerUp();
+        self.refreshObjects();
+      }
       if (self.engine.active) {
         var committed = self.engine.end();
         if (committed) self.dirtySinceSave = true;
@@ -1945,9 +2373,12 @@
       case 'z': this.toggle('symmetryZ'); return;
       case 'd': this.toggle('dyntopo'); return;
       case 'A': this.dialogPrimitive(); return;
+      case 'v': this.setTransformMode(!this.transform.active); return;
       case '?': this.dialogShortcuts(); return;
       case 'Escape':
         if (this.engine.active) { this.engine.cancel(); this.needsRender = true; }
+        if (this._sheet) { this.closeSheet(); return; }
+        if (this.transform.active) { this.setTransformMode(false); return; }
         this.closeSheet();
         return;
       case 'Delete': this.deleteObject(); return;
@@ -1983,6 +2414,7 @@
   };
 
   A.newScene = function (primId, detail, initial) {
+    this.transform.pending = null;
     var self = this;
     if (detail === undefined || detail === null) {
       detail = this.detailForBudget(S.Prim.byId(primId || 'sphere'));
@@ -2038,6 +2470,8 @@
   };
 
   A.deleteObject = function () {
+    this.transform.pending = null;
+    this.transform.drag = null;
     var self = this;
     if (this.scene.objects.length <= 1) {
       UI.toast('The last object cannot be deleted — use File > New instead', 'bad');
@@ -2660,6 +3094,8 @@
 
   A.applyProject = function (project) {
     var self = this;
+    this.transform.pending = null;
+    this.transform.drag = null;
     for (var i = this.scene.objects.length - 1; i >= 0; i--) {
       this.renderer.releaseObject(this.scene.objects[i]);
     }
@@ -2791,14 +3227,25 @@
       icon: 'plus',
       wide: true,
       content: [grid, detailRow, estimate,
-        el('div.hint', { text: 'Sphere is the usual starting point: its triangles are all about the same size. The detail is preset to suit your triangle budget.' })],
-      buttons: [
+        el('div.hint', { text: replaceScene
+          ? 'Sphere is the usual starting point: its triangles are all about the same size. The detail is preset to suit your triangle budget.'
+          : 'Add to this sculpt drops the shape beside what you are working on and gives you the move, turn and resize handles. Place it, then tap Union to weld it in (or Join to keep it as a separate shell in the same mesh).' })],
+      buttons: replaceScene ? [
         { label: 'Cancel' },
-        { label: replaceScene ? 'Start sculpting' : 'Add object', class: 'accent', onclick: function () {
+        { label: 'Start sculpting', class: 'accent', onclick: function () {
           var entry = S.Prim.byId(chosen);
-          var detail = S.clamp(detailRow.get(), 0, entry.detailMax || 12);
-          if (replaceScene) self.newScene(chosen, detail);
-          else self.addPrimitive(chosen, detail);
+          self.newScene(chosen, S.clamp(detailRow.get(), 0, entry.detailMax || 12));
+        } }
+      ] : [
+        { label: 'Cancel' },
+        { label: 'Separate object', title: 'Keep it as its own object, off to the side',
+          onclick: function () {
+            var entry = S.Prim.byId(chosen);
+            self.addPrimitive(chosen, S.clamp(detailRow.get(), 0, entry.detailMax || 12));
+          } },
+        { label: 'Add to this sculpt', class: 'accent', onclick: function () {
+          var entry = S.Prim.byId(chosen);
+          self.insertShape(chosen, S.clamp(detailRow.get(), 0, entry.detailMax || 12));
         } }
       ]
     });

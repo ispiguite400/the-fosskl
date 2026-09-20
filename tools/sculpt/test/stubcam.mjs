@@ -14,6 +14,19 @@ export function makeCamera(S, opts = {}) {
       S.V3.set(outD, ndcX * tanH * (width / height), ndcY * tanH, -1);
       S.V3.normalize(outD, outD);
     },
+    /** World -> pixel, the exact inverse of rayFromScreen above. */
+    project(point, out) {
+      const rel = [point[0] - eye[0], point[1] - eye[1], point[2] - eye[2]];
+      const depth = -rel[2];
+      const tanH = Math.tan(fov / 2);
+      const safe = Math.abs(depth) < 1e-9 ? 1e-9 : depth;
+      const ndcX = rel[0] / (safe * tanH * (width / height));
+      const ndcY = rel[1] / (safe * tanH);
+      out[0] = (ndcX * 0.5 + 0.5) * width;
+      out[1] = (0.5 - ndcY * 0.5) * height;
+      out[2] = depth;
+      return out;
+    },
     worldPerPixel(point) {
       const d = S.V3.dist(point, eye);
       return (2 * Math.tan(fov / 2) * d) / height;

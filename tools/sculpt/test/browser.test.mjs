@@ -57,8 +57,11 @@ await page.waitForTimeout(400);
       brushes: window.SCULPT.BRUSHES.length,
       toolButtons: document.querySelectorAll('#brushes .tool').length,
       pills: document.querySelectorAll('#bar-bottom .pill').length,
-      // how many controls the screen shows before anything is opened
-      visibleControls: Array.from(document.querySelectorAll('#ui button, #ui input')).length,
+      // how many controls the screen shows before anything is opened — only
+      // the ones actually on screen: the transform strip lives in the DOM but
+      // stays hidden until the gizmo is asked for
+      visibleControls: Array.from(document.querySelectorAll('#ui button, #ui input'))
+        .filter(function (n) { return n.offsetParent !== null; }).length,
       sheets: document.querySelectorAll('.sheet').length,
       canvasW: app.canvas.width,
       canvasH: app.canvas.height,
@@ -71,8 +74,12 @@ await page.waitForTimeout(400);
   eq('starting sphere triangle count', state.tris, 1280);
   eq('eleven brush buttons on screen (10 plus more)', state.toolButtons, 11);
   eq('size and strength sliders on screen', state.pills, 2);
-  // the whole point of the redesign: the resting screen stays uncluttered
-  check('the resting screen shows few controls', state.visibleControls <= 20, String(state.visibleControls));
+  /*
+   * The whole point of the redesign: the resting screen stays uncluttered.
+   * The budget is the menu row (5), the brush strip (11), the four switches
+   * down the side and the two sliders — a guard against creep, not a target.
+   */
+  check('the resting screen shows few controls', state.visibleControls <= 24, String(state.visibleControls));
   eq('no sheet is open at rest', state.sheets, 0);
   check('canvas sized to the viewport', state.canvasW > 600 && state.canvasH > 400, `${state.canvasW}x${state.canvasH}`);
   check('no console errors during boot', consoleErrors.length === 0, consoleErrors.join(' | '));
@@ -1566,6 +1573,330 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   }
   await page.setViewportSize({ width: 1360, height: 860 });
   await page.waitForTimeout(300);
+}
+
+/* ---- transform mode: select, move, turn, resize --------------------- */
+{
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.closeSheet();
+    app.setTransformMode(false);
+    app.newScene('sphere', null, true);
+  });
+  await page.waitForTimeout(200);
+
+  /* the button is on screen, and it turns the gizmo on */
+  // measured, not taken on trust: an element with its own `display` stays on
+  // screen even with the hidden attribute set, which is exactly the bug this
+  // caught the first time round
+  const shown = (id) => page.evaluate((id) => {
+    const node = document.getElementById(id);
+    return !!node && node.offsetParent !== null && getComputedStyle(node).display !== 'none';
+  }, id);
+  const before = await page.evaluate(() => ({
+    hasButton: !!document.querySelector('#bar-right button[title^="Move, turn"]'),
+    gizmoDisplay: getComputedStyle(document.getElementById('gizmo')).display,
+    barDisplay: getComputedStyle(document.getElementById('bar-transform')).display
+  }));
+  check('there is a transform button on screen', before.hasButton);
+  check('the gizmo is really off screen until asked for',
+    before.gizmoDisplay === 'none' && before.barDisplay === 'none', JSON.stringify(before));
+
+  await page.locator('#bar-right button[title^="Move, turn"]').click();
+  await page.waitForTimeout(300);
+  const on = await page.evaluate(() => {
+    const svg = document.getElementById('gizmo');
+    const vis = (id) => getComputedStyle(document.getElementById(id)).display !== 'none';
+    return {
+      active: window.SCULPT_APP.transform.active,
+      shapes: svg.querySelectorAll('line, circle, rect, polyline').length,
+      barVisible: vis('bar-transform'),
+      gizmoVisible: vis('gizmo'),
+      brushesHidden: !vis('brushes'),
+      slidersHidden: !vis('bar-bottom'),
+      modes: Array.from(document.querySelectorAll('#bar-transform .seg button')).map((b) => b.textContent),
+      name: document.getElementById('gizmo-object').textContent
+    };
+  });
+  check('the transform button turns the gizmo on', on.active && on.gizmoVisible);
+  check('the gizmo draws its handles', on.shapes >= 4, `${on.shapes} shapes`);
+  check('the transform strip takes over from the sliders',
+    on.barVisible && on.brushesHidden && on.slidersHidden, JSON.stringify(on));
+  eq('it offers move, turn and size', on.modes.join(','), 'Move,Turn,Size');
+  eq('it names the shape it is on', on.name, 'Sphere');
+  await page.screenshot({ path: path.join(screens, '25-gizmo.png') });
+
+  /* drag the X arrow and the shape moves along X */
+  async function handleAt(id) {
+    return page.evaluate((id) => {
+      const app = window.SCULPT_APP;
+      app.updateGizmo();
+      const h = app.transform.layout.handles.find((x) => x.id === id);
+      if (!h) return null;
+      const box = document.getElementById('view').getBoundingClientRect();
+      const at = h.at || h.to;
+      return { x: box.x + at[0], y: box.y + at[1] };
+    }, id);
+  }
+  const xArrow = await handleAt('move-0');
+  check('the X arrow has a position on screen', !!xArrow, JSON.stringify(xArrow));
+  const posBefore = await page.evaluate(() => Array.from(window.SCULPT_APP.scene.current().position));
+  await page.mouse.move(xArrow.x, xArrow.y);
+  await page.mouse.down();
+  await page.mouse.move(xArrow.x + 70, xArrow.y, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const moved = await page.evaluate(() => ({
+    pos: Array.from(window.SCULPT_APP.scene.current().position),
+    undo: window.SCULPT_APP.history.undoStack.length,
+    label: window.SCULPT_APP.history.undoStack.length
+      ? window.SCULPT_APP.history.undoStack[window.SCULPT_APP.history.undoStack.length - 1].label : ''
+  }));
+  check('dragging the X arrow moves the shape along X',
+    moved.pos[0] > posBefore[0] + 0.05 && Math.abs(moved.pos[1] - posBefore[1]) < 0.01,
+    moved.pos.join(','));
+  eq('the move is one undo step', moved.label, 'Move');
+
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(200);
+  const undone = await page.evaluate(() => Array.from(window.SCULPT_APP.scene.current().position));
+  check('undo puts the shape back', Math.abs(undone[0] - posBefore[0]) < 1e-6, undone.join(','));
+
+  /* resize with the size handles */
+  await page.evaluate(() => window.SCULPT_APP.setGizmoMode('scale'));
+  await page.waitForTimeout(200);
+  const yBox = await handleAt('scale-1');
+  const scaleBefore = await page.evaluate(() => Array.from(window.SCULPT_APP.scene.current().scale));
+  await page.mouse.move(yBox.x, yBox.y);
+  await page.mouse.down();
+  await page.mouse.move(yBox.x, yBox.y - 50, { steps: 8 });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const scaled = await page.evaluate(() => ({
+    scale: Array.from(window.SCULPT_APP.scene.current().scale),
+    label: window.SCULPT_APP.history.undoStack[window.SCULPT_APP.history.undoStack.length - 1].label
+  }));
+  check('dragging a size handle stretches that axis',
+    scaled.scale[1] > scaleBefore[1] + 0.1 && Math.abs(scaled.scale[0] - scaleBefore[0]) < 1e-6,
+    scaled.scale.join(','));
+  eq('resizing is its own undo step', scaled.label, 'Resize');
+  await page.screenshot({ path: path.join(screens, '26-gizmo-scale.png') });
+
+  /* turn it with a ring */
+  await page.evaluate(() => window.SCULPT_APP.setGizmoMode('rotate'));
+  await page.waitForTimeout(200);
+  const ring = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.updateGizmo();
+    const h = app.transform.layout.handles.find((x) => x.kind === 'ring' && !x.flat);
+    if (!h) return null;
+    const box = document.getElementById('view').getBoundingClientRect();
+    return { from: { x: box.x + h.points[0][0], y: box.y + h.points[0][1] },
+             to: { x: box.x + h.points[10][0], y: box.y + h.points[10][1] } };
+  });
+  check('a ring that can be dragged is on screen', !!ring);
+  await page.mouse.move(ring.from.x, ring.from.y);
+  await page.mouse.down();
+  await page.mouse.move(ring.to.x, ring.to.y, { steps: 10 });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const turned = await page.evaluate(() => ({
+    rotation: Array.from(window.SCULPT_APP.scene.current().rotation),
+    label: window.SCULPT_APP.history.undoStack[window.SCULPT_APP.history.undoStack.length - 1].label
+  }));
+  const turnAmount = Math.hypot(turned.rotation[0], turned.rotation[1], turned.rotation[2]);
+  check('dragging a ring turns the shape', turnAmount > 0.02, turned.rotation.join(','));
+  eq('turning is its own undo step', turned.label, 'Turn');
+
+  /* sculpting is off while the gizmo is up: a drag on the model must not cut */
+  await page.evaluate(() => {
+    const m = window.SCULPT_APP.scene.current().mesh;
+    window.__gizmoBefore = Float32Array.from(m.positions.array.subarray(0, m.liveVerts * 3));
+  });
+  await stroke([cx - 30, cy + 90], [cx + 30, cy + 95], 8);
+  const untouched = await page.evaluate(() => {
+    const m = window.SCULPT_APP.scene.current().mesh;
+    const before = window.__gizmoBefore, pos = m.positions.array;
+    let moved = 0;
+    for (let v = 0; v < m.liveVerts; v++) {
+      const o = v * 3;
+      if (Math.hypot(pos[o] - before[o], pos[o + 1] - before[o + 1], pos[o + 2] - before[o + 2]) > 1e-7) moved++;
+    }
+    return moved;
+  });
+  eq('a drag in transform mode never sculpts', untouched, 0);
+
+  /* leaving transform mode gives the brushes back */
+  await page.evaluate(() => window.SCULPT_APP.setTransformMode(false));
+  await page.waitForTimeout(250);
+  const off = await page.evaluate(() => {
+    const vis = (id) => getComputedStyle(document.getElementById(id)).display !== 'none';
+    return {
+      active: window.SCULPT_APP.transform.active,
+      gizmoHidden: !vis('gizmo'),
+      barHidden: !vis('bar-transform'),
+      brushesBack: vis('brushes'),
+      slidersBack: vis('bar-bottom')
+    };
+  });
+  check('leaving transform mode restores the brushes',
+    !off.active && off.gizmoHidden && off.barHidden && off.brushesBack && off.slidersBack,
+    JSON.stringify(off));
+}
+
+/* ---- adding a shape into the sculpt -------------------------------- */
+{
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.setTransformMode(false);
+    app.newScene('sphere', null, true);
+    app.set('booleanResolution', 96);
+  });
+  await page.waitForTimeout(200);
+  const startTris = await page.evaluate(() => window.SCULPT_APP.scene.current().mesh.liveTris);
+
+  /* the dialog offers adding into the sculpt, and that is the primary action */
+  await page.evaluate(() => window.SCULPT_APP.dialogPrimitive());
+  await page.waitForTimeout(300);
+  const dialog = await page.evaluate(() => ({
+    buttons: Array.from(document.querySelectorAll('.dialog footer .btn span')).map((b) => b.textContent),
+    accent: document.querySelector('.dialog footer .btn.accent span').textContent,
+    shapes: document.querySelectorAll('.dialog .prim').length
+  }));
+  check('the shape dialog offers both ways in', dialog.buttons.join(',').indexOf('Add to this sculpt') >= 0,
+    dialog.buttons.join(','));
+  eq('adding into the sculpt is the main action', dialog.accent, 'Add to this sculpt');
+  check('every primitive is offered', dialog.shapes >= 8, `${dialog.shapes}`);
+
+  await page.locator('.dialog .prim', { hasText: 'Cylinder' }).click();
+  await page.locator('.dialog footer .btn.accent').click();
+  await page.waitForTimeout(400);
+  const added = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    const shape = app.scene.current();
+    const target = app.scene.objects[0];
+    const mn = [0, 0, 0], mx = [0, 0, 0];
+    shape.worldBounds(mn, mx);
+    const tmn = [0, 0, 0], tmx = [0, 0, 0];
+    target.worldBounds(tmn, tmx);
+    return {
+      objects: app.scene.objects.length,
+      name: shape.name,
+      transformOn: app.transform.active,
+      mode: app.transform.mode,
+      joinShown: !document.querySelector('.gizmo-join').hidden,
+      shapeSize: Math.max(mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]),
+      targetSize: Math.max(tmx[0] - tmn[0], tmx[1] - tmn[1], tmx[2] - tmn[2]),
+      overlaps: mn[0] < tmx[0] && mx[0] > tmn[0],
+      selectedIsShape: app.scene.objects.indexOf(shape) === app.scene.selected
+    };
+  });
+  eq('the shape arrives as its own object', added.objects, 2);
+  eq('it is a cylinder', added.name, 'Cylinder');
+  check('the handles come up with it', added.transformOn && added.mode === 'move', JSON.stringify(added));
+  check('the Join buttons appear', added.joinShown);
+  check('it is selected, so the handles act on it', added.selectedIsShape);
+  check('it is sized to the sculpt, not left tiny or huge',
+    added.shapeSize > added.targetSize * 0.2 && added.shapeSize < added.targetSize * 0.9,
+    `${added.shapeSize.toFixed(3)} against ${added.targetSize.toFixed(3)}`);
+  check('it lands touching the sculpt, ready to weld', added.overlaps);
+  await page.screenshot({ path: path.join(screens, '27-shape-added.png') });
+
+  /* move it, then weld it in */
+  const freeHandle = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.updateGizmo();
+    const h = app.transform.layout.handles.find((x) => x.id === 'move-free');
+    const box = document.getElementById('view').getBoundingClientRect();
+    return { x: box.x + h.at[0], y: box.y + h.at[1] };
+  });
+  await page.mouse.move(freeHandle.x, freeHandle.y);
+  await page.mouse.down();
+  await page.mouse.move(freeHandle.x - 30, freeHandle.y - 20, { steps: 6 });
+  await page.mouse.up();
+  await page.waitForTimeout(150);
+  const placed = await page.evaluate(() => Array.from(window.SCULPT_APP.scene.current().position));
+  check('the added shape can be dragged around', Math.abs(placed[0]) > 1e-4 || Math.abs(placed[1]) > 1e-4,
+    placed.join(','));
+
+  await page.locator('.gizmo-join .btn.accent').click();
+  await page.waitForFunction(() => document.getElementById('busy').hidden, null, { timeout: 60000 });
+  await page.waitForTimeout(400);
+  const welded = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    const mesh = app.scene.current().mesh;
+    return { objects: app.scene.objects.length, tris: mesh.liveTris,
+             border: mesh.countBorderEdges(), nonManifold: mesh.countNonManifoldEdges(),
+             joinHidden: document.querySelector('.gizmo-join').hidden,
+             undo: app.history.undoStack.length };
+  });
+  eq('Union leaves one object', welded.objects, 1);
+  check('the welded sculpt has the shape in it', welded.tris > startTris * 0.5, `${welded.tris}`);
+  eq('the welded sculpt is closed', welded.border, 0);
+  eq('the welded sculpt is manifold', welded.nonManifold, 0);
+  check('the Join buttons go away once it is joined', welded.joinHidden);
+  await page.screenshot({ path: path.join(screens, '28-shape-welded.png') });
+
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(400);
+  const unwelded = await page.evaluate(() => window.SCULPT_APP.scene.objects.length);
+  eq('undo brings the separate shape back', unwelded, 2);
+
+  /* a plain Join is the fast path: it keeps both shells in one mesh */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('sphere', null, true);
+    app.insertShape('box', 2);
+  });
+  await page.waitForTimeout(300);
+  const beforeJoin = await page.evaluate(() => ({
+    objects: window.SCULPT_APP.scene.objects.length,
+    tris: window.SCULPT_APP.scene.objects.reduce((n, o) => n + o.mesh.liveTris, 0)
+  }));
+  await page.evaluate(() => window.SCULPT_APP.joinPendingShape('join'));
+  await page.waitForFunction(() => document.getElementById('busy').hidden, null, { timeout: 30000 });
+  await page.waitForTimeout(300);
+  const joined = await page.evaluate(() => ({
+    objects: window.SCULPT_APP.scene.objects.length,
+    tris: window.SCULPT_APP.scene.current().mesh.liveTris
+  }));
+  eq('Join also leaves one object', joined.objects, 1);
+  eq('Join keeps every triangle from both', joined.tris, beforeJoin.tris);
+
+  /* tapping a shape picks it, which is the other half of "select the shape" */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('sphere', null, true);
+    app.addPrimitive('box', 2);            // a separate object, off to one side
+    app.scene.selected = 0;
+    app.setTransformMode(true);
+    app.frameAll(true);
+  });
+  await page.waitForTimeout(400);
+  const tapTarget = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    const box = document.getElementById('view').getBoundingClientRect();
+    const other = app.scene.objects[1];
+    const mn = [0, 0, 0], mx = [0, 0, 0];
+    other.worldBounds(mn, mx);
+    const centre = [(mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2, (mn[2] + mx[2]) / 2];
+    const scr = app.camera.project(centre, [0, 0, 0]);
+    return { x: box.x + scr[0], y: box.y + scr[1], selected: app.scene.selected };
+  });
+  eq('the first object is selected to begin with', tapTarget.selected, 0);
+  await page.mouse.click(tapTarget.x, tapTarget.y);
+  await page.waitForTimeout(250);
+  const picked = await page.evaluate(() => ({
+    selected: window.SCULPT_APP.scene.selected,
+    name: document.getElementById('gizmo-object').textContent
+  }));
+  eq('tapping a shape selects it', picked.selected, 1);
+  eq('and the strip says which one', picked.name, 'Box');
+  await page.evaluate(() => {
+    window.SCULPT_APP.setTransformMode(false);
+    window.SCULPT_APP.newScene('sphere', null, true);
+  });
+  await page.waitForTimeout(200);
 }
 
 /* ---- settings saved by the old build are migrated ------------------- */
