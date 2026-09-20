@@ -267,7 +267,7 @@
    */
   Prim.catalogue = [
     { id: 'sphere', label: 'Sphere', hint: 'Even triangles — the default ball',
-      build: function (d) { return Prim.icosphere(Math.max(0, Math.min(7, d)), 0.5); }, detail: 5, detailMax: 7, detailLabel: 'Subdivisions' },
+      build: function (d) { return Prim.icosphere(Math.max(0, Math.min(7, d)), 0.5); }, detail: 4, detailMax: 7, detailLabel: 'Subdivisions' },
     { id: 'uvsphere', label: 'UV Sphere', hint: 'Poles and rings, like a globe',
       build: function (d) { return Prim.uvsphere(d * 8, d * 4, 0.5); }, detail: 6, detailMax: 16, detailLabel: 'Segments' },
     { id: 'box', label: 'Box', hint: 'Subdivided cube',

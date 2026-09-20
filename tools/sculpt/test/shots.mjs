@@ -130,7 +130,7 @@ console.log('desktop errors:', errors.length ? errors.slice(0, 3) : 'none');
 await page.close();
 
 /* ---------- phone ---------- */
-const ctx = await browser.newContext({ viewport: { width: 412, height: 860 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
+const ctx = await browser.newContext({ viewport: { width: 412, height: 892 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 });
 const phone = await ctx.newPage();
 const perrors = [];
 phone.on('pageerror', (e) => perrors.push(e.message));
@@ -159,10 +159,11 @@ await phone.evaluate(() => {
     }
     app.engine.end();
   }
-  stroke('clay', [cx + 20, cy - 60], [cx + 70, cy - 50], 54, 0.35);
-  stroke('clay', [cx + 32, cy - 22], [cx + 58, cy - 20], 38, 0.3, 10, true);
-  stroke('draw', [cx, cy + 5], [cx, cy + 28], 34, 0.4, 12);
-  stroke('smooth', [cx + 10, cy - 40], [cx + 70, cy + 30], 80, 0.6, 14);
+  stroke('clay', [cx + 18, cy - 70], [cx + 66, cy - 58], 56, 0.4);
+  stroke('clay', [cx + 28, cy - 30], [cx + 56, cy - 28], 40, 0.35, 10, true);
+  stroke('draw', [cx, cy - 4], [cx, cy + 24], 36, 0.45, 12);
+  stroke('clay', [cx + 30, cy + 52], [cx + 62, cy + 30], 52, 0.35);
+  stroke('smooth', [cx + 10, cy - 50], [cx + 70, cy + 40], 90, 0.6, 14);
   app.settings.brush = 'clay';
   app.settings.radius = 60;
   app.frameSelection(true);
@@ -176,6 +177,14 @@ await phone.evaluate(() => window.SCULPT_APP.openBrushSheet());
 await pshot('18-phone-brushes');
 await phone.evaluate(() => window.SCULPT_APP.openExportSheet());
 await pshot('19-phone-export');
+await phone.evaluate(() => window.SCULPT_APP.openBrushSettingsSheet());
+await pshot('20-phone-brush-settings');
+await phone.evaluate(() => { window.SCULPT_APP.closeSheet(); window.SCULPT_APP.dialogDecimate(); });
+await pshot('21-phone-reduce');
+await phone.keyboard.press('Escape');
+await phone.evaluate(() => window.SCULPT_APP.openLookSheet());
+await pshot('22-phone-look');
+await phone.keyboard.press('Escape');
 console.log('phone errors:', perrors.length ? perrors.slice(0, 3) : 'none');
 
 await browser.close();

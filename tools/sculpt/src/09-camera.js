@@ -132,18 +132,56 @@
 
   /* ---- framing ------------------------------------------------------ */
 
-  P.frameBounds = function (min, max, immediate) {
+  /**
+   * Frame a box so it fits the part of the canvas that is actually visible.
+   *
+   * `insets` (pixels: top, bottom, left, right) keeps the model clear of the
+   * interface. Both axes are considered, which matters on a phone held
+   * vertically: fitting the vertical field of view alone would run the model
+   * off the sides, because the horizontal field is much narrower there.
+   */
+  P.frameBounds = function (min, max, immediate, insets) {
     var cx = (min[0] + max[0]) / 2, cy = (min[1] + max[1]) / 2, cz = (min[2] + max[2]) / 2;
     var dx = max[0] - min[0], dy = max[1] - min[1], dz = max[2] - min[2];
     var radius = Math.max(0.5 * Math.sqrt(dx * dx + dy * dy + dz * dz), 1e-4);
-    var dist = radius / Math.sin(this.fov / 2) * 0.95;
+
+    var top = insets && insets.top || 0, bottom = insets && insets.bottom || 0;
+    var left = insets && insets.left || 0, right = insets && insets.right || 0;
+    var usableW = Math.max(40, this.width - left - right);
+    var usableH = Math.max(40, this.height - top - bottom);
+
+    // How wide and tall the box actually appears: its support along the
+    // camera's right and up axes. Fitting the box's diagonal instead (a
+    // bounding sphere) wastes a third of the screen on anything round.
+    var r = this._right, u = this._up;
+    var halfW = 0.5 * (Math.abs(dx * r[0]) + Math.abs(dy * r[1]) + Math.abs(dz * r[2]));
+    var halfH = 0.5 * (Math.abs(dx * u[0]) + Math.abs(dy * u[1]) + Math.abs(dz * u[2]));
+    // depth extent, so a deep object is not clipped by moving in too close
+    var f = this._forward;
+    var halfD = 0.5 * (Math.abs(dx * f[0]) + Math.abs(dy * f[1]) + Math.abs(dz * f[2]));
+
+    var tanV = Math.tan(this.fov / 2);
+    var tanUsableV = tanV * (usableH / this.height);
+    var tanUsableH = tanV * this.aspect() * (usableW / this.width);
+    var dist = Math.max(halfH / Math.max(tanUsableV, 1e-6),
+                        halfW / Math.max(tanUsableH, 1e-6)) * 1.03 + halfD * 0.5;
+    if (!(dist > 1e-6)) dist = radius * 3;
+
+    // shift the target so the model sits in the middle of the visible area
+    var target = V3.create(cx, cy, cz);
+    var perPixel = 2 * tanV * dist / this.height;
+    var offX = (left + usableW / 2) - this.width / 2;
+    var offY = (top + usableH / 2) - this.height / 2;
+    V3.addScaled(target, target, this._right, -offX * perPixel);
+    V3.addScaled(target, target, this._up, offY * perPixel);
+
     if (immediate) {
-      V3.set(this.target, cx, cy, cz);
+      V3.copy(this.target, target);
       this.distance = dist;
       this._goal = null;
       this.update();
     } else {
-      this._goal = { target: V3.create(cx, cy, cz), distance: dist, yaw: this.yaw, pitch: this.pitch };
+      this._goal = { target: target, distance: dist, yaw: this.yaw, pitch: this.pitch };
     }
     return this;
   };

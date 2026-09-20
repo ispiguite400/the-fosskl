@@ -121,19 +121,21 @@ button.round.on, .tool.on {
   gap: 8px;
 }
 #title-chip {
-  font-size: 12px;
+  font-family: var(--mono);
+  font-size: 11.5px;
   color: var(--text-dim);
   background: var(--glass);
   border: 1px solid var(--line);
   border-radius: 20px;
-  padding: 6px 12px;
+  padding: 7px 13px;
   backdrop-filter: blur(10px);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 44vw;
-  pointer-events: none;
+  flex: none;
 }
+#title-chip:hover { color: var(--text); border-color: var(--panel-3); }
+/* the triangle budget: amber as it fills, red once over */
+#title-chip.near { color: var(--accent); border-color: var(--accent-dim); }
+#title-chip.over { color: #ffc9c9; border-color: var(--red); background: rgba(255, 107, 107, 0.16); }
 
 #brushes {
   position: absolute;
@@ -690,28 +692,104 @@ input[type=color] {
 /* ------------------------------------------------------ small screens */
 
 @media (max-width: 560px) {
-  #brushes { gap: 5px; }
-  .tool { width: 42px; height: 42px; border-radius: 12px; }
-  .tool svg { width: 21px; height: 21px; }
-  #bar-bottom {
-    left: 12px;
-    right: 12px;
-    transform: none;
-    max-width: none;
-    justify-content: center;
-  }
-  .pill { width: auto; flex: 1 1 0; max-width: none; padding: 7px 12px; }
-  #stats { display: none; }
-  #title-chip { max-width: 38vw; font-size: 11.5px; }
+  #title-chip { font-size: 11px; padding: 6px 11px; }
   .brush-grid { grid-template-columns: repeat(3, 1fr); }
   .shortcut-grid { grid-template-columns: 1fr; }
   .prim-grid { grid-template-columns: repeat(2, 1fr); }
-  .sheet { max-height: 82vh; }
 }
 
-@media (max-height: 520px) {
+/*
+ * Held vertically — a phone, or a tablet in portrait.
+ *
+ * A column of brushes down the side eats width that a tall screen cannot
+ * spare, so the brushes move to a scrolling row along the bottom with the
+ * two sliders just above them, and the model gets the whole middle. This is
+ * the shape a one-handed sculpting app wants.
+ */
+@media (orientation: portrait) {
+  #brushes {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    transform: none;
+    flex-direction: row;
+    gap: 7px;
+    padding: 9px 10px calc(9px + env(safe-area-inset-bottom, 0px));
+    overflow-x: auto;
+    overflow-y: hidden;
+    background: linear-gradient(to top, rgba(11, 14, 18, 0.94), rgba(11, 14, 18, 0.74));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-top: 1px solid var(--line-soft);
+    scrollbar-width: none;
+    scroll-padding: 10px;
+  }
+  #brushes::-webkit-scrollbar { display: none; }
+  .tool {
+    flex: none;
+    width: 52px;
+    height: 52px;
+    border-radius: 15px;
+    background: var(--panel-2);
+    backdrop-filter: none;
+  }
+  .tool svg { width: 25px; height: 25px; }
+  .tool.on { background: var(--accent-soft); }
+
+  #bar-bottom {
+    left: 10px;
+    right: 10px;
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    transform: none;
+    max-width: none;
+    gap: 7px;
+  }
+  .pill { flex: 1 1 0; width: auto; max-width: none; padding: 8px 13px; }
+
+  #bar-right {
+    top: auto;
+    right: 10px;
+    bottom: calc(142px + env(safe-area-inset-bottom, 0px));
+    transform: none;
+    flex-direction: row;
+    gap: 7px;
+  }
+
+  #bar-top {
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    left: 10px;
+    right: 10px;
+  }
+  button.round { width: 42px; height: 42px; }
+  button.round.big { width: 46px; height: 46px; }
+
+  #stats { display: none; }
+
+  /* sheets fill the width and sit against the bottom edge */
+  .sheet {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin-left: 0;
+    width: 100%;
+    max-height: 76vh;
+    border-radius: 18px 18px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .sheet-row { padding: 12px 10px; }
+  .sheet-label b { font-size: 14px; }
+  #toasts { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+  .backdrop { padding: 10px; align-items: flex-end; }
+  .dialog { max-height: 86vh; width: 100%; }
+}
+
+/* a short, wide window (a phone on its side) keeps the side column but
+   tucks it up under the top bar */
+@media (orientation: landscape) and (max-height: 520px) {
   #brushes { top: 12px; transform: none; }
   #bar-right { top: 12px; transform: none; padding-top: 52px; }
+  #stats { display: none; }
 }
 </style>
 </head>
@@ -3720,7 +3798,7 @@ input[type=color] {
    */
   Prim.catalogue = [
     { id: 'sphere', label: 'Sphere', hint: 'Even triangles — the default ball',
-      build: function (d) { return Prim.icosphere(Math.max(0, Math.min(7, d)), 0.5); }, detail: 5, detailMax: 7, detailLabel: 'Subdivisions' },
+      build: function (d) { return Prim.icosphere(Math.max(0, Math.min(7, d)), 0.5); }, detail: 4, detailMax: 7, detailLabel: 'Subdivisions' },
     { id: 'uvsphere', label: 'UV Sphere', hint: 'Poles and rings, like a globe',
       build: function (d) { return Prim.uvsphere(d * 8, d * 4, 0.5); }, detail: 6, detailMax: 16, detailLabel: 'Segments' },
     { id: 'box', label: 'Box', hint: 'Subdivided cube',
@@ -7134,18 +7212,56 @@ input[type=color] {
 
   /* ---- framing ------------------------------------------------------ */
 
-  P.frameBounds = function (min, max, immediate) {
+  /**
+   * Frame a box so it fits the part of the canvas that is actually visible.
+   *
+   * `insets` (pixels: top, bottom, left, right) keeps the model clear of the
+   * interface. Both axes are considered, which matters on a phone held
+   * vertically: fitting the vertical field of view alone would run the model
+   * off the sides, because the horizontal field is much narrower there.
+   */
+  P.frameBounds = function (min, max, immediate, insets) {
     var cx = (min[0] + max[0]) / 2, cy = (min[1] + max[1]) / 2, cz = (min[2] + max[2]) / 2;
     var dx = max[0] - min[0], dy = max[1] - min[1], dz = max[2] - min[2];
     var radius = Math.max(0.5 * Math.sqrt(dx * dx + dy * dy + dz * dz), 1e-4);
-    var dist = radius / Math.sin(this.fov / 2) * 0.95;
+
+    var top = insets && insets.top || 0, bottom = insets && insets.bottom || 0;
+    var left = insets && insets.left || 0, right = insets && insets.right || 0;
+    var usableW = Math.max(40, this.width - left - right);
+    var usableH = Math.max(40, this.height - top - bottom);
+
+    // How wide and tall the box actually appears: its support along the
+    // camera's right and up axes. Fitting the box's diagonal instead (a
+    // bounding sphere) wastes a third of the screen on anything round.
+    var r = this._right, u = this._up;
+    var halfW = 0.5 * (Math.abs(dx * r[0]) + Math.abs(dy * r[1]) + Math.abs(dz * r[2]));
+    var halfH = 0.5 * (Math.abs(dx * u[0]) + Math.abs(dy * u[1]) + Math.abs(dz * u[2]));
+    // depth extent, so a deep object is not clipped by moving in too close
+    var f = this._forward;
+    var halfD = 0.5 * (Math.abs(dx * f[0]) + Math.abs(dy * f[1]) + Math.abs(dz * f[2]));
+
+    var tanV = Math.tan(this.fov / 2);
+    var tanUsableV = tanV * (usableH / this.height);
+    var tanUsableH = tanV * this.aspect() * (usableW / this.width);
+    var dist = Math.max(halfH / Math.max(tanUsableV, 1e-6),
+                        halfW / Math.max(tanUsableH, 1e-6)) * 1.03 + halfD * 0.5;
+    if (!(dist > 1e-6)) dist = radius * 3;
+
+    // shift the target so the model sits in the middle of the visible area
+    var target = V3.create(cx, cy, cz);
+    var perPixel = 2 * tanV * dist / this.height;
+    var offX = (left + usableW / 2) - this.width / 2;
+    var offY = (top + usableH / 2) - this.height / 2;
+    V3.addScaled(target, target, this._right, -offX * perPixel);
+    V3.addScaled(target, target, this._up, offY * perPixel);
+
     if (immediate) {
-      V3.set(this.target, cx, cy, cz);
+      V3.copy(this.target, target);
       this.distance = dist;
       this._goal = null;
       this.update();
     } else {
-      this._goal = { target: V3.create(cx, cy, cz), distance: dist, yaw: this.yaw, pitch: this.pitch };
+      this._goal = { target: target, distance: dist, yaw: this.yaw, pitch: this.pitch };
     }
     return this;
   };
@@ -8532,7 +8648,7 @@ input[type=color] {
   var DEFAULTS = {
     // brush
     brush: 'clay',
-    radius: 78,
+    radius: 62,
     strength: 0.55,
     falloff: 'smooth',
     spacing: 0.16,
@@ -8543,12 +8659,15 @@ input[type=color] {
     pressureRadius: true,
     pressureStrength: true,
     paintColorHex: '#d94f3d',
-    // topology
+    // topology — sized for game meshes, not for rendering.
+    // Roblox rejects a MeshPart over 10,000 triangles, so that is the
+    // default ceiling and the detail size is chosen to land inside it.
     dyntopo: true,
     detailMode: 'relative',
-    detailPercent: 5,
+    detailPercent: 25,
     detailSize: 0.01,
-    maxTriangles: 1500000,
+    maxTriangles: 10000,
+    triBudget: 10000,
     remeshResolution: 160,
     remeshSmooth: 2,
     decimateTarget: 30000,
@@ -8572,7 +8691,7 @@ input[type=color] {
     ortho: false,
     fov: 42,
     // export
-    exportFormat: 'glb',
+    exportFormat: 'obj',
     exportScale: 1,
     exportAxis: 'y',
     exportColors: true,
@@ -8607,7 +8726,7 @@ input[type=color] {
     this.buildDom();
     this.initGL();
     this.bindInput();
-    this.newScene('sphere', 5, true);
+    this.newScene('sphere', 4, true);
     this.restoreAutosaveOffer();
     this.loop();
   }
@@ -8682,7 +8801,10 @@ input[type=color] {
       e.stopPropagation();
       self.openMainMenu();
     } }, UI.icon('menu'));
-    this.titleChip = el('div#title-chip', { text: '' });
+    this.titleChip = el('button#title-chip', {
+      title: 'Triangle budget',
+      onclick: function () { self.dialogDecimate(); }
+    });
     this.undoBtn = el('button.round', { title: 'Undo (Ctrl+Z)', onclick: function () { self.undo(); } }, UI.icon('undo'));
     this.redoBtn = el('button.round', { title: 'Redo (Ctrl+Shift+Z)', onclick: function () { self.redo(); } }, UI.icon('redo'));
     var topBar = el('div#bar-top', null, [
@@ -8799,7 +8921,12 @@ input[type=color] {
   A.refreshStatus = function () {
     var obj = this.scene.current();
     if (this.titleChip) {
-      this.titleChip.textContent = obj ? obj.name + '  ·  ' + S.formatCount(obj.mesh.liveTris) : '';
+      var budget = this.settings.triBudget;
+      var tris = obj ? obj.mesh.liveTris : 0;
+      this.titleChip.textContent = S.formatCount(tris) + ' / ' + S.formatCount(budget);
+      this.titleChip.classList.toggle('over', tris > budget);
+      this.titleChip.classList.toggle('near', tris > budget * 0.85 && tris <= budget);
+      this.titleChip.title = obj ? (obj.name + ' — ' + tris + ' triangles, budget ' + budget) : '';
     }
     if (this.undoBtn) this.undoBtn.disabled = !this.history.canUndo();
     if (this.redoBtn) this.redoBtn.disabled = !this.history.canRedo();
@@ -8947,7 +9074,7 @@ input[type=color] {
         { group: 'Files — all free, no limits' },
         { icon: 'upload', label: 'Open a model', hint: 'OBJ, STL, PLY, GLB or a saved project',
           chevron: true, onclick: function () { self.importDialog(); } },
-        { icon: 'download', label: 'Export', hint: 'GLB, OBJ, PLY or STL for your game',
+        { icon: 'download', label: 'Export', hint: 'Roblox OBJ, or GLB, PLY, STL',
           chevron: true, onclick: function () { self.openExportSheet(); } },
         { icon: 'save', label: 'Save project', hint: 'Keeps masks, colour and the camera',
           onclick: function () { self.saveProject(); } },
@@ -8958,7 +9085,7 @@ input[type=color] {
           chevron: true, onclick: function () { self.dialogRemesh(); } },
         { icon: 'subdivide', label: 'Subdivide', hint: 'Four times the triangles, smoother',
           onclick: function () { self.subdivide(true); } },
-        { icon: 'decimate', label: 'Reduce triangles', hint: 'Make a light version for a game',
+        { icon: 'decimate', label: 'Reduce triangles', hint: 'Fit a Roblox MeshPart, or lighten for any engine',
           chevron: true, onclick: function () { self.dialogDecimate(); } },
         { icon: 'mirror', label: 'Make symmetrical', hint: 'Mirror the +X half onto the other side',
           onclick: function () { self.symmetrize(0, true); } },
@@ -9013,9 +9140,12 @@ input[type=color] {
     this.openSheet({
       title: 'Export',
       rows: [
+        { icon: 'cube', label: 'Roblox', hint: 'OBJ, reduced to ' + S.formatCount(this.settings.triBudget) + ' triangles',
+          note: 'ready', onclick: function () { self.exportForRoblox(); } },
+        { icon: 'file', label: 'OBJ', hint: 'Full detail, opens in anything',
+          onclick: function () { self.quickExport('obj'); } },
         { icon: 'cube', label: 'GLB', hint: 'For Three.js, Unity, Godot, Unreal',
-          note: 'best', onclick: function () { self.quickExport('glb'); } },
-        { icon: 'file', label: 'OBJ', hint: 'Opens in anything', onclick: function () { self.quickExport('obj'); } },
+          onclick: function () { self.quickExport('glb'); } },
         { icon: 'palette', label: 'PLY', hint: 'Keeps painted colour exactly', onclick: function () { self.quickExport('ply'); } },
         { icon: 'decimate', label: 'STL', hint: 'For 3D printing', onclick: function () { self.quickExport('stl'); } },
         { group: 'More' },
@@ -9235,6 +9365,20 @@ input[type=color] {
         } }));
       });
 
+    var budgetSeg = UI.segment({ label: 'Budget', value: String(st.triBudget), options: [
+      { id: '10000', label: 'Roblox 10k', title: 'Roblox\u2019s limit for one MeshPart' },
+      { id: '50000', label: '50k' },
+      { id: '250000', label: '250k' }
+    ], onchange: function (v) {
+      var n = parseInt(v, 10);
+      self.set('triBudget', n);
+      self.set('maxTriangles', n);
+      // coarser triangles for a smaller budget, so sculpting stays inside it
+      self.set('detailPercent', n <= 10000 ? 25 : (n <= 50000 ? 12 : 6));
+      self.refreshStatus();
+      UI.toast('Budget ' + S.formatCount(n) + ' triangles');
+    } });
+
     this.openSheet({
       title: brush.label + ' settings',
       content: [
@@ -9294,8 +9438,12 @@ input[type=color] {
 
     // the detail sliders belong with the dyntopo switch
     var body = this._sheet.querySelector('.sheet-body');
+    body.appendChild(budgetSeg);
     body.appendChild(detailRow);
     body.appendChild(maxRow);
+    body.appendChild(el('p.sheet-note', {
+      text: 'Roblox will not accept a mesh over 10,000 triangles. Sculpt inside the budget, or sculpt freely and use Export \u2192 Roblox, which reduces a copy.'
+    }));
   };
 
   /* ================================================================ *
@@ -9477,6 +9625,7 @@ input[type=color] {
         if (committed) self.dirtySinceSave = true;
         self.refreshStatus();
         self.refreshObjects();
+        self.warnIfBudgetFull();
       }
       if (self.pointers.size < 2) self.touchNav = null;
       if (!self.pointers.size) {
@@ -9544,6 +9693,21 @@ input[type=color] {
         return '';
       }
     });
+  };
+
+  /**
+   * Dynamic topology stops adding triangles at the budget. Say so once, with
+   * the way out, rather than leaving the brush silently doing nothing.
+   */
+  A.warnIfBudgetFull = function () {
+    var obj = this.scene.current();
+    if (!obj || !this.settings.dyntopo) return;
+    var cap = this.settings.maxTriangles;
+    if (obj.mesh.liveTris < cap - 8) return;
+    var now = performance.now();
+    if (this._budgetWarned && now - this._budgetWarned < 30000) return;
+    this._budgetWarned = now;
+    UI.toast('At the ' + S.formatCount(cap) + ' triangle budget — raise it in Menu \u2192 Brush settings, or keep sculpting at this density', null, 5000);
   };
 
   /* ---- touch navigation ---- */
@@ -10009,19 +10173,29 @@ input[type=color] {
     this.needsRender = true;
   };
 
+  /**
+   * How much of the canvas the interface covers, so framing can keep the
+   * model clear of it. The numbers follow the layout in ui.css.
+   */
+  A.viewInsets = function () {
+    var w = this.canvas.clientWidth || 1, h = this.canvas.clientHeight || 1;
+    if (h > w) return { top: 66, bottom: 156, left: 10, right: 10 };   // portrait
+    return { top: 62, bottom: 74, left: 74, right: 62 };
+  };
+
   A.frameSelection = function (immediate) {
     var obj = this.scene.current();
     if (!obj) return this.frameAll(immediate);
     var mn = V3.create(0, 0, 0), mx = V3.create(0, 0, 0);
     obj.worldBounds(mn, mx);
-    this.camera.frameBounds(mn, mx, immediate);
+    this.camera.frameBounds(mn, mx, immediate, this.viewInsets());
     this.needsRender = true;
   };
 
   A.frameAll = function (immediate) {
     var mn = V3.create(0, 0, 0), mx = V3.create(0, 0, 0);
     this.scene.bounds(mn, mx);
-    this.camera.frameBounds(mn, mx, immediate);
+    this.camera.frameBounds(mn, mx, immediate, this.viewInsets());
     this.needsRender = true;
   };
 
@@ -10253,6 +10427,55 @@ input[type=color] {
       if (!result) return;
       UI.toast('Saved ' + result.name + ' — ' + S.formatCount(result.tris) + ' triangles, ' +
         S.formatBytes(result.size), 'ok', 4200);
+    });
+  };
+
+  /**
+   * Export a copy cut down to the triangle budget, as OBJ.
+   *
+   * Roblox rejects a MeshPart over 10,000 triangles, and it reads OBJ. The
+   * sculpt itself is left at full detail: the reduction happens on a copy,
+   * per object, so each one arrives as its own MeshPart inside the limit.
+   */
+  A.exportForRoblox = function (budget) {
+    var self = this;
+    var limit = budget || this.settings.triBudget || 10000;
+    var objs = this.exportTargets();
+    if (!objs.length) { UI.toast('Nothing to export', 'bad'); return; }
+    UI.busy('Preparing for Roblox', 'reducing to ' + S.formatCount(limit) + ' triangles', function (report) {
+      var temps = [];
+      var reduced = 0, original = 0;
+      for (var i = 0; i < objs.length; i++) {
+        var src = objs[i];
+        original += src.mesh.liveTris;
+        var copy = new S.SceneObject(src.name, src.mesh.liveTris > limit ? src.mesh.clone() : src.mesh);
+        V3.copy(copy.position, src.position);
+        copy.rotation.set(src.rotation);
+        V3.copy(copy.scale, src.scale);
+        copy.touch();
+        if (src.mesh.liveTris > limit) {
+          report(src.name + ': ' + S.formatCount(src.mesh.liveTris) + ' \u2192 ' + S.formatCount(limit));
+          copy.mesh.decimate(limit, true);
+        }
+        reduced += copy.mesh.liveTris;
+        temps.push(copy);
+      }
+      var geoms = S.IO.prepare(temps, {
+        scale: 1, axis: 'y', applyTransform: true,
+        includeNormals: true, includeColors: false
+      });
+      // Roblox's mesh importer ignores vertex colour, so it is left out to
+      // keep the file small
+      var text = S.IO.exportOBJ(geoms, { includeNormals: true, includeColors: false });
+      var name = self.exportFilename('obj');
+      var size = UI.download(text, name, 'text/plain');
+      return { name: name, size: size, original: original, reduced: reduced, objects: temps.length, limit: limit };
+    }, function (result, ms) {
+      if (!result) return;
+      var over = result.reduced > result.limit;
+      UI.toast('Saved ' + result.name + ' \u2014 ' +
+        S.formatCount(result.original) + ' \u2192 ' + S.formatCount(result.reduced) +
+        ' triangles, ' + S.formatBytes(result.size), over ? 'bad' : 'ok', 5000);
     });
   };
 
@@ -10514,7 +10737,9 @@ input[type=color] {
     var obj = this.scene.current();
     if (!obj) { UI.toast('No object selected', 'bad'); return; }
     var current = obj.mesh.liveTris;
-    var target = Math.min(this.settings.decimateTarget, Math.max(100, Math.floor(current / 2)));
+    var budget = this.settings.triBudget || 10000;
+    // default to the budget when the mesh is over it, otherwise to half
+    var target = current > budget ? budget : Math.max(100, Math.floor(current / 2));
     var info = el('div.hint');
     var targetRow, borderCheck;
     function refresh() {
@@ -10530,14 +10755,14 @@ input[type=color] {
       title: 'Decimate',
       icon: 'decimate',
       content: [
-        el('p', { text: 'Collapses the edges that change the shape least, which is how game LODs are usually baked. Sculpt at full detail, decimate on the way out.' }),
+        el('p', { text: 'Collapses the edges that change the shape least, so the silhouette survives. Roblox will not accept a MeshPart over 10,000 triangles.' }),
         targetRow,
         el('div.row.wrap', null, borderCheck),
         info,
         el('div.btn-grid.three', null, [
+          UI.button('Roblox 10k', { onclick: function () { targetRow.set(Math.min(10000, current)); refresh(); } }),
           UI.button('50%', { onclick: function () { targetRow.set(Math.floor(current / 2)); refresh(); } }),
-          UI.button('25%', { onclick: function () { targetRow.set(Math.floor(current / 4)); refresh(); } }),
-          UI.button('10%', { onclick: function () { targetRow.set(Math.floor(current / 10)); refresh(); } })
+          UI.button('25%', { onclick: function () { targetRow.set(Math.floor(current / 4)); refresh(); } })
         ])
       ],
       buttons: [

@@ -103,19 +103,21 @@ button.round.on, .tool.on {
   gap: 8px;
 }
 #title-chip {
-  font-size: 12px;
+  font-family: var(--mono);
+  font-size: 11.5px;
   color: var(--text-dim);
   background: var(--glass);
   border: 1px solid var(--line);
   border-radius: 20px;
-  padding: 6px 12px;
+  padding: 7px 13px;
   backdrop-filter: blur(10px);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 44vw;
-  pointer-events: none;
+  flex: none;
 }
+#title-chip:hover { color: var(--text); border-color: var(--panel-3); }
+/* the triangle budget: amber as it fills, red once over */
+#title-chip.near { color: var(--accent); border-color: var(--accent-dim); }
+#title-chip.over { color: #ffc9c9; border-color: var(--red); background: rgba(255, 107, 107, 0.16); }
 
 #brushes {
   position: absolute;
@@ -672,26 +674,102 @@ input[type=color] {
 /* ------------------------------------------------------ small screens */
 
 @media (max-width: 560px) {
-  #brushes { gap: 5px; }
-  .tool { width: 42px; height: 42px; border-radius: 12px; }
-  .tool svg { width: 21px; height: 21px; }
-  #bar-bottom {
-    left: 12px;
-    right: 12px;
-    transform: none;
-    max-width: none;
-    justify-content: center;
-  }
-  .pill { width: auto; flex: 1 1 0; max-width: none; padding: 7px 12px; }
-  #stats { display: none; }
-  #title-chip { max-width: 38vw; font-size: 11.5px; }
+  #title-chip { font-size: 11px; padding: 6px 11px; }
   .brush-grid { grid-template-columns: repeat(3, 1fr); }
   .shortcut-grid { grid-template-columns: 1fr; }
   .prim-grid { grid-template-columns: repeat(2, 1fr); }
-  .sheet { max-height: 82vh; }
 }
 
-@media (max-height: 520px) {
+/*
+ * Held vertically — a phone, or a tablet in portrait.
+ *
+ * A column of brushes down the side eats width that a tall screen cannot
+ * spare, so the brushes move to a scrolling row along the bottom with the
+ * two sliders just above them, and the model gets the whole middle. This is
+ * the shape a one-handed sculpting app wants.
+ */
+@media (orientation: portrait) {
+  #brushes {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    transform: none;
+    flex-direction: row;
+    gap: 7px;
+    padding: 9px 10px calc(9px + env(safe-area-inset-bottom, 0px));
+    overflow-x: auto;
+    overflow-y: hidden;
+    background: linear-gradient(to top, rgba(11, 14, 18, 0.94), rgba(11, 14, 18, 0.74));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-top: 1px solid var(--line-soft);
+    scrollbar-width: none;
+    scroll-padding: 10px;
+  }
+  #brushes::-webkit-scrollbar { display: none; }
+  .tool {
+    flex: none;
+    width: 52px;
+    height: 52px;
+    border-radius: 15px;
+    background: var(--panel-2);
+    backdrop-filter: none;
+  }
+  .tool svg { width: 25px; height: 25px; }
+  .tool.on { background: var(--accent-soft); }
+
+  #bar-bottom {
+    left: 10px;
+    right: 10px;
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+    transform: none;
+    max-width: none;
+    gap: 7px;
+  }
+  .pill { flex: 1 1 0; width: auto; max-width: none; padding: 8px 13px; }
+
+  #bar-right {
+    top: auto;
+    right: 10px;
+    bottom: calc(142px + env(safe-area-inset-bottom, 0px));
+    transform: none;
+    flex-direction: row;
+    gap: 7px;
+  }
+
+  #bar-top {
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    left: 10px;
+    right: 10px;
+  }
+  button.round { width: 42px; height: 42px; }
+  button.round.big { width: 46px; height: 46px; }
+
+  #stats { display: none; }
+
+  /* sheets fill the width and sit against the bottom edge */
+  .sheet {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin-left: 0;
+    width: 100%;
+    max-height: 76vh;
+    border-radius: 18px 18px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .sheet-row { padding: 12px 10px; }
+  .sheet-label b { font-size: 14px; }
+  #toasts { bottom: calc(150px + env(safe-area-inset-bottom, 0px)); }
+  .backdrop { padding: 10px; align-items: flex-end; }
+  .dialog { max-height: 86vh; width: 100%; }
+}
+
+/* a short, wide window (a phone on its side) keeps the side column but
+   tucks it up under the top bar */
+@media (orientation: landscape) and (max-height: 520px) {
   #brushes { top: 12px; transform: none; }
   #bar-right { top: 12px; transform: none; padding-top: 52px; }
+  #stats { display: none; }
 }

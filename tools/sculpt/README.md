@@ -1,12 +1,12 @@
 # SculptFree
 
-A digital sculpting app that runs in one HTML file. Open it, sculpt, export.
-Nothing is locked, watermarked or limited — **import and export are free, in
-every format, at any triangle count.**
+A digital sculpting app that runs in one HTML file, on a phone or a computer.
+Open it, sculpt, export. Nothing is locked, watermarked or limited —
+**import and export are free, in every format, at any triangle count.**
 
-Built for making game models: sculpt at whatever density you like, rebuild the
-topology when it gets messy, decimate to a triangle budget, and export a GLB
-that Three.js, Unity, Godot and Unreal all read without a plugin.
+Set up for **Roblox** out of the box: Roblox will not accept a MeshPart over
+10,000 triangles, so that is the default budget, it is shown on screen while
+you sculpt, and **Export → Roblox** writes an OBJ reduced to fit.
 
 ```
 tools/sculpt/sculpt.html      ← the whole app; open it in a browser
@@ -21,15 +21,23 @@ if you prefer. Needs a browser with WebGL 2 (anything current).
 
 Almost all of it is your model. Everything else is one tap away.
 
+**Held vertically (a phone):** brushes run along the bottom in a row you can
+swipe, the two sliders sit just above them, and the model gets the whole
+middle.
+
+**On a computer or sideways:** the brushes move to a column down the left
+edge and the sliders sit along the bottom.
+
 | Where | What |
 | --- | --- |
 | Top left | **☰** — everything: files, shapes, remesh, settings, help |
+| Next to it | The triangle count against your budget — tap it to reduce |
 | Top right | Undo, redo |
-| Left edge | The eight brushes you use most, plus **⋯** for the other ten |
-| Right edge | Mirror on/off, frame the model, and Look (material, wireframe) |
+| Brush row | The eight brushes you use most, plus one button for the other ten |
+| Near the sliders | Mirror on/off, frame the model, and Look (material, wireframe) |
 | Bottom | **Size** and **Strength** — the only two numbers you change often |
 
-Drag on the model to sculpt. Drag off it — or right-drag, or two fingers — to
+Drag on the model to sculpt. Drag off it — or two fingers, or right-drag — to
 orbit. That is the whole interface.
 
 ## Sculpting
@@ -50,7 +58,34 @@ you move or rotate the object.
 so you can pull a horn out of a sphere and it will have triangles where it
 needs them. It respects masks, and stops at a triangle limit you set.
 
-## Getting a model into a game
+## Roblox
+
+Roblox rejects a MeshPart over **10,000 triangles**. The app is set up for
+that:
+
+- The chip at the top reads `3.5k / 10k`. It turns amber as you approach the
+  budget and red if you pass it. Tap it to reduce the mesh.
+- Dynamic topology stops adding triangles at the budget, so you cannot
+  accidentally sculpt a model Studio will refuse.
+- **☰ → Export → Roblox** writes an OBJ reduced to fit. The reduction happens
+  on a copy, so your sculpt keeps its detail; each object comes out as its own
+  MeshPart inside the limit.
+
+Then in Studio: **Model → Insert → Insert 3D Model** (or right-click a
+MeshPart → set its MeshId) and pick the `.obj`. Roblox is Y-up like this app,
+so the orientation carries over; resize the MeshPart in Studio rather than
+worrying about scale here.
+
+Two things worth knowing: Studio's mesh importer ignores vertex colour (so the
+Roblox export leaves it out to keep the file small — colour a MeshPart with
+its **Color** property or a texture), and one MeshPart is one mesh, so build a
+character as several objects and export them separately.
+
+If you want more detail than 10k while you work, **☰ → Brush settings →
+Budget** offers 50k and 250k as well; the Roblox export will still reduce to
+10k on the way out.
+
+## Getting a model into another engine
 
 1. Sculpt freely with dynamic topology on.
 2. **Remesh** (☰ → Remesh) when the surface gets uneven. This rebuilds it as
@@ -84,7 +119,7 @@ millimetres (×1000).
 
 | Format | In | Out | Notes |
 | --- | --- | --- | --- |
-| OBJ | ✓ | ✓ | Quads and n-gons are triangulated; vertex colours supported |
+| OBJ | ✓ | ✓ | What Roblox reads. Quads and n-gons are triangulated; vertex colours supported |
 | STL | ✓ | ✓ | Binary and text; triangle soups are welded on import so they can be sculpted |
 | PLY | ✓ | ✓ | Text and both binary byte orders; the best format for vertex colour |
 | glTF / GLB | ✓ | ✓ | Node transforms baked in; 16- or 32-bit indices as needed |
@@ -126,6 +161,10 @@ A few decisions worth knowing about:
 - **Brush size is in screen pixels**, converted to model units per stamp, so a
   brush covers the same part of the screen whether you are zoomed in on an ear
   or out at the whole figure — and it behaves the same on a scaled object.
+- **Framing fits the part of the canvas you can actually see**, using the
+  model's projected extent along both screen axes. Fitting the vertical field
+  of view alone (or the bounding sphere) either runs a model off the sides of
+  a phone held vertically or leaves a third of the screen empty.
 - **Stroke spacing does not change how deep a stroke cuts.** Stamps are laid
   every `spacing × radius` along the path and their strength is scaled to
   match, so spacing is a quality control, not a strength control.
@@ -151,11 +190,11 @@ node test/remesh.test.mjs       # 76  watertight and manifold output, volume, co
 node test/io.test.mjs           # 120 round trips for every format, GLB structure, transforms
 node test/brush.test.mjs        # 239 every brush, symmetry, masking, undo, dyntopo
 node test/camera.test.mjs       # 18  projection, framing, ray casting
-node build.js && node test/browser.test.mjs   # 142 end-to-end in a real browser
+node build.js && node test/browser.test.mjs   # 154 end-to-end in a real browser
 node test/shots.mjs             # renders the screenshots in test/screens
 ```
 
-676 checks in total. The browser suite drives the built single file with real
+688 checks in total. The browser suite drives the built single file with real
 mouse, touch and keyboard input, reads the rendered pixels back to confirm the
 renderer is actually drawing, exports every format through the real download
 path and re-imports the files in Node to verify them.
@@ -178,3 +217,6 @@ live counts matching, no non-finite coordinates.
   the voxel count before you commit.
 - No sculpt layers and no multiresolution levels; dynamic topology and
   remeshing cover the same ground differently.
+- Roblox's own importer, not this app, decides what it accepts. The 10,000
+  triangle ceiling is current at the time of writing; if that changes, set
+  your own budget in Brush settings.

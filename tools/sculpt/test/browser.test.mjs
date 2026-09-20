@@ -68,7 +68,7 @@ await page.waitForTimeout(400);
   check('the app booted', state.gl === true);
   eq('standalone build marker', state.standalone, 'standalone');
   eq('one starting object', state.objects, 1);
-  eq('starting sphere triangle count', state.tris, 20480);
+  eq('starting sphere triangle count', state.tris, 5120);
   eq('nine brush buttons on screen (8 plus more)', state.toolButtons, 9);
   eq('size and strength sliders on screen', state.pills, 2);
   // the whole point of the redesign: the resting screen stays uncluttered
@@ -652,6 +652,9 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     const iw = window.innerWidth, ih = window.innerHeight;
     let outside = 0;
     document.querySelectorAll('#ui button, #ui .pill').forEach((n) => {
+      // the brush strip scrolls sideways on a phone, so its buttons are
+      // allowed past the edge; everything else must be reachable
+      if (n.closest('#brushes')) return;
       const r = n.getBoundingClientRect();
       if (r.width && (r.left < -0.5 || r.right > iw + 0.5 || r.top < -0.5 || r.bottom > ih + 0.5)) outside++;
     });
@@ -668,6 +671,22 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   });
   check('the viewport fills the phone screen', layout.canvasW > 380, String(layout.canvasW));
   eq('every control is fully on screen', layout.outside, 0);
+  // held vertically, the brushes belong along the bottom, not down the side
+  const portrait = await phone.evaluate(() => {
+    const strip = document.getElementById('brushes').getBoundingClientRect();
+    const bars = document.getElementById('bar-bottom').getBoundingClientRect();
+    const view = document.getElementById('view').getBoundingClientRect();
+    return {
+      stripWide: strip.width > view.width * 0.9,
+      stripAtBottom: strip.bottom > view.height - 4,
+      slidersAboveStrip: bars.bottom < strip.top + 2,
+      scrollable: document.getElementById('brushes').scrollWidth >= document.getElementById('brushes').clientWidth
+    };
+  });
+  check('the brush strip spans the bottom', portrait.stripWide && portrait.stripAtBottom,
+    JSON.stringify(portrait));
+  check('the sliders sit above the brush strip', portrait.slidersAboveStrip);
+  check('the brush strip scrolls if it overflows', portrait.scrollable);
   eq('nothing is open at rest', layout.sheets, 0);
   eq('the brush strip is there on a phone', layout.brushButtons, 9);
   eq('both sliders are there on a phone', layout.pills, 2);
@@ -718,6 +737,50 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     check('no errors on the phone layout', phoneErrors.length === 0, phoneErrors.join(' | '));
   await phone.close();
   await phoneContext.close();
+}
+
+/* ---- export sized for Roblox --------------------------------------- */
+{
+  // Roblox rejects a MeshPart over 10,000 triangles, so the dedicated export
+  // has to come back under that whatever the sculpt is doing.
+  const dense = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('sphere', 4, true);
+    app.set('maxTriangles', 400000);
+    app.scene.current().mesh.subdivide(false);      // 20480
+    app.scene.current().mesh.subdivide(false);      // 81920
+    app.refreshStatus();
+    return app.scene.current().mesh.liveTris;
+  });
+  check('built a mesh well over the Roblox limit', dense > 60000, String(dense));
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 60000 }),
+    page.evaluate(() => window.SCULPT_APP.exportForRoblox())
+  ]);
+  const dest = path.join(tmp, 'roblox.obj');
+  await download.saveAs(dest);
+  check('the Roblox export is an OBJ', download.suggestedFilename().endsWith('.obj'),
+    download.suggestedFilename());
+  const S2 = (await import('./harness.mjs')).load(['07-scene', '08-brush', '09-camera']);
+  const buf = fs.readFileSync(dest);
+  const res = S2.IO.importBuffer('roblox.obj', buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+  check('the Roblox export re-imports cleanly', res.objects.length === 1 && !res.warnings.length,
+    res.warnings.join(';'));
+  const m = new S2.Mesh();
+  m.setFromArrays(res.objects[0].positions, res.objects[0].indices, { weld: true });
+  check('the Roblox export fits in 10,000 triangles', m.liveTris <= 10000, `${dense} -> ${m.liveTris}`);
+  check('the Roblox export is not needlessly small', m.liveTris > 8000, String(m.liveTris));
+  eq('the Roblox export is a closed surface', m.countBorderEdges(), 0);
+  eq('the Roblox export is manifold', m.countNonManifoldEdges(), 0);
+  const stillDense = await page.evaluate(() => window.SCULPT_APP.scene.current().mesh.liveTris);
+  eq('the sculpt itself keeps its detail', stillDense, dense);
+
+  // the budget chip reports over-budget
+  const chip = await page.evaluate(() => {
+    const c = document.getElementById('title-chip');
+    return { text: c.textContent, over: c.classList.contains('over') };
+  });
+  check('the budget chip shows the overrun', chip.over && /10k$/.test(chip.text), JSON.stringify(chip));
 }
 
 /* ---- final state --------------------------------------------------- */
