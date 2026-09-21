@@ -32,6 +32,12 @@
     this.scale = V3.create(1, 1, 1);
     this.visible = true;
     this.baseColor = V3.create(0.85, 0.85, 0.85);
+    /*
+     * The paint image, once there is one. Made when the object is first
+     * painted, and from then on it is where its colour lives — see the paint
+     * map in the texture module for why colour cannot live in the vertices.
+     */
+    this.paint = null;
     this._matrix = M4.create();
     this._inverse = M4.create();
     this._normal = M4.create();
@@ -272,6 +278,11 @@
 
   History.prototype._entryBytes = function (e) {
     var n = 64;
+    if (e.kind === 'paint') {
+      e.before.forEach(function (tile) { n += tile.byteLength; });
+      if (e.after) e.after.forEach(function (tile) { n += tile.byteLength; });
+      return n;
+    }
     if (e.kind === 'verts') {
       n += e.indices.byteLength + e.before.byteLength + (e.after ? e.after.byteLength : 0);
       if (e.colorBefore) n += e.colorBefore.byteLength * 2;
@@ -323,6 +334,16 @@
   History.prototype.beginStroke = function (obj, opts) {
     opts = opts || {};
     var mesh = obj.mesh;
+    /*
+     * A stroke that paints into the image records the tiles it changes, not
+     * the whole image: a 1024-texel map is four megabytes, and a stroke
+     * usually touches a few dozen 64-texel tiles of it.
+     */
+    if (opts.paintMap) {
+      this.pending = { kind: 'paint', obj: obj, map: opts.paintMap,
+                       label: opts.label || 'Paint', before: new Map(), after: null };
+      return;
+    }
     if (opts.topology) {
       this.pending = { kind: 'mesh', obj: obj, label: opts.label || 'Sculpt',
                        before: mesh.snapshot(), after: null };
@@ -337,6 +358,14 @@
       seen: new Int32Array(mesh.masks.length + 1),
       stamp: 1
     };
+  };
+
+  /** Record one tile of a paint image before it is painted over. */
+  History.prototype.capturePaintTile = function (map, index) {
+    var p = this.pending;
+    if (!p || p.kind !== 'paint' || p.map !== map) return;
+    if (p.before.has(index)) return;
+    p.before.set(index, map.tileData(index));
   };
 
   /** Record the pre-edit state of a vertex. Cheap and idempotent. */
@@ -368,6 +397,13 @@
     this.pending = null;
     if (!p) return false;
     var mesh = p.obj.mesh;
+    if (p.kind === 'paint') {
+      if (!p.before.size) return false;
+      p.after = new Map();
+      p.before.forEach(function (unused, index) { p.after.set(index, p.map.tileData(index)); });
+      this._push(p);
+      return true;
+    }
     if (p.kind === 'mesh') {
       p.after = mesh.snapshot();
       if (p.after.positions.length === p.before.positions.length &&
@@ -427,6 +463,10 @@
     this.pending = null;
     if (!p) return false;
     var mesh = p.obj.mesh;
+    if (p.kind === 'paint') {
+      p.before.forEach(function (tile, index) { p.map.setTileData(index, tile); });
+      return true;
+    }
     if (p.kind === 'mesh') {
       mesh.restore(p.before);
       return true;
@@ -519,11 +559,17 @@
     }
   }
 
+  function applyPaintEntry(entry, which) {
+    var tiles = which === 'before' ? entry.before : entry.after;
+    tiles.forEach(function (tile, index) { entry.map.setTileData(index, tile); });
+  }
+
   History.prototype.undo = function () {
     var entry = this.undoStack.pop();
     if (!entry) return null;
     if (entry.kind === 'verts') applyVertEntry(entry, 'before');
     else if (entry.kind === 'mesh') entry.obj.mesh.restore(entry.before);
+    else if (entry.kind === 'paint') applyPaintEntry(entry, 'before');
     else if (entry.kind === 'scene') entry.restore(entry.before);
     this.redoStack.push(entry);
     if (this.onChange) this.onChange(this);
@@ -535,6 +581,7 @@
     if (!entry) return null;
     if (entry.kind === 'verts') applyVertEntry(entry, 'after');
     else if (entry.kind === 'mesh') entry.obj.mesh.restore(entry.after);
+    else if (entry.kind === 'paint') applyPaintEntry(entry, 'after');
     else if (entry.kind === 'scene') entry.restore(entry.after);
     this.undoStack.push(entry);
     if (this.onChange) this.onChange(this);

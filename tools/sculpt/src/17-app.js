@@ -51,6 +51,23 @@
     alphaFollowStroke: true,
     alphaRandomRotate: false,
     /*
+     * How a stencil is read. 'surface' takes the pattern from the model, so
+     * scrubbing over a place builds the same pattern up instead of smearing
+     * a fresh copy of it each dab; 'stamp' prints one copy per dab, which is
+     * what a rivet or a panel wants. Surface is the default because that is
+     * what people reach for a dirt or gravel brush expecting.
+     */
+    alphaMode: 'surface',
+    alphaScale: 1,
+    /*
+     * Where paint goes. Into the object's own image, because colour in the
+     * vertices can only ever be as fine as the mesh — on a model built for a
+     * game, nowhere near fine enough to show a pattern. 'vertex' keeps the
+     * old behaviour for anyone exporting vertex colours in a PLY.
+     */
+    paintTarget: 'texture',
+    paintSize: 1024,
+    /*
      * Topology.
      *
      * Dynamic topology is ON, and that is the whole feel of the tool: a
@@ -193,9 +210,9 @@
    * would hand a returning user the very behaviour that was fixed. So those
    * keys are dropped on the way in, once, and everything else is kept.
    */
-  var SETTINGS_SCHEMA = 3;
+  var SETTINGS_SCHEMA = 4;
   var STALE_ON_UPGRADE = ['dyntopo', 'maxTriangles', 'detailPercent', 'detailMode', 'detailSize',
-                          'detailPixels'];
+                          'detailPixels', 'paintTarget', 'alphaMode'];
 
   A.loadSettings = function () {
     var out = {};
@@ -902,6 +919,16 @@
 
     UI.busy(label, a.name + ' + ' + b.name, function (report) {
       if (mode === 'join') {
+        /*
+         * Joining makes one mesh out of two, so each object's paint image —
+         * which is mapped in that object's own space — cannot come along as
+         * it is. The colour does: it is written onto the vertices first, and
+         * the first stroke on the joined object lifts it back into an image
+         * of its own. Fine detail is lost, saying so beats losing the lot.
+         */
+        if (a.paint) a.paint.toVertexColors(a.mesh);
+        if (b.paint) b.paint.toVertexColors(b.mesh);
+        if (a.paint || b.paint) UI.toast('Joined \u2014 painted detail is now as fine as the mesh', null, 4200);
         return { join: self.scene.mergeObjects([indexA, indexB], a.name) };
       }
       return S.Boolean.compute(a, b, {
@@ -1582,8 +1609,25 @@
     var rotateCheck = UI.check({ label: 'Random turn', value: !!st.alphaRandomRotate,
       title: 'Spins the stencil a random amount each stroke, so a pattern does not repeat',
       onchange: function (v) { self.set('alphaRandomRotate', v); } });
+    /*
+     * How the pattern is read matters more than it sounds. Printed afresh
+     * under every dab, a pattern piles up on itself as a stroke passes over
+     * it and comes out a solid smudge — the complaint was that a textured
+     * brush "is just a normal drawing brush". Taken from the model, every
+     * dab lays the same pattern in the same place, so scrubbing builds it up.
+     */
+    var modeSeg = UI.segment({ label: 'Pattern', value: st.alphaMode === 'stamp' ? 'stamp' : 'surface',
+      options: [
+        { id: 'surface', label: 'On the model', title: 'The pattern sits on the surface: going over it again builds it up' },
+        { id: 'stamp', label: 'One per dab', title: 'The pattern is printed inside each dab, turning with the stroke' }
+      ],
+      onchange: function (v) { self.set('alphaMode', v); } });
+    var scaleRow = UI.slider({ label: 'Pattern size', min: 0.2, max: 4, step: 0.1,
+      value: st.alphaScale === undefined ? 1 : st.alphaScale,
+      title: 'How much of the model one repeat of the pattern covers, as a share of the brush',
+      onchange: function (v) { self.set('alphaScale', v); } });
     return [
-      el('p.sheet-note', { text: 'Stencil — the brush stamps this pattern instead of a round dab' }),
+      el('p.sheet-note', { text: 'Stencil — the brush works through this pattern instead of a round dab' }),
       grid,
       el('div.sheet-buttons', null, [
         UI.button('Load image…', { icon: 'image', onclick: function () {
@@ -1591,6 +1635,8 @@
         } }),
         UI.button('Invert', { icon: 'reset', onclick: function () { self.invertCurrentAlpha(grid); } })
       ]),
+      modeSeg,
+      scaleRow,
       el('div.check-row', null, [stampCheck, followCheck, rotateCheck])
     ];
   };
@@ -1736,9 +1782,10 @@
       var img = ctx.createImageData(built.width, built.height);
       img.data.set(built.pixels);
       ctx.putImageData(img, 0, 0);
-      note.textContent = obj.name + ' — six charts, ' +
+      note.textContent = obj.name + ' \u2014 six charts, ' +
         Math.round(built.coverage * 100) + '% of the image used, ' +
-        S.formatCount(built.geom.vertCount) + ' points after the unwrap.';
+        S.formatCount(built.geom.vertCount) + ' points after the unwrap.' +
+        (obj.paint ? ' Painted at ' + obj.paint.size + ' \u00d7 ' + obj.paint.size + '.' : '');
     }
     function refreshSoon() {
       clearTimeout(timer);
@@ -1772,8 +1819,16 @@
         { group: 'Paint' },
         { icon: 'paint', label: 'Paint settings', hint: 'Colour, stencil, swatches',
           chevron: true, onclick: function () { self.openBrushSettingsSheet(); } },
-        { icon: 'subdivide', label: 'More paint detail', hint: 'Subdivide, so the colour has more places to live',
-          onclick: function () { self.subdivide(true); } }
+        { icon: 'subdivide', label: 'More paint detail', hint: 'Only needed when painting onto the vertices: subdivides so the colour has more places to live',
+          onclick: function () {
+            if (self.settings.paintTarget === 'texture') {
+              UI.toast('Paint already has its own image \u2014 detail does not depend on the mesh', null, 4200);
+              return;
+            }
+            self.subdivide(true);
+          } },
+        { icon: 'reset', label: 'Clear the paint', hint: 'Throws the painted image away and goes back to the plain colour',
+          onclick: function () { self.dropPaintMap(); } }
       ]
     });
     requestAnimationFrame(refresh);
@@ -1882,7 +1937,18 @@
           title: 'Distance between brush stamps',
           onchange: function (v) { self.set('spacing', v); } }),
         this.buildAlphaSection(),
-        el('p.sheet-note', { text: 'Paint colour' }),
+        el('p.sheet-note', { text: 'Paint' }),
+        UI.segment({ label: 'Paint onto', value: st.paintTarget === 'vertex' ? 'vertex' : 'texture',
+          options: [
+            { id: 'texture', label: 'The texture', title: 'Colour lives in an image, so a pattern stays sharp however few triangles the model has' },
+            { id: 'vertex', label: 'The vertices', title: 'Colour lives in the mesh: as fine as the triangles, and exports in a PLY' }
+          ],
+          onchange: function (v) { self.set('paintTarget', v); } }),
+        UI.segment({ label: 'Texture size', value: String(st.paintSize || 1024), options: [
+          { id: '512', label: '512', title: 'Light' },
+          { id: '1024', label: '1024', title: 'A good default' },
+          { id: '2048', label: '2048', title: 'For a hero model' }
+        ], onchange: function (v) { self.set('paintSize', parseInt(v, 10)); } }),
         el('div.row', null, [colorInput,
           UI.button('Pick from model', { icon: 'palette', class: 'grow', onclick: function () {
             self.closeSheet();
@@ -1892,7 +1958,8 @@
         el('div.sheet-buttons', null, [
           UI.button('Fill object', { onclick: function () { self.fillColor(); } }),
           UI.button('Clear colour', { onclick: function () { self.fillColor(true); } })
-        ])
+        ]),
+        el('p.sheet-note', { text: 'Changing the texture size starts a fresh image for anything painted after it; what is already painted keeps the size it was made at.' })
       ],
       rows: [
         { group: 'Triangles' },
@@ -2072,6 +2139,7 @@
         return;
       }
 
+      self.preparePaint();
       var started = self.engine.begin({
         x: p.x, y: p.y,
         pressure: e.pointerType === 'mouse' ? 1 : (e.pressure || 0.5) * 2,
@@ -2766,11 +2834,77 @@
     this.afterMeshOp(obj);
   };
 
+  /* ---- painting ----------------------------------------------------- *
+   * Colour lives in an image of the object's own, not in its vertices: see
+   * the paint map in the texture module for why, and the video that made
+   * the case — a dirt stencil painted onto a 1,300-triangle ball came out
+   * as four soft blotches, because 650 vertices is all the colour had to
+   * live in.
+   * ------------------------------------------------------------------- */
+
+  /** The paint image for an object, made on demand. */
+  A.ensurePaintMap = function (obj) {
+    if (!obj) return null;
+    if (obj.paint) return obj.paint;
+    var size = S.clamp(this.settings.paintSize || 1024, 256, 2048);
+    var map = new S.PaintMap(size, S.PaintMap.frameFor(obj.mesh));
+    /*
+     * Whatever colour the object already had comes across, so switching to
+     * painting on the image never loses work — including the base colour of
+     * an object that has never been painted at all.
+     */
+    map.bakeFromMesh(obj.mesh, obj.baseColor);
+    obj.paint = map;
+    return map;
+  };
+
+  /** Called as a stroke starts: a paint brush needs somewhere to paint. */
+  A.preparePaint = function () {
+    if (this.settings.paintTarget !== 'texture') return;
+    var brush = S.brushById(this.settings.brush);
+    if (!brush || !brush.paint) return;
+    var obj = this.scene.current();
+    if (!obj || obj.paint) return;
+    this.ensurePaintMap(obj);
+    this.needsRender = true;
+  };
+
+  A.dropPaintMap = function (obj) {
+    obj = obj || this.scene.current();
+    if (!obj || !obj.paint) return;
+    var self = this;
+    var keep = obj.paint;
+    this.history.runSceneOp('Clear paint', function () { return { map: obj.paint }; },
+      function (state) { obj.paint = state.map; self.needsRender = true; },
+      function () { obj.paint = null; });
+    this.needsRender = true;
+    UI.toast('Paint cleared');
+    return keep;
+  };
+
   A.fillColor = function (white) {
     var self = this;
     var obj = this.scene.current();
     if (!obj) return;
     var c = white ? [1, 1, 1] : this.settings.paintColor;
+    if (this.settings.paintTarget === 'texture') {
+      var map = this.ensurePaintMap(obj);
+      // one flat colour over the whole image, as one undo step
+      var before = map.pixels.slice();
+      this.history.runSceneOp(white ? 'Clear colour' : 'Fill colour',
+        function () { return { pixels: before }; },
+        function (state) {
+          map.pixels.set(state.pixels);
+          map.markDirty(0, 0, map.size - 1, map.size - 1);
+          self.needsRender = true;
+        },
+        function () { map.fill(c[0], c[1], c[2]); });
+      var after = map.pixels.slice();
+      var top = this.history.undoStack[this.history.undoStack.length - 1];
+      if (top && top.kind === 'scene') top.after = { pixels: after };
+      this.needsRender = true;
+      return;
+    }
     this.history.runMeshOp(obj, 'Fill colour', function () {
       obj.mesh.setColorAll(c[0], c[1], c[2]);
     });
@@ -2791,7 +2925,15 @@
     if (!hit) { UI.toast('Nothing there', 'bad'); return; }
     var mesh = hit.object.mesh;
     var v = mesh.tris.array[hit.tri * 3];
-    var c = [mesh.colors.array[v * 3], mesh.colors.array[v * 3 + 1], mesh.colors.array[v * 3 + 2]];
+    var c;
+    if (hit.object.paint) {
+      // read the image where the tap landed, which is where the colour is
+      c = [0, 0, 0];
+      hit.object.paint.sample(hit.localPoint[0], hit.localPoint[1], hit.localPoint[2],
+                              hit.localNormal[0], hit.localNormal[1], hit.localNormal[2], c);
+    } else {
+      c = [mesh.colors.array[v * 3], mesh.colors.array[v * 3 + 1], mesh.colors.array[v * 3 + 2]];
+    }
     var hex = UI.rgbToHex(c);
     this.set('paintColorHex', hex);
     this.rebuildColourSwatches && this.rebuildColourSwatches();
@@ -3081,6 +3223,14 @@
         V3.copy(copy.position, src.position);
         copy.rotation.set(src.rotation);
         V3.copy(copy.scale, src.scale);
+        if (src.baseColor) V3.copy(copy.baseColor, src.baseColor);
+        /*
+         * The paint image comes with the copy. It is mapped by where the
+         * surface is rather than by coordinates stored on the vertices, so
+         * it still reads correctly after the copy has been reduced to fit
+         * Roblox — which is the whole reason painting works this way.
+         */
+        copy.paint = src.paint;
         copy.touch();
         if (src.mesh.liveTris > limit) {
           report(src.name + ': ' + S.formatCount(src.mesh.liveTris) + ' \u2192 ' + S.formatCount(limit));
@@ -3192,6 +3342,7 @@
       if (o.rotation) obj.rotation.set(o.rotation);
       if (o.scale) V3.set(obj.scale, o.scale[0], o.scale[1], o.scale[2]);
       if (o.baseColor) V3.set(obj.baseColor, o.baseColor[0], o.baseColor[1], o.baseColor[2]);
+      if (o.paint) obj.paint = o.paint;
       obj.visible = o.visible !== false;
       obj.touch();
       self.scene.add(obj, false);

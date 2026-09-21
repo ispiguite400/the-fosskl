@@ -128,12 +128,17 @@
     'out vec3 vViewNormal;',
     'out vec3 vColor;',
     'out float vMask;',
+    // the object's own space, for reading its paint image
+    'out vec3 vLocalPos;',
+    'out vec3 vLocalNormal;',
     'void main() {',
     '  vec4 vp = uModelView * vec4(aPosition, 1.0);',
     '  vViewPos = vp.xyz;',
     '  vViewNormal = uNormalMat * aNormal;',
     '  vColor = aColor;',
     '  vMask = aMask;',
+    '  vLocalPos = aPosition;',
+    '  vLocalNormal = aNormal;',
     '  gl_Position = uProj * vp;',
     '}'
   ].join('\n');
@@ -145,6 +150,8 @@
     'in vec3 vViewNormal;',
     'in vec3 vColor;',
     'in float vMask;',
+    'in vec3 vLocalPos;',
+    'in vec3 vLocalNormal;',
     'uniform sampler2D uMatcap;',
     'uniform float uFlat;',
     'uniform float uVertexColor;',
@@ -152,7 +159,43 @@
     'uniform float uMaskVis;',
     'uniform vec3 uTint;',
     'uniform float uGhost;',
+    // the paint image: six charts in a 3x2 grid, read by which way the
+    // surface faces (see the paint map in the texture module)
+    'uniform sampler2D uPaintTex;',
+    'uniform float uPaint;',
+    'uniform float uPaintScale;',
+    'uniform vec2 uPaintOff[6];',
     'out vec4 fragColor;',
+    'vec2 chartOf(int f, vec3 p) {',
+    '  if (f == 0) return vec2(-p.z, p.y);',
+    '  if (f == 1) return vec2(p.z, p.y);',
+    '  if (f == 2) return vec2(p.x, -p.z);',
+    '  if (f == 3) return vec2(p.x, p.z);',
+    '  if (f == 4) return vec2(p.x, p.y);',
+    '  return vec2(-p.x, p.y);',
+    '}',
+    'vec3 readPaint(vec3 p, vec3 n) {',
+    '  float side[6];',
+    '  side[0] = max(n.x, 0.0); side[1] = max(-n.x, 0.0);',
+    '  side[2] = max(n.y, 0.0); side[3] = max(-n.y, 0.0);',
+    '  side[4] = max(n.z, 0.0); side[5] = max(-n.z, 0.0);',
+    '  vec3 sum = vec3(0.0);',
+    '  float total = 0.0;',
+    '  for (int f = 0; f < 6; f++) {',
+    '    float w = side[f] * side[f];',
+    '    w = w * w;',                       // ^4: the same tight blend the CPU uses
+    '    if (w <= 0.001) continue;',
+    '    vec2 st = clamp(chartOf(f, p) * uPaintScale + uPaintOff[f], 0.0, 1.0);',
+    // the same margin the paint map leaves round each chart, from the same
+    // constant, so the shader and the rasteriser cannot drift apart
+    '    st = st * ' + (1 - 2 * S.Texture.CHART_MARGIN).toFixed(6) +
+      ' + ' + S.Texture.CHART_MARGIN.toFixed(6) + ';',
+    '    vec2 uv = vec2((float(f - (f / 3) * 3) + st.x) / 3.0, (float(f / 3) + st.y) / 2.0);',
+    '    sum += texture(uPaintTex, uv).rgb * w;',
+    '    total += w;',
+    '  }',
+    '  return total > 0.0 ? sum / total : vec3(1.0);',
+    '}',
     'void main() {',
     '  vec3 n = normalize(vViewNormal);',
     '  if (uFlat > 0.5) {',
@@ -171,7 +214,11 @@
     '    float amount = clamp(div * 14.0, -1.0, 1.0);',
     '    base *= 1.0 + amount * uCavity;',
     '  }',
-    '  base *= mix(uTint, vColor * uTint, uVertexColor);',
+    '  if (uPaint > 0.5) {',
+    '    base *= readPaint(vLocalPos, normalize(vLocalNormal));',
+    '  } else {',
+    '    base *= mix(uTint, vColor * uTint, uVertexColor);',
+    '  }',
     '  if (uMaskVis > 0.001 && vMask > 0.001) {',
     '    base = mix(base, base * 0.45 + vec3(0.12, 0.32, 0.72) * 0.55, vMask * uMaskVis);',
     '  }',
@@ -381,7 +428,8 @@
         vao: gl.createVertexArray(),
         pos: gl.createBuffer(), nor: gl.createBuffer(), col: gl.createBuffer(), msk: gl.createBuffer(),
         idx: gl.createBuffer(), edges: null,
-        vertCapacity: 0, indexCount: 0, edgeCount: 0, edgeTopoStamp: -1, topoStamp: -1
+        vertCapacity: 0, indexCount: 0, edgeCount: 0, edgeTopoStamp: -1, topoStamp: -1,
+        paintTex: null, paintSize: 0, paintVersion: -1
       };
       gl.bindVertexArray(st.vao);
       var bind = function (buf, loc, size) {
@@ -408,6 +456,7 @@
     gl.deleteBuffer(st.col); gl.deleteBuffer(st.msk);
     gl.deleteBuffer(st.idx);
     if (st.edges) gl.deleteBuffer(st.edges);
+    if (st.paintTex) gl.deleteTexture(st.paintTex);
     obj.renderState = null;
   };
 
@@ -463,6 +512,45 @@
       st.topoStamp = (st.topoStamp + 1) | 0;
       mesh.topoDirty = false;
       st.edgeTopoStamp = -1;
+    }
+
+    /*
+     * The paint image. Only the part that changed is sent: a stroke touches
+     * a patch of a four-megabyte image, and sending all of it per dab is the
+     * difference between painting and waiting.
+     */
+    var map = obj.paint;
+    if (map) {
+      if (!st.paintTex || st.paintSize !== map.size) {
+        if (st.paintTex) gl.deleteTexture(st.paintTex);
+        st.paintTex = gl.createTexture();
+        st.paintSize = map.size;
+        st.paintVersion = -1;
+        gl.bindTexture(gl.TEXTURE_2D, st.paintTex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, map.size, map.size, 0,
+                      gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        map.markDirty(0, 0, map.size - 1, map.size - 1);
+      }
+      if (st.paintVersion !== map.version) {
+        var px0 = map.dirtyX0, py0 = map.dirtyY0, px1 = map.dirtyX1, py1 = map.dirtyY1;
+        if (px1 < px0 || py1 < py0) { px0 = py0 = 0; px1 = py1 = map.size - 1; }
+        var pw = px1 - px0 + 1, ph = py1 - py0 + 1;
+        gl.bindTexture(gl.TEXTURE_2D, st.paintTex);
+        gl.pixelStorei(gl.UNPACK_ROW_LENGTH, map.size);
+        gl.pixelStorei(gl.UNPACK_SKIP_ROWS, py0);
+        gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, px0);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, px0, py0, pw, ph, gl.RGBA, gl.UNSIGNED_BYTE, map.pixels);
+        gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
+        gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+        gl.pixelStorei(gl.UNPACK_SKIP_PIXELS, 0);
+        st.paintVersion = map.version;
+        map.clearDirty();
+        this.stats.uploadedBytes += pw * ph * 4;
+      }
     }
 
     if (wantEdges && st.edgeTopoStamp !== st.topoStamp) {
@@ -639,6 +727,17 @@
       gl.uniformMatrix3fv(prog.u.uNormalMat, false, this._nm);
       gl.uniform3fv(prog.u.uTint, obj.baseColor);
       gl.uniform1f(prog.u.uGhost, 1);
+      if (obj.paint && st.paintTex && opts.vertexColors !== false) {
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, st.paintTex);
+        gl.uniform1i(prog.u.uPaintTex, 1);
+        gl.uniform1f(prog.u.uPaint, 1);
+        gl.uniform1f(prog.u.uPaintScale, obj.paint.scale);
+        gl.uniform2fv(prog.u.uPaintOff, obj.paint.off);
+        gl.activeTexture(gl.TEXTURE0);
+      } else {
+        gl.uniform1f(prog.u.uPaint, 0);
+      }
       gl.bindVertexArray(st.vao);
       gl.drawElements(gl.TRIANGLES, st.indexCount, gl.UNSIGNED_INT, 0);
       gl.bindVertexArray(null);

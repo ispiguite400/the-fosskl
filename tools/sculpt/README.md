@@ -259,25 +259,46 @@ the selected shape. Three modes, from the strip along the bottom:
 While the handles are up the brushes are put away, so a drag can never
 accidentally sculpt.
 
-## Stencils
+## Stencils — the brush textures
 
 Any brush can work through a greyscale **stencil** instead of a plain round
-dab: the brightness of the image decides how hard the brush bites, so a photo
-of gravel stamps gravel and a drawing of a rivet stamps a rivet.
+dab: the brightness of the image decides how hard the brush bites, so gravel
+stamps gravel and a rivet stamps a rivet. The same goes for the paint brush,
+where the pattern decides where the colour lands.
 
-☰ → **Brush settings** → *Stencil*:
+☰ → **Brush settings** → *Stencil*. There are **26 built in**, generated in
+code so there is nothing to download:
 
-- Eight built-in stencils — dirt, gravel, cracks, scratches, bumps, weave,
-  rivet, square — generated in code, so there is nothing to download.
+| | |
+| --- | --- |
+| **Surfaces** | Dirt, Gravel, Rock, Bark, Leather, Rust, Sponge, Grain |
+| **Marks** | Cracks, Scratches, Hatch, Stipple, Spray, Splatter, Bumps, Stripes, Wood |
+| **Made things** | Weave, Bricks, Hexes, Scales, Grille |
+| **Single stamps** | Rivet, Ring, Square, Star |
+
 - **Load image…** takes any PNG or JPEG from your phone or computer.
   Brightness becomes strength, transparency counts as nothing, and the result
   is kept for next time. **Invert** makes a light-on-dark image work too.
-- **One stamp per press** places a single dab wherever you tap, which is how
-  rivets, panels and logos go on. Otherwise the pattern repeats along the
-  stroke.
-- **Follow the stroke** turns the stencil to face the direction you are
-  drawing; **Random turn** spins it each stroke so a pattern does not tile
-  visibly.
+- **Pattern: On the model / One per dab** is the setting that decides whether
+  a stencil behaves like a texture or like a stamp, and it matters more than
+  it sounds. *On the model* (the default) reads the pattern from the surface,
+  so every dab lays the same pattern in the same place and scrubbing builds
+  it up. *One per dab* prints a fresh copy inside each dab, turning with the
+  stroke — which is what a rivet or a panel line wants.
+- **Pattern size** is how much of the model one repeat covers, as a share of
+  the brush.
+- **One stamp per press** places a single dab wherever you tap, for rivets,
+  panels and logos.
+- **Follow the stroke** turns a per-dab stencil to face the direction you are
+  drawing; **Random turn** spins it each stroke.
+
+Every built-in pattern **tiles seamlessly**, which is what makes *On the
+model* work: the noise runs on a wrapped lattice, the dot patterns look at
+their neighbours so nothing is clipped at a cell edge, and the honeycomb is a
+hair wider than it is tall so that a whole number of cells fits the tile. The
+soft edge a single dab needs is applied when the stencil is *read* as a stamp
+rather than baked into the image — baked in, it would print a grid of gaps
+across a scrubbed surface.
 
 A stencil turns auto-smoothing off for that stroke: relaxing the surface
 behind the stamp would rub the pattern straight back out.
@@ -295,8 +316,37 @@ alongside your settings.
 
 ## Texture and paint
 
-Painting happens on the model (fast, no seams, no unwrap to think about) and
-☰ → **Texture** turns it into a real image:
+**Paint goes into an image of the model's own**, not into its vertices. That
+is the difference between a dirt stencil looking like dirt and looking like
+four soft blotches: colour in the vertices can only ever be as fine as the
+mesh, and a model built for a game has a few hundred of them. Pick **Paint**,
+pick a stencil, and the pattern comes out at the resolution of the image
+whatever the triangle count — and it stays there when the model is reduced to
+fit Roblox.
+
+How the image is mapped to the model: six charts in a 3×2 grid, one per box
+direction, chosen by which way the surface faces. Reading it blends the three
+charts a surface can see, weighted by how squarely it faces each, so there are
+no seams where charts meet. Nothing is stored on the vertices, which means
+**every topology change survives it** — dynamic topology, remeshing, decimating,
+booleans all leave the paint where it was, with nothing to rebuild.
+
+In ☰ → **Brush settings**:
+
+- **Paint onto: the texture / the vertices.** The texture is the default. The
+  vertices are still there for a PLY of vertex colours, and painting that way
+  works exactly as it used to.
+- **Texture size** 512, 1024 or 2048. A dab costs about 3 ms at 512 and 7 ms
+  at 1024 on this machine, so a stroke keeps up with a finger; 2048 is for a
+  hero model you are painting slowly.
+- **Fill object** and **Clear colour** fill the whole image, as one undo step.
+
+Undo records the **64-texel tiles** a stroke touched, not the whole image: a
+1024 image is four megabytes and a stroke usually touches a few dozen tiles of
+it. A project file keeps its paint, run-length encoded — a map painted in one
+corner comes back to a few tens of kilobytes rather than four megabytes.
+
+☰ → **Texture** turns the model into a file:
 
 - A **live preview** of the baked texture, with how much of the image the model
   uses.
@@ -315,8 +365,17 @@ triangle count never changes — only the vertex count. The baked pixels are
 grown outwards past the edge of each chart, so filtering never pulls the
 background in across a seam.
 
+When the model has been painted, the bake reads the **paint image** per texel
+rather than interpolating vertex colours, so the exported texture is as fine as
+what you painted. An unpainted model still bakes from its vertex colours.
+
 The PNG is written by the app itself — deflate, filters and all — because a
 single HTML file cannot lean on a library.
+
+Joining two objects is the one place paint has to give something up: each
+object's image is mapped in that object's own space, so the colour is written
+onto the vertices first and the joined object lifts it back into an image of
+its own on the next stroke. The app says so when it happens.
 
 ## Roblox
 
@@ -420,9 +479,9 @@ file that works offline.
 | `src/04-primitives.js` | Starting shapes |
 | `src/05-remesh.js` | Voxel remesh: signed distance field, then manifold dual contouring |
 | `src/06-io.js` | Every importer and exporter, plus the project container |
-| `src/07-texture.js` | Box-projection unwrap, the vertex-colour bake, and a PNG writer with its own deflate |
+| `src/07-texture.js` | The paint image (six-chart box atlas, rasteriser, tiles), box-projection unwrap, the bake, and a PNG writer with its own deflate |
 | `src/08-scene.js` | Objects, transforms, and memory-budgeted undo history |
-| `src/09-alpha.js` | Brush stencils: the built-in patterns, loading an image, sampling |
+| `src/09-alpha.js` | Brush stencils: 26 built-in tiling patterns, loading an image, sampling as a stamp or as a texture |
 | `src/10-preset.js` | Brush presets, built-in and saved |
 | `src/11-brush.js` | The brushes and the stroke engine |
 | `src/12-camera.js` | Orbit camera, screen-space ray casting |
@@ -510,13 +569,14 @@ node test/io.test.mjs           # 120  round trips for every format, GLB structu
 node test/brush.test.mjs        # 411  every brush, adding vs stretching, the stroke limits, masking, undo
 node test/camera.test.mjs       # 18   projection, framing, ray casting
 node test/boolean.test.mjs      # 51   union / subtract / intersect against analytic volumes
-node test/texture.test.mjs      # 362  PNG writer, unwrap, bake, textured export, stencils, presets
+node test/texture.test.mjs      # 474  PNG writer, unwrap, bake, textured export, stencils, presets
+node test/paint.test.mjs        # 66   the paint image: atlas, rasteriser, stencils, undo, export
 node test/gizmo.test.mjs        # 52   handle layout, hit testing, move/turn/resize maths
-node build.js && node test/browser.test.mjs   # 402 end-to-end in a real browser
+node build.js && node test/browser.test.mjs   # 426 end-to-end in a real browser
 node test/shots.mjs             # renders the screenshots in test/screens
 ```
 
-1,626 checks in total. Some of them are worth naming, because they are the
+1,828 checks in total. Some of them are worth naming, because they are the
 ones that catch a regression you would otherwise ship:
 
 - **Brushes have to add, not stretch.** The same pull is run with dynamic
@@ -557,6 +617,18 @@ ones that catch a regression you would otherwise ship:
 - **The grid is checked against brute force.** Vertices are pushed a long way
   outside the box the grid was built for, without a rebuild, and every query
   has to return exactly what a scan over every triangle returns.
+- **Paint has to be finer than the mesh, and that is measured.** A dirt
+  stencil is painted onto a 320-triangle ball, and the test walks a circle
+  across the surface counting how many times the colour crosses its own
+  average — in the vertices that can happen about once per triangle, in the
+  image once per texel. The same model is then reduced to 2,000 triangles and
+  its texture baked: the pattern has to survive. Both run in the browser too,
+  driven by real strokes.
+- **Every stencil has to meet itself.** Read as a texture, a pattern tiles, so
+  each of the 26 is checked at the seam: the step between the texels either
+  side of it may be no bigger than the biggest step anywhere inside the image.
+  That test caught five patterns that did not tile, a half-texel error in the
+  sampler, and a honeycomb that could not tile at all.
 - **Randomised strokes hunt for the rest.** A fuzz harness drives thousands
   of strokes with random brushes, sizes, strengths, falloffs, stencils,
   symmetry combinations, detail settings and gestures across six primitives,
@@ -576,9 +648,14 @@ live counts matching, no non-finite coordinates.
 - The unwrap is a box projection, not a seam-aware one. It is automatic and
   always works, but a hand-unwrapped model uses its texture space better. If
   you need that, export the GLB and unwrap in Blender.
-- Painting is on the model, so how fine the paint can be depends on how many
-  triangles are under the brush. Subdivide (or ☰ → Texture → *More paint
-  detail*) before painting small marks, or paint after remeshing.
+- Paint is projected onto the model from six directions rather than following
+  coordinates stored on the vertices, which is what lets it survive every
+  topology change. The cost is that **sculpting after painting slides the
+  paint a little**: the surface moves through the projection. Sculpt the form
+  first, then paint, as you would in any tool that projects.
+- **Joining two painted objects** drops painted detail to the mesh's own
+  resolution (each image is mapped in its own object's space). The app says so
+  when it happens.
 - A voxel remesh of a shape with a pole (a sphere, a cone) can leave a handful
   of zero-area triangles where several cells place their vertex at exactly the
   same point. They are invisible and harmless, and the result is still

@@ -148,6 +148,17 @@ async function meshState() {
   });
 }
 
+// read from the build rather than written down here, so adding a stencil or
+// migrating the settings file does not need a test edited
+const SCHEMA = await page.evaluate(() => {
+  const app = window.SCULPT_APP;
+  app.saveSettings();
+  try { return JSON.parse(window.localStorage.getItem('sculptfree.settings.v1')).schema; }
+  catch (e) { return 0; }
+});
+const BUILTIN_ALPHAS = await page.evaluate(() => window.SCULPT.Alpha.BUILTIN_IDS.length);
+check('the build ships a whole set of stencils', BUILTIN_ALPHAS >= 24, `${BUILTIN_ALPHAS} of them`);
+
 const box = await page.locator('#view').boundingBox();
 const cx = Math.round(box.x + box.width / 2);
 const cy = Math.round(box.y + box.height / 2);
@@ -439,16 +450,19 @@ async function stroke(from, to, steps = 18, opts = {}) {
   await page.keyboard.press('c');                      // paint brush
   await stroke([cx - 60, cy - 20], [cx + 60, cy - 20], 16);
   const painted = await page.evaluate(() => {
-    const mesh = window.SCULPT_APP.scene.current().mesh;
-    let painted = 0;
-    for (let v = 0; v < mesh.masks.length; v++) {
-      if (mesh.vertDead.array[v]) continue;
-      const o = v * 3;
-      if (mesh.colors.array[o] > 0.55 && mesh.colors.array[o + 1] < 0.5) painted++;
+    const obj = window.SCULPT_APP.scene.current();
+    // paint goes into the object's own image, not into its vertices
+    if (!obj.paint) return { map: false };
+    const px = obj.paint.pixels;
+    let red = 0, total = px.length / 4;
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i] > 140 && px[i] > px[i + 1] + 40) red++;
     }
-    return painted;
+    return { map: true, red: red, share: red / total };
   });
-  check('the paint brush coloured vertices', painted > 20, String(painted));
+  check('the paint brush painted the image', painted.map === true);
+  check('and the colour is in the image', painted.red > 200,
+    `${painted.red} texels, ${((painted.share || 0) * 100).toFixed(2)}% of it`);
 
   await page.keyboard.press('m');                      // mask brush
   await stroke([cx - 40, cy + 60], [cx + 40, cy + 60], 14);
@@ -1071,7 +1085,7 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
       buttons: Array.from(document.querySelectorAll('.sheet .btn span')).map((b) => b.textContent)
     };
   });
-  eq('the stencil picker lists none plus the built-ins', picker.cells, 9);
+  eq('the stencil picker lists none plus the built-ins', picker.cells, BUILTIN_ALPHAS + 1);
   eq('the first cell is None and is selected', picker.labels[0] + ':' + picker.firstIsOn, 'None:true');
   check('the stencil thumbnails are actually drawn', picker.thumbSpread > 100, `${picker.thumbSpread}`);
   check('the sheet offers loading an image', picker.buttons.join(',').indexOf('Load image') >= 0,
@@ -1145,7 +1159,13 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     });
   }
 
-  await page.evaluate(() => window.SCULPT_APP.set('alpha', 'none'));
+  await page.evaluate(() => {
+    window.SCULPT_APP.set('alpha', 'none');
+    // this block is about a stencil used as a stamp: one print per dab,
+    // shaping the dab itself. The other mode — the pattern taken from the
+    // surface — is measured further down.
+    window.SCULPT_APP.set('alphaMode', 'stamp');
+  });
   const plain = await dabProfile();
   await page.evaluate(() => window.SCULPT_APP.undo());
   await page.waitForTimeout(120);
@@ -1176,6 +1196,7 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   await page.evaluate(() => {
     window.SCULPT_APP.set('alpha', 'gravel');
     window.SCULPT_APP.set('alphaRandomRotate', true);
+    window.SCULPT_APP.set('alphaMode', 'stamp');
   });
   const gravelDrag = await dabProfile(true);
 
@@ -1192,6 +1213,76 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   check('the pattern puts more of the footprint at real depth',
     gravelDrag.solid > plainDrag.solid * 1.35,
     `plain ${(plainDrag.solid * 100).toFixed(1)}% vs stencil ${(gravelDrag.solid * 100).toFixed(1)}%`);
+
+  /*
+   * The other mode: the pattern read from the surface. What has to be true
+   * of it is that the lumps stay put — a second pass over the same place
+   * deepens the same lumps rather than printing new ones somewhere else,
+   * which is what stops a scrubbed texture turning into a smooth smear.
+   */
+  await page.evaluate(() => { window.SCULPT_APP.undo(); });
+  await page.waitForTimeout(120);
+  const surfacePattern = await page.evaluate(async () => {
+    const app = window.SCULPT_APP;
+    app.newScene('sphere', 5, true);
+    app.selectBrush('draw');
+    app.set('dyntopo', false);
+    app.set('radius', 90);
+    app.set('strength', 0.5);
+    app.set('alpha', 'gravel');
+    app.set('alphaMode', 'surface');
+    app.set('alphaScale', 1);
+    app.set('alphaRandomRotate', false);
+    app.set('stampMode', false);
+    const mesh = app.scene.current().mesh;
+    const start = Float32Array.from(mesh.positions.array.subarray(0, mesh.liveVerts * 3));
+
+    const box = app.canvas.getBoundingClientRect();
+    const mx = box.width / 2, my = box.height / 2;
+    function drag() {
+      app.engine.begin({ x: mx - 60, y: my, pressure: 1 });
+      for (let i = 1; i <= 14; i++) app.engine.move({ x: mx - 60 + i * 8, y: my, pressure: 1 });
+      app.engine.end();
+    }
+    function depths(from) {
+      const out = [];
+      for (let v = 0; v < mesh.liveVerts; v++) {
+        const o = v * 3;
+        out.push(Math.hypot(mesh.positions.array[o] - from[o],
+                            mesh.positions.array[o + 1] - from[o + 1],
+                            mesh.positions.array[o + 2] - from[o + 2]));
+      }
+      return out;
+    }
+    drag();
+    const first = depths(start);
+    const mid = Float32Array.from(mesh.positions.array.subarray(0, mesh.liveVerts * 3));
+    drag();
+    const second = depths(mid);
+
+    // how much the two passes agree about which vertices to move most
+    const maxA = Math.max.apply(null, first), maxB = Math.max.apply(null, second);
+    let deepA = 0, both = 0, deepB = 0;
+    for (let v = 0; v < first.length; v++) {
+      const a = first[v] > maxA * 0.6, b = second[v] > maxB * 0.6;
+      if (a) deepA++;
+      if (b) deepB++;
+      if (a && b) both++;
+    }
+    // and how lumpy one pass is: a plain dab's depths rise and fall once
+    const moved = first.filter((d) => d > maxA * 0.05);
+    const mean = moved.reduce((t, d) => t + d, 0) / Math.max(1, moved.length);
+    let spread = 0;
+    for (const d of moved) spread += (d - mean) * (d - mean);
+    spread = Math.sqrt(spread / Math.max(1, moved.length)) / Math.max(1e-9, mean);
+    return { deepA, deepB, both, agree: both / Math.max(1, Math.min(deepA, deepB)), spread };
+  });
+  check('a surface pattern moves a good part of the footprint deeply',
+    surfacePattern.deepA > 20, `${surfacePattern.deepA} vertices`);
+  check('and a second pass deepens the same lumps', surfacePattern.agree > 0.55,
+    `${(surfacePattern.agree * 100).toFixed(0)}% of them`);
+  check('the depths are lumpy rather than a smooth dome', surfacePattern.spread > 0.35,
+    `spread ${surfacePattern.spread.toFixed(2)}`);
 
   /* stamp mode: one dab per press, however far the pointer travels */
   await page.evaluate(() => { window.SCULPT_APP.undo(); });
@@ -1278,7 +1369,7 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     return { cells: cells.length, found: !!mine, removable: !!(mine && mine.querySelector('.alpha-x')),
              builtinRemovable: !!cells[1].querySelector('.alpha-x') };
   });
-  eq('the picker grew by one', inPicker.cells, 10);
+  eq('the picker grew by one', inPicker.cells, BUILTIN_ALPHAS + 2);
   check('the uploaded stencil is in the picker', inPicker.found);
   check('an uploaded stencil can be removed', inPicker.removable);
   check('a built-in stencil cannot be removed', inPicker.builtinRemovable === false);
@@ -1291,7 +1382,7 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     alpha: window.SCULPT_APP.settings.alpha,
     cells: document.querySelectorAll('.alpha-grid .alpha-cell').length
   }));
-  eq('removing a stencil takes it out of the picker', afterRemove.cells, 9);
+  eq('removing a stencil takes it out of the picker', afterRemove.cells, BUILTIN_ALPHAS + 1);
   eq('removing the stencil in use falls back to none', afterRemove.alpha, 'none');
   eq('nothing is left loaded', afterRemove.loaded, 0);
   await page.evaluate(() => window.SCULPT_APP.closeSheet());
@@ -2185,6 +2276,205 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   await page.waitForTimeout(200);
 }
 
+/* ---- painting through a stencil, the way the video did it ---------- */
+{
+  /*
+   * Reported as: the paint brush "doesn't work the texture feature ... it's
+   * just a normal drawing brush". It was: colour lived in the vertices, so
+   * on the 1,300-triangle ball in the video a dirt stencil could only come
+   * out as four soft blotches. Painting now goes into an image of the
+   * object's own. Driven here exactly as it was driven there — pick Paint,
+   * pick Dirt, scrub — on a ball coarse enough that vertex colour could not
+   * possibly show a pattern.
+   */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.setTransformMode(false);
+    app.newScene('sphere', 2, true);            // 320 triangles, ~160 vertices
+    app.selectBrush('paint');
+    app.set('radius', 62);
+    app.set('strength', 0.5);
+    app.set('alpha', 'dirt');
+    app.set('paintTarget', 'texture');
+    app.set('paintSize', 1024);
+    app.set('paintColorHex', '#d94f3d');
+  });
+  await page.waitForTimeout(200);
+
+  const t0 = Date.now();
+  await stroke([cx - 70, cy - 30], [cx + 70, cy - 30], 20);
+  await stroke([cx + 70, cy + 20], [cx - 70, cy + 20], 20);
+  const paintMs = Date.now() - t0;
+
+  const painted = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    const obj = app.scene.current();
+    const map = obj.paint;
+    if (!map) return { map: false };
+    /*
+     * Walk a circle across the painted surface and count how many times the
+     * colour crosses its own average. Colour in the vertices can change at
+     * most once per triangle; in an image, once per texel. That number is
+     * what the blotches were missing.
+     */
+    /*
+     * Walk the path the stroke took, finding the surface under each point
+     * the way a tap does, and read the image there. Sampling assumed
+     * positions instead would only be measuring where the camera happens to
+     * be pointing.
+     */
+    const reds = [];
+    const out = [0, 0, 0];
+    const box = app.canvas.getBoundingClientRect();
+    const midX = box.width / 2, midY = box.height / 2;
+    for (let i = 0; i < 140; i++) {
+      const t = i / 139;
+      const hit = app.engine.pick(midX - 60 + t * 120, midY - 30, true);
+      if (!hit) continue;
+      map.sample(hit.localPoint[0], hit.localPoint[1], hit.localPoint[2],
+                 hit.localNormal[0], hit.localNormal[1], hit.localNormal[2], out);
+      reds.push(out[0] - out[1]);
+    }
+    if (reds.length < 20) return { map: true, tooFew: reds.length };
+    const mean = reds.reduce((t, v) => t + v, 0) / reds.length;
+    let crossings = 0, lo = 9, hi = -9;
+    for (let i = 0; i < reds.length; i++) {
+      const a = reds[i] - mean, b = reds[(i + 1) % reds.length] - mean;
+      if ((a < 0 && b >= 0) || (a >= 0 && b < 0)) crossings++;
+      lo = Math.min(lo, reds[i]); hi = Math.max(hi, reds[i]);
+    }
+    // the far side must be clean: paint goes where the brush is. Which way
+    // that is depends on the camera, so ask the camera.
+    const back = [0, 0, 0];
+    const eye = app.camera.eye;
+    const len = Math.hypot(eye[0], eye[1], eye[2]) || 1;
+    const r = app.scene.current().mesh.boundsRadius();
+    const bx = -eye[0] / len * r, by = -eye[1] / len * r, bz = -eye[2] / len * r;
+    map.sample(bx, by, bz, bx, by, bz, back);
+    return {
+      map: true, size: map.size, crossings, contrast: hi - lo,
+      backPainted: Math.abs(back[0] - back[1]),
+      tris: obj.mesh.liveTris, undoLabel: app.history.undoLabel(),
+      undoSteps: app.history.undoStack.length,
+      historyBytes: app.history.bytes
+    };
+  });
+
+  check('painting made the object an image of its own', painted.map === true);
+  eq('at the size asked for', painted.size, 1024);
+  eq('on a ball of 320 triangles', painted.tris, 320);
+  check('the stroke path is on the model', !painted.tooFew, `only ${painted.tooFew} points hit`);
+  check('the pattern changes many times across the surface', painted.crossings >= 6,
+    `${painted.crossings} crossings`);
+  check('and it is a strong pattern, not a wash', painted.contrast > 0.2,
+    `${painted.contrast.toFixed(3)}`);
+  check('the far side of the ball is unpainted', painted.backPainted < 0.02,
+    `${painted.backPainted.toFixed(3)}`);
+  eq('the stroke is one undo step called Paint', painted.undoLabel, 'Paint');
+  check('and the history stores tiles, not whole images',
+    painted.historyBytes < 1024 * 1024 * 8, `${(painted.historyBytes / 1024).toFixed(0)} KB`);
+  check('two strokes stay responsive', paintMs < 12000, `${paintMs} ms`);
+  await page.screenshot({ path: path.join(screens, '30-paint-stencil.png') });
+
+  /* the screen has to show it, not just the data */
+  const shown = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.draw();
+    const gl = app.renderer.gl;
+    const w = app.canvas.width, h = app.canvas.height;
+    const px = new Uint8Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    // across the middle of the model: how much does the red channel wobble?
+    let swings = 0, prev = null, count = 0, sum = 0;
+    const y = h >> 1;
+    for (let x = Math.round(w * 0.35); x < Math.round(w * 0.65); x++) {
+      const i = ((h - 1 - y) * w + x) * 4;
+      const red = px[i] - px[i + 1];
+      sum += red; count++;
+      if (prev !== null && Math.abs(red - prev) > 6) swings++;
+      prev = red;
+    }
+    return { swings, meanRed: sum / count };
+  });
+  check('the painted pattern is on screen', shown.swings >= 4,
+    `${shown.swings} changes across the model`);
+  check('and the paint is the colour that was chosen', shown.meanRed > 8,
+    `red over green by ${shown.meanRed.toFixed(1)}`);
+
+  /* undo puts the image back */
+  await page.evaluate(() => window.SCULPT_APP.undo());
+  await page.waitForTimeout(120);
+  const afterUndo = await page.evaluate(() => {
+    const map = window.SCULPT_APP.scene.current().paint;
+    const out = [0, 0, 0];
+    map.sample(0.05, -0.06, Math.sqrt(0.25 - 0.05 * 0.05 - 0.06 * 0.06), 0.05, -0.06, 0.48, out);
+    return { red: out[0] - out[1], redo: window.SCULPT_APP.history.redoStack.length };
+  });
+  check('undo takes the last stroke of paint off', afterUndo.red < 0.25, `${afterUndo.red.toFixed(3)}`);
+  eq('and it can be redone', afterUndo.redo, 1);
+  await page.evaluate(() => window.SCULPT_APP.redo());
+  await page.waitForTimeout(100);
+
+  /* painting onto the vertices still works, for a PLY of vertex colours */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('sphere', 4, true);
+    app.set('paintTarget', 'vertex');
+    app.selectBrush('paint');
+    app.set('alpha', 'none');
+    app.set('strength', 1);
+  });
+  await page.waitForTimeout(150);
+  await stroke([cx - 30, cy], [cx + 30, cy], 12);
+  const vertexPaint = await page.evaluate(() => {
+    const obj = window.SCULPT_APP.scene.current();
+    const col = obj.mesh.colors.array;
+    let reddest = 0;
+    for (let v = 0; v < obj.mesh.masks.length; v++) {
+      if (obj.mesh.vertDead.array[v]) continue;
+      reddest = Math.max(reddest, col[v * 3] - col[v * 3 + 1]);
+    }
+    return { reddest, hasMap: !!obj.paint };
+  });
+  check('painting onto the vertices still tints the mesh', vertexPaint.reddest > 0.2,
+    `${vertexPaint.reddest.toFixed(2)}`);
+  check('and makes no image when it is not asked to', vertexPaint.hasMap === false);
+  await page.evaluate(() => window.SCULPT_APP.set('paintTarget', 'texture'));
+}
+
+/* ---- the stencil shelf ---------------------------------------------- */
+{
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.selectBrush('paint');
+    app.openBrushSettingsSheet();
+  });
+  await page.waitForTimeout(260);
+  const shelf = await page.evaluate(() => {
+    const cells = Array.from(document.querySelectorAll('.alpha-cell'));
+    const sheet = document.querySelector('.sheet');
+    const box = sheet ? sheet.getBoundingClientRect() : null;
+    let offEdge = 0;
+    for (const c of cells) {
+      const r = c.getBoundingClientRect();
+      if (r.left < -1 || r.right > window.innerWidth + 1) offEdge++;
+    }
+    const labels = cells.map((c) => (c.textContent || '').trim()).filter(Boolean);
+    return {
+      count: cells.length, offEdge, labels: labels.slice(0, 5),
+      pattern: !!document.querySelector('.sheet .seg'),
+      bottom: box ? Math.round(box.bottom) : 0, viewport: window.innerHeight
+    };
+  });
+  check('the stencil shelf holds the whole set', shelf.count >= 25, `${shelf.count} cells`);
+  eq('and none of them runs off the side of the phone', shelf.offEdge, 0);
+  check('the sheet stays on the screen', shelf.bottom <= shelf.viewport + 1,
+    `bottom ${shelf.bottom} of ${shelf.viewport}`);
+  await page.screenshot({ path: path.join(screens, '31-stencil-shelf.png') });
+  await page.evaluate(() => window.SCULPT_APP.closeSheet());
+  await page.waitForTimeout(160);
+}
+
 /* ---- the crash: small brushes, full power, every mirror on ---------- */
 {
   /*
@@ -2330,7 +2620,7 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     try { return JSON.parse(window.localStorage.getItem('sculptfree.settings.v1')).schema; }
     catch (e) { return null; }
   });
-  eq('the migration stamps the file so it runs once', stamped, 3);
+  eq('the migration stamps the file so it runs once', stamped, SCHEMA);
 
   await page.evaluate(() => {
     try { window.localStorage.removeItem('sculptfree.settings.v1'); } catch (e) { /* ignore */ }

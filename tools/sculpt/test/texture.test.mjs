@@ -479,7 +479,8 @@ function geomFrom(mesh, name = 'obj') {
  * ---------------------------------------------------------------- */
 
 {
-  eq('there are eight built-in stencils', A.BUILTIN_IDS.length, 8);
+  check('there is a whole set of built-in stencils', A.BUILTIN_IDS.length >= 24,
+    `${A.BUILTIN_IDS.length} of them`);
   for (const id of A.BUILTIN_IDS) {
     const alpha = A.builtin(id);
     check('builtin stencil builds: ' + id, !!alpha && alpha.size > 0);
@@ -492,14 +493,47 @@ function geomFrom(mesh, name = 'obj') {
     }
     eq('stencil stays in range: ' + id, nan, 0);
     check('stencil uses the full range: ' + id, lo < 0.05 && hi > 0.95, `${lo.toFixed(3)}..${hi.toFixed(3)}`);
-    // the border must fade, or a stamp leaves a rectangle
+    /*
+     * A stamp's border has to fade, or a dab leaves a rectangle — but the
+     * fade belongs to the reading rather than to the data, because the same
+     * stencil is also read as a texture, tile after tile, where a faded
+     * border would print a grid of gaps. So the stored image runs right to
+     * its edges and `sample` does the fading.
+     */
     const n = alpha.size;
     let edgeMax = 0;
     for (let x = 0; x < n; x++) {
-      edgeMax = Math.max(edgeMax, alpha.data[x], alpha.data[(n - 1) * n + x],
-                         alpha.data[x * n], alpha.data[x * n + n - 1]);
+      const t = (x + 0.5) / n;
+      edgeMax = Math.max(edgeMax, A.sample(alpha, t, 0.001), A.sample(alpha, t, 0.999),
+                         A.sample(alpha, 0.001, t), A.sample(alpha, 0.999, t));
     }
-    check('stencil edge fades out: ' + id, edgeMax < 0.08, `${edgeMax.toFixed(3)}`);
+    check('a stamp of it fades at the edge: ' + id, edgeMax < 0.08, `${edgeMax.toFixed(3)}`);
+
+    /*
+     * Read as a texture, the pattern has to meet itself: the two texels
+     * either side of the seam should differ no more than neighbouring
+     * texels inside the image do. A pattern that fails this prints a grid
+     * of lines across a scrubbed surface.
+     */
+    if (['rivet', 'square', 'ring', 'star'].indexOf(id) < 0) {
+      // the biggest step between neighbouring texels anywhere in the image,
+      // which is the most a seam is allowed to be
+      let inside = 0, seam = 0;
+      for (let y = 0; y < n; y++) {
+        for (let x = 1; x < n; x++) {
+          inside = Math.max(inside, Math.abs(alpha.data[y * n + x] - alpha.data[y * n + x - 1]));
+          inside = Math.max(inside, Math.abs(alpha.data[x * n + y] - alpha.data[(x - 1) * n + y]));
+        }
+      }
+      for (let x = 0; x < n; x++) {
+        const t = (x + 0.5) / n;
+        seam = Math.max(seam,
+          Math.abs(A.sampleTiled(alpha, 1 - 0.5 / n, t) - A.sampleTiled(alpha, 0.5 / n, t)),
+          Math.abs(A.sampleTiled(alpha, t, 1 - 0.5 / n) - A.sampleTiled(alpha, t, 0.5 / n)));
+      }
+      check('read as a texture it meets itself: ' + id, seam <= inside + 0.02,
+        `${seam.toFixed(3)} across the seam, ${inside.toFixed(3)} the most anywhere else`);
+    }
     check('builtin stencils are cached', A.builtin(id) === alpha);
   }
   check('an unknown stencil id is not invented', A.builtin('nope') === null);
@@ -507,7 +541,7 @@ function geomFrom(mesh, name = 'obj') {
   const dirt = A.builtin('dirt');
   eq('sampling outside the stencil reads nothing', A.sample(dirt, -0.1, 0.5), 0);
   eq('sampling past the far edge reads nothing', A.sample(dirt, 0.5, 1.4), 0);
-  const at = 63 / (dirt.size - 1);      // lands exactly on texel 63
+  const at = 63.5 / dirt.size;          // the centre of texel 63
   const mid = A.sample(dirt, at, at);
   check('sampling a texel centre returns that texel',
     Math.abs(mid - dirt.data[63 * dirt.size + 63]) < 1e-6,
@@ -533,11 +567,12 @@ function geomFrom(mesh, name = 'obj') {
   }
   const img = A.fromPixels('test', 'Test', pixels, w, h, { normalize: false });
   eq('a loaded image keeps its label', img.label, 'Test');
+  // read inside the border, since a stamp's outermost 6% fades out
   check('image rows are flipped so v runs upwards',
-    A.sample(img, 0.5, 0.95) > 0.9 && A.sample(img, 0.5, 0.05) < 0.1,
-    `${A.sample(img, 0.5, 0.95)} / ${A.sample(img, 0.5, 0.05)}`);
+    A.sample(img, 0.5, 0.9) > 0.9 && A.sample(img, 0.5, 0.1) < 0.1,
+    `${A.sample(img, 0.5, 0.9)} / ${A.sample(img, 0.5, 0.1)}`);
   const inv = A.fromPixels('inv', 'Inv', pixels, w, h, { normalize: false, invert: true });
-  check('inverting a loaded image flips it', A.sample(inv, 0.5, 0.95) < 0.1);
+  check('inverting a loaded image flips it', A.sample(inv, 0.5, 0.9) < 0.1);
 
   // transparency counts as nothing
   const cut = new Uint8Array(w * h * 4);

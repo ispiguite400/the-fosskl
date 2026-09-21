@@ -127,7 +127,7 @@
         }
         idx = swapped;
       }
-      out.push({
+      var geom = {
         name: obj.name || ('object_' + (i + 1)),
         positions: outPos,
         normals: outNor,
@@ -136,7 +136,21 @@
         vertCount: n,
         triCount: d.triCount,
         color: obj.baseColor ? obj.baseColor.slice() : [0.85, 0.85, 0.85]
-      });
+      };
+      /*
+       * A painted object carries its image along, plus its vertices as they
+       * are in its own space. Baking the texture means asking the image what
+       * colour the surface is at a point, and the image is mapped in the
+       * object's space — while everything above has been moved into export
+       * space. Keeping both is cheaper and exact, where inverting the
+       * transform per texel would be neither.
+       */
+      if (obj.paint) {
+        geom.paint = obj.paint;
+        geom.localPositions = pos.slice(0, n * 3);
+        geom.localNormals = nor.slice(0, n * 3);
+      }
+      out.push(geom);
     }
     return out;
   };
@@ -1113,7 +1127,7 @@
         if (obj.mesh.vertDead.array[v]) continue;
         masks[w++] = obj.mesh.masks.array[v];
       }
-      objects.push({
+      var entry = {
         name: obj.name,
         visible: obj.visible !== false,
         position: Array.from(obj.position),
@@ -1126,7 +1140,22 @@
         colors: add(d.colors),
         masks: add(masks),
         indices: add(d.indices32)
-      });
+      };
+      /*
+       * The paint image, run-length encoded. A project has to come back with
+       * its paint on it, and the runs make that cheap: a map that has been
+       * painted in one corner is mostly one colour, and even a busy one
+       * compresses to a fraction of its four megabytes.
+       */
+      if (obj.paint) {
+        entry.paint = {
+          size: obj.paint.size,
+          frame: { min: obj.paint.frame.min.slice(), max: obj.paint.frame.max.slice(),
+                   span: obj.paint.frame.span },
+          data: add(obj.paint.encode())
+        };
+      }
+      objects.push(entry);
     }
 
     var meta = {
@@ -1166,7 +1195,7 @@
     var objects = [];
     for (var i = 0; i < meta.objects.length; i++) {
       var o = meta.objects[i];
-      objects.push({
+      var loaded = {
         name: o.name,
         visible: o.visible,
         position: o.position, rotation: o.rotation, scale: o.scale,
@@ -1175,7 +1204,13 @@
         colors: grab(o.colors, Float32Array),
         masks: grab(o.masks, Float32Array),
         indices: grab(o.indices, Uint32Array)
-      });
+      };
+      if (o.paint && o.paint.data) {
+        var map = new S.PaintMap(o.paint.size, o.paint.frame);
+        S.PaintMap.decodeInto(map, grab(o.paint.data, Uint8Array));
+        loaded.paint = map;
+      }
+      objects.push(loaded);
     }
     return { ok: true, objects: objects, camera: meta.camera, settings: meta.settings,
              selected: meta.selected, version: meta.version, saved: meta.saved };

@@ -102,6 +102,7 @@
     this.alpha = null;
     this.alphaU = V3.create(1, 0, 0);
     this.alphaV = V3.create(0, 0, 1);
+    this.alphaTile = 0;                   // > 0: read the stencil off the surface
   }
 
   BrushContext.prototype.ensureWeights = function (n) {
@@ -125,6 +126,8 @@
     var falloff = ctx.falloff;
     var front = ctx.frontFacing;
     var alpha = ctx.alpha;
+    var tile = ctx.alphaTile || 0;
+    var surf = [0, 0];
     var au, av;
     if (alpha) {
       au = ctx.alphaU; av = ctx.alphaV;
@@ -135,9 +138,21 @@
       var d = Math.sqrt(dx * dx + dy * dy + dz * dz) * inv;
       if (d >= 1) { w[i] = 0; continue; }
       var f;
-      if (alpha) {
+      if (alpha && tile > 0) {
         /*
-         * Reading through a stencil, the pattern has to be what shapes the
+         * A stencil read from the surface: the pattern decides how much of
+         * the dab lands where, and the dab's own round falloff decides how
+         * far it reaches. Because the pattern comes from the surface rather
+         * than from the dab, going over the same place again deepens it
+         * instead of smearing it.
+         */
+        S.Alpha.surfaceUV(pos[o], pos[o + 1], pos[o + 2], nor[o], nor[o + 1], nor[o + 2],
+                          tile, surf);
+        f = S.Alpha.sampleTiled(alpha, surf[0], surf[1]) * falloff(1 - d);
+        if (f <= 0) { w[i] = 0; continue; }
+      } else if (alpha) {
+        /*
+         * A stencil read as one stamp: the pattern has to be what shapes the
          * dab, so the radial falloff is reduced to a vignette over the outer
          * fifth of the brush. Applying the usual curve on top would round
          * the corners off every stamp and wash the pattern out.
@@ -810,7 +825,7 @@
       strength: 1, hint: 'Twists the surface around the brush normal.' },
 
     { id: 'paint', label: 'Paint', group: 'Colour', key: 'C', fn: BrushFns.paint, paint: true,
-      strength: 0.6, hint: 'Paints vertex colour. Exports with PLY, GLB and OBJ.' },
+      strength: 0.6, hint: 'Paints into the model\u2019s own texture, so a pattern stays sharp however few triangles it has.' },
     { id: 'mask', label: 'Mask', group: 'Colour', key: 'M', fn: BrushFns.mask, mask: true,
       strength: 0.8, hint: 'Locks the surface against every other brush. Ctrl to erase.' }
   ];
@@ -898,10 +913,17 @@
     this.pendingDistance = 0;
 
     var topo = this.usesDyntopo();
+    /*
+     * Painting into the object's image is recorded differently from moving
+     * its vertices — tiles of the image rather than positions — so the
+     * history is told which kind of stroke this is.
+     */
+    this.paintMap = (brush.paint && this.obj.paint) ? this.obj.paint : null;
     this.history.beginStroke(this.obj, {
       label: brush.label,
-      topology: topo,
-      colors: !!brush.paint,
+      topology: topo && !this.paintMap,
+      paintMap: this.paintMap,
+      colors: !!brush.paint && !this.paintMap,
       masks: !!brush.mask
     });
 
@@ -1167,6 +1189,13 @@
 
       // the stencil, and the two axes it is read along
       ctx.alpha = this.alpha || null;
+      /*
+       * How much of the model one repeat of the pattern covers. A tile of
+       * one brush width means a dab shows about one repeat, which reads the
+       * way a stencil is meant to while still tiling across a stroke.
+       */
+      ctx.alphaTile = (ctx.alpha && st.alphaMode !== 'stamp')
+        ? radius * 2 * S.clamp(st.alphaScale === undefined ? 1 : st.alphaScale, 0.1, 8) : 0;
       if (ctx.alpha) {
         var fwd = this._alphaFwd || (this._alphaFwd = V3.create(0, 0, 1));
         if (st.alphaFollowStroke !== false && this.strokeDir && V3.lenSq(this.strokeDir) > 1e-12) {
@@ -1255,6 +1284,28 @@
           var so2 = verts[si] * 3, d3 = si * 3;
           snap[d3] = spos[so2]; snap[d3 + 1] = spos[so2 + 1]; snap[d3 + 2] = spos[so2 + 2];
         }
+      }
+
+      if (this.paintMap) {
+        /*
+         * Colour that is finer than the mesh.
+         *
+         * Tinting vertices can only ever be as fine as the triangles under
+         * the brush, which on a model built for a game is nowhere near fine
+         * enough: a stencil came out as a handful of soft blotches. Painting
+         * into the object's own image gives the colour its own resolution,
+         * so a stencil reads as a stencil and the paint survives reducing
+         * the model on export.
+         */
+        this.paintMap.stamp(mesh, {
+          center: ctx.center, radius: radius, normal: ctx.normal,
+          color: ctx.color, strength: ctx.strength,
+          falloff: ctx.falloff, alpha: ctx.alpha, alphaU: ctx.alphaU, alphaV: ctx.alphaV,
+          alphaTile: ctx.alphaTile, frontFacing: ctx.frontFacing,
+          history: this.history
+        });
+        total += ctx.count;
+        continue;
       }
 
       brush.fn(ctx);
@@ -1535,6 +1586,7 @@
     this.ctx.origin = null;
     this.strokeOrigins = null;
     this.grabVerts = null;
+    this.paintMap = null;
     mesh.gridMaybeRebuild();
     var committed = this.history.endStroke();
     return committed;
@@ -1542,6 +1594,7 @@
 
   /** Abandon the stroke and undo whatever it has already done. */
   StrokeEngine.prototype.cancel = function () {
+    this.paintMap = null;
     if (!this.active) return false;
     this.active = false;
     this.strokeDelta = null;
