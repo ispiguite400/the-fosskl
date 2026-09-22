@@ -68,6 +68,14 @@
   /**
    * Sweep a parametric surface over a (u,v) grid. `fn(u, v, out)` writes a
    * position for u,v in [0,1]. Seams are welded by the caller.
+   *
+   * The triangles come out wound so that **du × dv points outwards**. That is
+   * a contract on the parameterisation, not on this function: sweep a sphere
+   * with v running from the top down instead of the bottom up and every
+   * triangle faces inwards, which — with back faces culled, as they are —
+   * renders as the inside of the shape seen from within. That is exactly
+   * what "the shapes are inverted" was. Each builder below therefore says
+   * which way its u and v run.
    */
   function gridSurface(nu, nv, fn, closedU, closedV) {
     var pos = new Float32Array((nu + 1) * (nv + 1) * 3);
@@ -90,10 +98,14 @@
   }
   Prim.gridSurface = gridSurface;
 
+  /** u goes round (x towards z), v goes up the poles. */
   Prim.uvsphere = function (segU, segV, radius) {
     radius = radius || 0.5;
     return gridSurface(segU || 48, segV || 24, function (u, v, out) {
-      var phi = u * Math.PI * 2, theta = v * Math.PI;
+      var phi = u * Math.PI * 2;
+      // v = 0 is the south pole: sweeping downwards instead would wind every
+      // triangle the other way round and turn the sphere inside out
+      var theta = (1 - v) * Math.PI;
       var st = Math.sin(theta);
       out[0] = radius * st * Math.cos(phi);
       out[1] = radius * Math.cos(theta);
@@ -160,8 +172,15 @@
       for (var jj = 0; jj < seg; jj++) {
         for (var ii = 0; ii < seg; ii++) {
           var v0 = base + jj * stride + ii, v1 = v0 + 1, v2 = v0 + stride, v3 = v2 + 1;
-          if (sgn > 0) idx.push(v0, v2, v1, v1, v2, v3);
-          else idx.push(v0, v1, v2, v1, v3, v2);
+          /*
+           * Each of the three axis triples above is right-handed, so on the
+           * positive side of an axis the outward normal is (along a) cross
+           * (along b) — which is the winding (v0, v1, v2). It was the other
+           * way round, and a box built inside out renders as the inside of a
+           * room rather than as a cube.
+           */
+          if (sgn > 0) idx.push(v0, v1, v2, v1, v3, v2);
+          else idx.push(v0, v2, v1, v1, v2, v3);
         }
       }
     }
@@ -200,8 +219,11 @@
         pos.push(0, y, 0);
         var ringStart = up ? rings * stride : 0;
         for (var k = 0; k < seg; k++) {
-          if (up) idx.push(apex, ringStart + k, ringStart + k + 1);
-          else idx.push(apex, ringStart + k + 1, ringStart + k);
+          // a fan seen from outside runs the other way at the top than at
+          // the bottom; both were running the same way, which is why a cone
+          // came out with its side facing out and its base facing in
+          if (up) idx.push(apex, ringStart + k + 1, ringStart + k);
+          else idx.push(apex, ringStart + k, ringStart + k + 1);
         }
         return;
       }
@@ -217,8 +239,14 @@
       for (jr = 0; jr < capRings; jr++) {
         for (ii = 0; ii < seg; ii++) {
           var w0 = base + jr * stride + ii, w1 = w0 + 1, w2 = w0 + stride, w3 = w2 + 1;
-          if (up) idx.push(w0, w1, w2, w1, w3, w2);
-          else idx.push(w0, w2, w1, w1, w2, w3);
+          /*
+           * The rings run inwards, so on the top cap the outward normal is
+           * (round) cross (inward) reversed — the winding below. Both caps
+           * had the winding of the other one, so the ends of a cylinder
+           * faced into it.
+           */
+          if (up) idx.push(w0, w2, w1, w1, w2, w3);
+          else idx.push(w0, w1, w2, w1, w3, w2);
         }
       }
     }
@@ -282,7 +310,7 @@
       build: function (d) { return Prim.torus(d * 8, d * 4, 0.35, 0.15); }, detail: 8, detailMax: 24, detailLabel: 'Segments' },
     { id: 'capsule', label: 'Capsule', hint: 'Limb blank',
       build: function (d) { return Prim.capsule(d * 4, d * 2, 0.25, 0.5); }, detail: 8, detailMax: 24, detailLabel: 'Segments' },
-    { id: 'plane', label: 'Plane', hint: 'Flat grid, one sided',
+    { id: 'plane', label: 'Plane', hint: 'Flat grid, no thickness', open: true,
       build: function (d) { return Prim.plane(d * 4, 1); }, detail: 8, detailMax: 32, detailLabel: 'Segments' }
   ];
 

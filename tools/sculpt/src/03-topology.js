@@ -1087,6 +1087,123 @@
    *
    * Returns how many triangles were involved.
    */
+  /**
+   * Turn the whole mesh the right way out.
+   *
+   * Two separate faults, and a mesh can have either or both. The first is
+   * *inconsistency*: neighbouring triangles wound opposite ways, so parts of
+   * a surface face out and parts face in — the ends of a tube facing into
+   * it, say. The second is being *inside out*: every triangle consistent
+   * with its neighbours, but the whole shell facing inwards, which with back
+   * faces culled draws the far inside of the shape instead of the near
+   * outside.
+   *
+   * Consistency is fixed by walking the surface: two triangles that share an
+   * edge agree only if they run along it in opposite directions, so a
+   * neighbour that runs the same way is flipped, and the walk carries on
+   * from there. Which way round the result faces is then one decision per
+   * connected piece — the sign of its enclosed volume where it is closed,
+   * and where it is not, whether its faces mostly point away from its
+   * middle.
+   *
+   * A flat piece is left exactly as it is: a sheet has no outside, so there
+   * is no answer to give. Those are drawn from both sides instead.
+   *
+   * Returns { flipped, pieces, turned }: how many triangles were turned to
+   * agree with their neighbours, how many separate pieces were found, and
+   * how many of those pieces were inside out.
+   */
+  P.orientConsistently = function () {
+    var T = this.tris.array, pos = this.positions.array;
+    var nt = this.triDead.length;
+    var seen = new Uint8Array(nt);
+    var stack = [], piece = [];
+    var edge = [];
+    var flipped = 0, pieces = 0, turned = 0;
+    var self = this;
+
+    function flip(t) {
+      var t3 = t * 3, tmp = T[t3 + 1];
+      T[t3 + 1] = T[t3 + 2]; T[t3 + 2] = tmp;
+    }
+    /** Does triangle `t` run from a to b, the same way as its neighbour? */
+    function runsSame(t, a, b) {
+      var t3 = t * 3;
+      for (var k = 0; k < 3; k++) {
+        if (T[t3 + k] === a && T[t3 + (k + 1) % 3] === b) return true;
+      }
+      return false;
+    }
+
+    for (var seed = 0; seed < nt; seed++) {
+      if (this.triDead.array[seed] || seen[seed]) continue;
+      pieces++;
+      seen[seed] = 1;
+      stack.length = 0; piece.length = 0;
+      stack.push(seed); piece.push(seed);
+      var open = false;
+      while (stack.length) {
+        var t = stack.pop();
+        var t3 = t * 3;
+        for (var k = 0; k < 3; k++) {
+          var a = T[t3 + k], b = T[t3 + (k + 1) % 3];
+          edge.length = 0;
+          this.edgeTris(a, b, edge);
+          if (edge.length < 2) open = true;
+          for (var i = 0; i < edge.length; i++) {
+            var o = edge[i];
+            if (o === t || this.triDead.array[o] || seen[o]) continue;
+            // sharing an edge in the same direction means facing opposite ways
+            if (runsSame(o, a, b)) { flip(o); flipped++; }
+            seen[o] = 1;
+            stack.push(o);
+            piece.push(o);
+          }
+        }
+      }
+
+      /* which way round is this piece? */
+      var cx = 0, cy = 0, cz = 0, n = 0;
+      var j, o3, ia, ib, ic;
+      for (j = 0; j < piece.length; j++) {
+        o3 = piece[j] * 3;
+        for (var c = 0; c < 3; c++) {
+          var v3 = T[o3 + c] * 3;
+          cx += pos[v3]; cy += pos[v3 + 1]; cz += pos[v3 + 2]; n++;
+        }
+      }
+      if (!n) continue;
+      cx /= n; cy /= n; cz /= n;
+
+      var volume = 0, facing = 0;
+      for (j = 0; j < piece.length; j++) {
+        o3 = piece[j] * 3;
+        ia = T[o3] * 3; ib = T[o3 + 1] * 3; ic = T[o3 + 2] * 3;
+        var ax = pos[ia] - cx, ay = pos[ia + 1] - cy, az = pos[ia + 2] - cz;
+        var bx = pos[ib] - cx, by = pos[ib + 1] - cy, bz = pos[ib + 2] - cz;
+        var gx = pos[ic] - cx, gy = pos[ic + 1] - cy, gz = pos[ic + 2] - cz;
+        volume += (ax * (by * gz - bz * gy) - ay * (bx * gz - bz * gx) + az * (bx * gy - by * gx)) / 6;
+        // ...and, for an open piece, whether the faces point away from the middle
+        var e1x = bx - ax, e1y = by - ay, e1z = bz - az;
+        var e2x = gx - ax, e2y = gy - ay, e2z = gz - az;
+        var fnx = e1y * e2z - e1z * e2y, fny = e1z * e2x - e1x * e2z, fnz = e1x * e2y - e1y * e2x;
+        var mx = (ax + bx + gx) / 3, my = (ay + by + gy) / 3, mz = (az + bz + gz) / 3;
+        facing += fnx * mx + fny * my + fnz * mz;
+      }
+      var inside = open ? (facing < 0) : (volume < 0);
+      if (inside) {
+        for (j = 0; j < piece.length; j++) flip(piece[j]);
+        turned++;
+      }
+    }
+
+    if (flipped || turned) {
+      this.topoDirty = true;
+      this.computeNormals();
+    }
+    return { flipped: flipped, pieces: pieces, turned: turned };
+  };
+
   P.relaxSlivers = function (quality, amount) {
     quality = quality === undefined ? 0.12 : quality;
     amount = amount === undefined ? 0.6 : amount;

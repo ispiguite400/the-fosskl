@@ -198,6 +198,9 @@
     '}',
     'void main() {',
     '  vec3 n = normalize(vViewNormal);',
+    // on a two-sided surface the far side's normal points away from the eye,
+    // and shading it with that normal would leave it black
+    '  if (!gl_FrontFacing) n = -n;',
     '  if (uFlat > 0.5) {',
     '    vec3 fn = normalize(cross(dFdx(vViewPos), dFdy(vViewPos)));',
     '    if (dot(fn, n) < 0.0) fn = -fn;',
@@ -739,7 +742,9 @@
         gl.uniform1f(prog.u.uPaint, 0);
       }
       gl.bindVertexArray(st.vao);
+      if (obj.doubleSided) gl.disable(gl.CULL_FACE);
       gl.drawElements(gl.TRIANGLES, st.indexCount, gl.UNSIGNED_INT, 0);
+      if (obj.doubleSided) gl.enable(gl.CULL_FACE);
       gl.bindVertexArray(null);
       this.stats.drawCalls++;
       this.stats.triangles += st.indexCount / 3;

@@ -38,6 +38,13 @@
      * map in the texture module for why colour cannot live in the vertices.
      */
     this.paint = null;
+    /*
+     * Drawn from both sides. A closed shape is drawn from the outside only —
+     * that is what makes an inside-out mesh obvious — but a shape with an
+     * edge, like a plane or an imported wall, has no inside, and culling its
+     * back faces just makes it vanish when you look from the other side.
+     */
+    this.doubleSided = false;
     this._matrix = M4.create();
     this._inverse = M4.create();
     this._normal = M4.create();
@@ -118,6 +125,8 @@
     V3.copy(o.scale, this.scale);
     V3.copy(o.baseColor, this.baseColor);
     o.visible = this.visible;
+    o.doubleSided = this.doubleSided;
+    if (this.paint) o.paint = this.paint.clone();
     return o;
   };
 

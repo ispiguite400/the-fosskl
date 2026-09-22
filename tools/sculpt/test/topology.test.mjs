@@ -683,4 +683,186 @@ const S = load();
   audit(far, 'after a region repair');
 }
 
+/* ---- every primitive is the shape it says, facing outwards ---------- */
+{
+  /*
+   * Reported as: "all the other shapes besides circle are either inverted,
+   * not the shape it said, or both". They were. The UV sphere, the box and
+   * the rounded box were built inside out, and the cylinder and cone had
+   * their end caps wound the other way from their sides — which left the
+   * cone with a signed volume of exactly zero, its side facing out and its
+   * base facing in.
+   *
+   * Back faces are culled, so an inside-out shape draws its own far
+   * interior: a box looks like the inside of a room, a tube looks open at
+   * both ends. Three things have to hold, and each one catches a different
+   * kind of wrong:
+   *
+   *   - neighbouring triangles agree, so no directed edge is used twice;
+   *   - the enclosed volume is positive, so the shell faces outwards;
+   *   - and it matches what the shape is supposed to enclose, so a cone is
+   *     a cone rather than a cylinder with a pointy hat.
+   */
+  const expected = {
+    sphere:   { vol: (4 / 3) * Math.PI * 0.125, closed: true },
+    uvsphere: { vol: (4 / 3) * Math.PI * 0.125, closed: true },
+    box:      { vol: 1, closed: true },
+    roundbox: { vol: 0.72, closed: true, tol: 0.1 },
+    cylinder: { vol: Math.PI * 0.35 * 0.35 * 1, closed: true },
+    cone:     { vol: Math.PI * 0.4 * 0.4 * 1 / 3, closed: true },
+    torus:    { vol: 2 * Math.PI * Math.PI * 0.35 * 0.15 * 0.15, closed: true },
+    capsule:  { vol: Math.PI * 0.25 * 0.25 * 0.5 + (4 / 3) * Math.PI * 0.25 * 0.25 * 0.25,
+                closed: true },
+    plane:    { vol: 0, closed: false }
+  };
+
+  function facts(mesh) {
+    const pos = mesh.positions.array, nor = mesh.normals.array, T = mesh.tris.array;
+    let vol = 0, doubled = 0, area = 0;
+    const used = new Map();
+    for (let t = 0; t < mesh.triDead.length; t++) {
+      if (mesh.triDead.array[t]) continue;
+      const ia = T[t * 3], ib = T[t * 3 + 1], ic = T[t * 3 + 2];
+      const a = ia * 3, b = ib * 3, c = ic * 3;
+      vol += (pos[a] * (pos[b + 1] * pos[c + 2] - pos[b + 2] * pos[c + 1])
+            - pos[a + 1] * (pos[b] * pos[c + 2] - pos[b + 2] * pos[c])
+            + pos[a + 2] * (pos[b] * pos[c + 1] - pos[b + 1] * pos[c])) / 6;
+      const e1 = [pos[b] - pos[a], pos[b + 1] - pos[a + 1], pos[b + 2] - pos[a + 2]];
+      const e2 = [pos[c] - pos[a], pos[c + 1] - pos[a + 1], pos[c + 2] - pos[a + 2]];
+      const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2],
+                 e1[0] * e2[1] - e1[1] * e2[0]];
+      area += Math.hypot(n[0], n[1], n[2]) / 2;
+      for (const [x, y] of [[ia, ib], [ib, ic], [ic, ia]]) {
+        const key = x + ':' + y;
+        used.set(key, (used.get(key) || 0) + 1);
+        if (used.get(key) > 1) doubled++;
+      }
+    }
+    // stored vertex normals have to agree with the winding, or the shading
+    // says one thing and the culling another
+    let agree = 0, disagree = 0;
+    for (let t = 0; t < mesh.triDead.length; t++) {
+      if (mesh.triDead.array[t]) continue;
+      const a = T[t * 3] * 3, b = T[t * 3 + 1] * 3, c = T[t * 3 + 2] * 3;
+      const e1 = [pos[b] - pos[a], pos[b + 1] - pos[a + 1], pos[b + 2] - pos[a + 2]];
+      const e2 = [pos[c] - pos[a], pos[c + 1] - pos[a + 1], pos[c + 2] - pos[a + 2]];
+      const n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2],
+                 e1[0] * e2[1] - e1[1] * e2[0]];
+      const d = n[0] * nor[a] + n[1] * nor[a + 1] + n[2] * nor[a + 2];
+      if (d > 0) agree++; else if (d < 0) disagree++;
+    }
+    return { vol, doubled, area, agree, disagree };
+  }
+
+  for (const entry of S.Prim.catalogue) {
+    const mesh = S.Prim.makeMesh(entry.id);
+    const f = facts(mesh);
+    const want = expected[entry.id];
+    check(`${entry.id}: exists and has triangles`, mesh.liveTris > 0, `${mesh.liveTris}`);
+    eq(`${entry.id}: neighbouring triangles agree`, f.doubled, 0);
+    eq(`${entry.id}: nothing non-manifold`, mesh.countNonManifoldEdges(), 0);
+    check(`${entry.id}: the normals agree with the winding`, f.disagree === 0,
+      `${f.disagree} of ${f.agree + f.disagree} disagree`);
+    if (!want) continue;
+    if (want.closed) {
+      eq(`${entry.id}: closed`, mesh.countBorderEdges(), 0);
+      check(`${entry.id}: faces outwards`, f.vol > 0, `volume ${f.vol.toFixed(4)}`);
+      const tol = want.tol || 0.02;
+      check(`${entry.id}: holds the volume the shape should`,
+        Math.abs(f.vol - want.vol) < want.vol * tol + 0.002,
+        `${f.vol.toFixed(4)} against ${want.vol.toFixed(4)}`);
+    } else {
+      check(`${entry.id}: an open sheet has an edge`, mesh.countBorderEdges() > 0,
+        `${mesh.countBorderEdges()}`);
+    }
+  }
+
+  // the plane faces up, so a sheet dropped into a scene is not edge-on dark
+  {
+    const mesh = S.Prim.makeMesh('plane', 3);
+    const pos = mesh.positions.array, T = mesh.tris.array;
+    let up = 0, down = 0;
+    for (let t = 0; t < mesh.triDead.length; t++) {
+      if (mesh.triDead.array[t]) continue;
+      const a = T[t * 3] * 3, b = T[t * 3 + 1] * 3, c = T[t * 3 + 2] * 3;
+      const e1 = [pos[b] - pos[a], pos[b + 1] - pos[a + 1], pos[b + 2] - pos[a + 2]];
+      const e2 = [pos[c] - pos[a], pos[c + 1] - pos[a + 1], pos[c + 2] - pos[a + 2]];
+      const ny = e1[2] * e2[0] - e1[0] * e2[2];
+      if (ny > 0) up++; else if (ny < 0) down++;
+    }
+    check('the plane faces up', up > 0 && down === 0, `${up} up, ${down} down`);
+  }
+}
+
+/* ---- and a mesh that arrives wrong way round can be turned ---------- */
+{
+  function volumeOf(mesh) {
+    const pos = mesh.positions.array, T = mesh.tris.array;
+    let v = 0;
+    for (let t = 0; t < mesh.triDead.length; t++) {
+      if (mesh.triDead.array[t]) continue;
+      const a = T[t * 3] * 3, b = T[t * 3 + 1] * 3, c = T[t * 3 + 2] * 3;
+      v += (pos[a] * (pos[b + 1] * pos[c + 2] - pos[b + 2] * pos[c + 1])
+          - pos[a + 1] * (pos[b] * pos[c + 2] - pos[b + 2] * pos[c])
+          + pos[a + 2] * (pos[b] * pos[c + 1] - pos[b + 1] * pos[c])) / 6;
+    }
+    return v;
+  }
+
+  // wholly inside out
+  const flipped = S.Prim.makeMesh('box', 2);
+  flipped.flipNormals();
+  check('an inside-out box starts negative', volumeOf(flipped) < 0, `${volumeOf(flipped)}`);
+  const r1 = flipped.orientConsistently();
+  eq('nothing had to be turned to agree', r1.flipped, 0);
+  eq('the piece itself was inside out', r1.turned, 1);
+  check('and it comes back the right way out', Math.abs(volumeOf(flipped) - 1) < 0.01,
+    `${volumeOf(flipped).toFixed(3)}`);
+
+  // half of it facing the wrong way, which is what a bad cap looks like
+  const mixed = S.Prim.makeMesh('box', 2);
+  const T = mixed.tris.array;
+  for (let t = 0; t < mixed.triDead.length; t += 2) {
+    if (mixed.triDead.array[t]) continue;
+    const t3 = t * 3, tmp = T[t3 + 1];
+    T[t3 + 1] = T[t3 + 2]; T[t3 + 2] = tmp;
+  }
+  check('a scrambled box has no volume to speak of', Math.abs(volumeOf(mixed)) < 0.01,
+    `${volumeOf(mixed).toFixed(3)}`);
+  const r2 = mixed.orientConsistently();
+  check('the disagreeing triangles were turned', r2.flipped > 100, `${r2.flipped}`);
+  check('and the box is whole again', Math.abs(volumeOf(mixed) - 1) < 0.01,
+    `${volumeOf(mixed).toFixed(3)}`);
+  eq('with nothing non-manifold', mixed.countNonManifoldEdges(), 0);
+  audit(mixed, 'after turning a scrambled box the right way out');
+
+  // a mesh that is already right is left exactly alone
+  const fine = S.Prim.makeMesh('cylinder', 3);
+  const before = fine.tris.copy();
+  const r3 = fine.orientConsistently();
+  eq('a sound mesh needs no turning', r3.flipped, 0);
+  eq('and no flipping', r3.turned, 0);
+  let same = true;
+  for (let i = 0; i < before.length; i++) if (before[i] !== fine.tris.array[i]) same = false;
+  check('its triangles are untouched', same);
+
+  // two separate shells, one of them inside out
+  const both = S.Prim.makeMesh('sphere', 2);
+  const other = S.Prim.makeMesh('box', 1);
+  other.flipNormals();
+  const d = other.toIndexed();
+  const offset = both.masks.length;
+  const map = [];
+  for (let v = 0; v < d.vertCount; v++) {
+    map.push(both.addVertex(d.positions[v * 3] + 3, d.positions[v * 3 + 1], d.positions[v * 3 + 2]));
+  }
+  for (let t = 0; t < d.triCount; t++) {
+    both.addTriangle(map[d.indices32[t * 3]], map[d.indices32[t * 3 + 1]], map[d.indices32[t * 3 + 2]]);
+  }
+  both.computeNormals();
+  const r4 = both.orientConsistently();
+  eq('two shells are seen as two pieces', r4.pieces, 2);
+  eq('and only the inside-out one is turned', r4.turned, 1);
+}
+
 report('topology');

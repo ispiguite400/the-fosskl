@@ -485,7 +485,7 @@ file that works offline.
 | `src/01-core.js` | Vector/matrix maths, growable typed arrays, geometry predicates |
 | `src/02-mesh.js` | The sculptable mesh: adjacency, a uniform grid for picking and brush queries, welding, non-manifold repair |
 | `src/03-topology.js` | Edge split, collapse and flip; dynamic topology; Loop subdivision; quadric decimation; smoothing |
-| `src/04-primitives.js` | Starting shapes |
+| `src/04-primitives.js` | Starting shapes — nine of them, each wound so it faces outwards |
 | `src/05-remesh.js` | Voxel remesh: signed distance field, then manifold dual contouring |
 | `src/06-io.js` | Every importer and exporter, plus the project container |
 | `src/07-texture.js` | The paint image (six-chart box atlas, rasteriser, tiles), box-projection unwrap, the bake, and a PNG writer with its own deflate |
@@ -548,6 +548,20 @@ A few decisions worth knowing about:
   the triangles they captured, which leaves the surface thin behind them; with
   adding on, the region between where the pull started and where it ended is
   rebuilt when you let go.
+- **A shape faces outwards, and that is checked by its volume.** Which way a
+  triangle faces is decided by the order of its three corners, and back faces
+  are culled — so a shape built the other way round draws its own far
+  interior: a box looks like the inside of a room, a tube looks open at both
+  ends. Three of the nine starting shapes were built inside out and two had
+  their end caps wound the other way from their sides, which left the cone
+  enclosing a signed volume of exactly zero. Each one is now tested against
+  the volume the shape is supposed to enclose, which is a number that cannot
+  be satisfied by a shape facing the wrong way or by the wrong shape.
+- **Anything with an edge is drawn from both sides.** A closed shape has an
+  inside worth culling; a plane, a wall or an imported mesh with holes in it
+  does not, and culling those just makes them vanish as you orbit past. The
+  shader flips the normal on a back face so the far side shades properly
+  rather than going black.
 - **The lookup grid holds everything, even what has left its box.** Geometry
   that moves outside the box the grid was built for goes into the nearest
   edge cells rather than being dropped, and the grid rebuilds around the new
@@ -572,7 +586,7 @@ A few decisions worth knowing about:
 ## Tests
 
 ```bash
-node test/topology.test.mjs     # 134  mesh invariants, split/collapse/flip, the grid, needles, decimate
+node test/topology.test.mjs     # 210  mesh invariants, split/collapse/flip, the grid, needles, the nine shapes
 node test/remesh.test.mjs       # 76   watertight and manifold output, volume, colour transfer
 node test/io.test.mjs           # 120  round trips for every format, GLB structure, transforms
 node test/brush.test.mjs        # 411  every brush, adding vs stretching, the stroke limits, masking, undo
@@ -581,11 +595,11 @@ node test/boolean.test.mjs      # 51   union / subtract / intersect against anal
 node test/texture.test.mjs      # 474  PNG writer, unwrap, bake, textured export, stencils, presets
 node test/paint.test.mjs        # 66   the paint image: atlas, rasteriser, stencils, undo, export
 node test/gizmo.test.mjs        # 52   handle layout, hit testing, move/turn/resize maths
-node build.js && node test/browser.test.mjs   # 431 end-to-end in a real browser
+node build.js && node test/browser.test.mjs   # 488 end-to-end in a real browser
 node test/shots.mjs             # renders the screenshots in test/screens
 ```
 
-1,833 checks in total. Some of them are worth naming, because they are the
+1,966 checks in total. Some of them are worth naming, because they are the
 ones that catch a regression you would otherwise ship:
 
 - **Brushes have to add, not stretch.** The same pull is run with dynamic
@@ -626,6 +640,14 @@ ones that catch a regression you would otherwise ship:
 - **The grid is checked against brute force.** Vertices are pushed a long way
   outside the box the grid was built for, without a rebuild, and every query
   has to return exactly what a scan over every triangle returns.
+- **Every starting shape is measured against the volume it should enclose.**
+  A sphere of radius 0.5 holds 0.5236, a unit box holds 1, a cone of radius
+  0.4 and height 1 holds 0.1676 — and a shape facing the wrong way holds the
+  same number negated, which is how three inside-out shapes and two with
+  mismatched end caps were found. On top of that, no directed edge may be
+  used twice (neighbours must agree), the stored normals must agree with the
+  winding, and the app is driven through its own New shape sheet to check the
+  object it makes is named after the button that made it.
 - **Paint has to be finer than the mesh, and that is measured.** A dirt
   stencil is painted onto a 320-triangle ball, and the test walks a circle
   across the surface counting how many times the colour crosses its own

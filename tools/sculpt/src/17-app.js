@@ -620,8 +620,10 @@
         { icon: 'mirror', label: 'Make symmetrical', hint: 'Mirror the +X half onto the other side',
           onclick: function () { self.symmetrize(0, true); } },
         { icon: 'smooth', label: 'Smooth everything', onclick: function () { self.smoothAll(); } },
-        { icon: 'reset', label: 'Fix glitches', hint: 'Pull out spikes, drop bad triangles, close hairline splits',
+        { icon: 'reset', label: 'Fix glitches', hint: 'Turn it the right way out, pull out spikes, drop bad triangles, close hairline splits',
           onclick: function () { self.repairSurface(); } },
+        { icon: 'mirror', label: 'Turn it inside out', hint: 'Flips which side of the surface faces you \u2014 for a model that arrived wrong way round',
+          onclick: function () { self.flipNormals(); } },
         { icon: 'mask', label: 'Mask', hint: 'Clear, invert or blur the locked area',
           chevron: true, onclick: function () { self.openMaskSheet(); } },
         { icon: 'texture', label: 'Texture', hint: 'Bake the paint into an image and export it',
@@ -1340,6 +1342,7 @@
     this.sceneOp('Add ' + entry.label, function () {
       var mesh = S.Prim.makeMesh(primId, detail);
       shape = new S.SceneObject(entry.label, mesh);
+      shape.doubleSided = !!entry.open;
       if (target) {
         // match it to the sculpt: a bit under half its size, sitting against
         // its side so it overlaps enough to weld
@@ -2530,8 +2533,10 @@
     for (var i = 0; i < this.scene.objects.length; i++) this.renderer.releaseObject(this.scene.objects[i]);
     this.scene.clear();
     this.history.clear();
+    var entry = S.Prim.byId(primId || 'sphere');
     var mesh = S.Prim.makeMesh(primId || 'sphere', detail);
-    var obj = new S.SceneObject(S.Prim.byId(primId || 'sphere').label, mesh);
+    var obj = new S.SceneObject(entry.label, mesh);
+    obj.doubleSided = !!entry.open;
     this.scene.add(obj);
     this.frameAll(true);
     this.refreshObjects();
@@ -2547,6 +2552,7 @@
     this.sceneOp('Add ' + entry.label, function () {
       var mesh = S.Prim.makeMesh(primId, detail);
       var obj = new S.SceneObject(entry.label, mesh);
+      obj.doubleSided = !!entry.open;
       // drop it beside whatever is already there
       var mn = V3.create(0, 0, 0), mx = V3.create(0, 0, 0);
       if (self.scene.objects.length && self.scene.bounds(mn, mx)) {
@@ -2727,7 +2733,15 @@
       var beforeBorder = mesh.countBorderEdges();
       var beforeNon = mesh.countNonManifoldEdges();
 
-      // needles first: every other measurement here is thrown off by them
+      /*
+       * Which way the surface faces comes first: an inside-out or
+       * half-inside-out mesh is the most visible fault of the lot — with
+       * back faces culled you see the far inside of the shape — and it is
+       * the one thing here that no amount of smoothing would ever fix.
+       */
+      var oriented = mesh.orientConsistently();
+
+      // needles next: every other measurement here is thrown off by them
       var spikes = mesh.relaxSpikes();
       // then the slivers, which is what a torn surface is actually made of
       var slivers = mesh.relaxSlivers();
@@ -2744,6 +2758,9 @@
       mesh.gridRebuild();
 
       var bits = [];
+      if (oriented.flipped) bits.push(oriented.flipped + ' triangles turned to face the same way');
+      if (oriented.turned) bits.push(oriented.turned === 1 ? 'turned the right way out'
+                                                           : oriented.turned + ' pieces turned the right way out');
       if (spikes) bits.push(spikes + (spikes === 1 ? ' spike' : ' spikes') + ' pulled back');
       if (slivers) bits.push(slivers + ' sliver' + (slivers === 1 ? '' : 's') + ' relaxed');
       if (beforeTris - mesh.liveTris > 0) bits.push((beforeTris - mesh.liveTris) + ' bad triangles removed');
@@ -3094,6 +3111,27 @@
           if (!mesh.liveTris) continue;
           var name = res.objects.length > 1 ? baseName + ' / ' + (src.name || (k + 1)) : baseName;
           var obj = new S.SceneObject(name, mesh);
+          /*
+           * Anything with an edge — a wall, a terrain patch, a mesh that
+           * arrives with holes in it — has no inside, so culling its back
+           * faces would make parts of it disappear as you orbit. Worked out
+           * once, here, rather than every frame.
+           */
+          obj.doubleSided = mesh.countBorderEdges() > 0;
+          /*
+           * Models arrive inside out often enough to be worth handling:
+           * exported from a program with the other winding convention, or
+           * scaled by a negative number somewhere along the way. Turning
+           * them the right way round here saves the puzzle of a model that
+           * renders as its own interior — and it is said out loud in the
+           * warnings rather than done silently.
+           */
+          var facing = mesh.orientConsistently();
+          if (facing.flipped || facing.turned) {
+            warnings.push(files[i].name + ': was ' +
+              (facing.turned ? 'inside out' : 'wound inconsistently') +
+              ' \u2014 turned the right way out (Fix glitches does this too).');
+          }
           if (opts.centre || opts.fit) {
             mesh.centerOrigin();
           }

@@ -2624,6 +2624,163 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   await page.screenshot({ path: path.join(screens, '35-builds-on-itself.png') });
 }
 
+/* ---- every shape in the New shape sheet is solid and the right way out */
+{
+  /*
+   * Reported as the shapes being inverted, not the shape their name said, or
+   * both. Three of them were built inside out and two had their end caps
+   * wound the wrong way, and with back faces culled that draws the far
+   * inside of the shape. Checked here through the app's own New shape path,
+   * one primitive at a time: the shell has to enclose a positive volume, its
+   * name has to match the button that made it, and the screen has to show
+   * something solid.
+   */
+  const results = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    const S = window.SCULPT;
+    const out = [];
+    for (const entry of S.Prim.catalogue) {
+      app.setTransformMode(false);
+      app.newScene(entry.id, undefined, true);
+      const obj = app.scene.current();
+      const mesh = obj.mesh;
+      const pos = mesh.positions.array, T = mesh.tris.array;
+      let vol = 0, doubled = 0;
+      const used = new Set();
+      for (let t = 0; t < mesh.triDead.length; t++) {
+        if (mesh.triDead.array[t]) continue;
+        const ia = T[t * 3], ib = T[t * 3 + 1], ic = T[t * 3 + 2];
+        const a = ia * 3, b = ib * 3, c = ic * 3;
+        vol += (pos[a] * (pos[b + 1] * pos[c + 2] - pos[b + 2] * pos[c + 1])
+              - pos[a + 1] * (pos[b] * pos[c + 2] - pos[b + 2] * pos[c])
+              + pos[a + 2] * (pos[b] * pos[c + 1] - pos[b + 1] * pos[c])) / 6;
+        for (const key of [ia + ':' + ib, ib + ':' + ic, ic + ':' + ia]) {
+          if (used.has(key)) doubled++;
+          used.add(key);
+        }
+      }
+      out.push({ id: entry.id, label: entry.label, name: obj.name, vol, doubled,
+                 border: mesh.countBorderEdges(), tris: mesh.liveTris,
+                 doubleSided: !!obj.doubleSided });
+    }
+    return out;
+  });
+
+  for (const r of results) {
+    eq(`${r.id}: the object is named after the shape`, r.name, r.label);
+    check(`${r.id}: triangles agree with their neighbours`, r.doubled === 0, `${r.doubled} clashes`);
+    if (r.id === 'plane') {
+      check('plane: an open sheet, drawn from both sides', r.border > 0 && r.doubleSided,
+        `${r.border} border edges, doubleSided ${r.doubleSided}`);
+    } else {
+      eq(`${r.id}: closed`, r.border, 0);
+      check(`${r.id}: encloses a positive volume, so it faces outwards`, r.vol > 0,
+        `volume ${r.vol.toFixed(4)}`);
+      check(`${r.id}: drawn from the outside only`, r.doubleSided === false);
+    }
+  }
+
+  /* and the screen agrees: a lit shape, of about the size it should be */
+  for (const id of ['box', 'cylinder', 'cone', 'uvsphere']) {
+    await page.evaluate((prim) => {
+      const app = window.SCULPT_APP;
+      app.newScene(prim, undefined, true);
+      app.frameAll(true);
+    }, id);
+    await page.waitForTimeout(220);
+    const seen = await page.evaluate(() => {
+      const app = window.SCULPT_APP;
+      app.draw();
+      const gl = app.renderer.gl;
+      const w = app.canvas.width, h = app.canvas.height;
+      const px = new Uint8Array(w * h * 4);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      let lit = 0;
+      // the background is dark and flat; the model is the lit part
+      for (let i = 0; i < w * h; i++) {
+        const r = px[i * 4], g = px[i * 4 + 1], b = px[i * 4 + 2];
+        if (r > 90 && r > b + 10) lit++;
+      }
+      const mid = ((h >> 1) * w + (w >> 1)) * 4;
+      return { share: lit / (w * h), centre: [px[mid], px[mid + 1], px[mid + 2]] };
+    });
+    check(`${id}: fills a sensible part of the screen`, seen.share > 0.04 && seen.share < 0.6,
+      `${(seen.share * 100).toFixed(1)}%`);
+    check(`${id}: the middle of the screen is the model`, seen.centre[0] > 90,
+      seen.centre.join(','));
+  }
+
+  /* the plane is visible from underneath, which is what two-sided means */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('plane', undefined, true);
+    app.frameAll(true);
+  });
+  await page.waitForTimeout(200);
+  const planeViews = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    function litShare() {
+      app.draw();
+      const gl = app.renderer.gl;
+      const w = app.canvas.width, h = app.canvas.height;
+      const px = new Uint8Array(w * h * 4);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      let lit = 0;
+      for (let i = 0; i < w * h; i++) if (px[i * 4] > 90 && px[i * 4] > px[i * 4 + 2] + 10) lit++;
+      return lit / (w * h);
+    }
+    app.camera.orbit(0, -160);            // look down on it
+    const above = litShare();
+    app.camera.orbit(0, 320);             // and from underneath
+    const below = litShare();
+    return { above, below };
+  });
+  check('the plane is visible from above', planeViews.above > 0.02,
+    `${(planeViews.above * 100).toFixed(1)}%`);
+  check('and from underneath too', planeViews.below > 0.02,
+    `${(planeViews.below * 100).toFixed(1)}%`);
+
+  /* Fix glitches turns an inside-out model the right way out */
+  await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    app.newScene('box', 2, true);
+    window.__vol = function () {
+      const mesh = app.scene.current().mesh;
+      const pos = mesh.positions.array, T = mesh.tris.array;
+      let v = 0;
+      for (let t = 0; t < mesh.triDead.length; t++) {
+        if (mesh.triDead.array[t]) continue;
+        const a = T[t * 3] * 3, b = T[t * 3 + 1] * 3, c = T[t * 3 + 2] * 3;
+        v += (pos[a] * (pos[b + 1] * pos[c + 2] - pos[b + 2] * pos[c + 1])
+            - pos[a + 1] * (pos[b] * pos[c + 2] - pos[b + 2] * pos[c])
+            + pos[a + 2] * (pos[b] * pos[c + 1] - pos[b + 1] * pos[c])) / 6;
+      }
+      return v;
+    };
+    app.scene.current().mesh.flipNormals();
+    window.__before = window.__vol();
+    app.repairSurface();                 // runs behind the busy overlay
+  });
+  await page.waitForFunction(() => document.getElementById('busy').hidden, null, { timeout: 30000 });
+  await page.waitForTimeout(150);
+  const repaired = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    const after = window.__vol();
+    app.flipNormals();
+    return { before: window.__before, after: after, flippedByHand: window.__vol(),
+             undo: app.history.undoLabel() };
+  });
+  check('an inside-out model reads as negative volume', repaired.before < 0,
+    `${repaired.before.toFixed(3)}`);
+  check('Fix glitches turns it the right way out', repaired.after > 0,
+    `${repaired.after.toFixed(3)}`);
+  check('and Turn it inside out is there for the ambiguous cases',
+    repaired.flippedByHand < 0, `${repaired.flippedByHand.toFixed(3)}`);
+  eq('which is one undo step', repaired.undo, 'Flip normals');
+  await page.evaluate(() => { window.SCULPT_APP.undo(); window.SCULPT_APP.newScene('sphere', null, true); });
+  await page.waitForTimeout(150);
+}
+
 /* ---- settings saved by the old build are migrated ------------------- */
 {
   /*
