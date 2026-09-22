@@ -661,6 +661,56 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   await page.screenshot({ path: path.join(screens, '06-imported.png') });
 }
 
+/* ---- what the file picker is asked for ------------------------------ */
+{
+  /*
+   * Reported as not being able to import at all. Android's file chooser
+   * turns `accept=".obj,.stl,.ply"` into a media-type filter it cannot
+   * resolve — nothing on the system claims those extensions — and shows
+   * every file greyed out. The importer reads the format out of the file
+   * itself, so on a touch device the filter is dropped and everything is
+   * selectable; on a computer, where the filter works and is useful, it
+   * stays.
+   */
+  const asked = await page.evaluate(() => {
+    const UI = window.SCULPT.UI;
+    const seen = [];
+    const realClick = HTMLInputElement.prototype.click;
+    HTMLInputElement.prototype.click = function () { seen.push(this.accept); };
+    const realTouch = UI.isTouchDevice;
+
+    UI.isTouchDevice = function () { return false; };
+    UI.pickFiles('.obj,.stl,.ply,.glb,.gltf,.sculpt', true, function () {});
+    UI.pickFiles('image/*', false, function () {});
+
+    UI.isTouchDevice = function () { return true; };
+    UI.pickFiles('.obj,.stl,.ply,.glb,.gltf,.sculpt', true, function () {});
+    UI.pickFiles('image/*', false, function () {});
+
+    UI.isTouchDevice = realTouch;
+    HTMLInputElement.prototype.click = realClick;
+    return seen;
+  });
+  check('on a computer the picker filters by extension', /\.obj/.test(asked[0]), asked[0]);
+  eq('and an image picker asks for images', asked[1], 'image/*');
+  eq('on a phone the picker takes any file', asked[2], '');
+  eq('but an image picker still asks for images', asked[3], 'image/*');
+
+  // ...and a file with the wrong name still imports, since the format is
+  // read from the contents
+  const sniffed = await page.evaluate(async () => {
+    const S = window.SCULPT;
+    const obj = S.Prim.makeMesh('box', 2);
+    const geoms = S.IO.prepare([new S.SceneObject('Box', obj)], { includeNormals: true });
+    const text = S.IO.exportOBJ(geoms, {});
+    const bytes = new TextEncoder().encode(text);
+    const res = S.IO.importBuffer('model-from-the-internet', bytes.buffer);
+    return { objects: res.objects.length, warnings: res.warnings.length };
+  });
+  check('a model with no extension at all still imports', sniffed.objects === 1,
+    JSON.stringify(sniffed));
+}
+
 /* ---- dialogs open and close ---------------------------------------- */
 {
   // the sheets first

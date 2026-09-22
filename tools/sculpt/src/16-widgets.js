@@ -441,7 +441,34 @@
     return blob.size;
   };
 
+  /**
+   * Is this a phone or a tablet? Only used to decide whether a file picker
+   * should filter by extension, so a wrong guess costs nothing.
+   */
+  UI.isTouchDevice = function () {
+    try {
+      var nav = root.navigator || {};
+      if (nav.maxTouchPoints > 1) return true;
+      return /Android|iPhone|iPad|iPod|Mobile/i.test(nav.userAgent || '');
+    } catch (e) { return false; }
+  };
+
+  /**
+   * Ask for files.
+   *
+   * On a phone an extension filter is worse than no filter at all. Android's
+   * file chooser turns `accept=".obj,.ply,.glb"` into a list of media types
+   * it cannot resolve — there are no registered types for those extensions —
+   * and then shows every file greyed out, or refuses the folder outright.
+   * That is what "it won't let me import anything" looks like from the
+   * outside. The importer works the format out from the file's own contents,
+   * so dropping the filter on touch devices loses nothing and is the
+   * difference between being able to import a model and not.
+   *
+   * A filter by media type ("image/*") is left alone: those resolve fine.
+   */
   UI.pickFiles = function (accept, multiple, onFiles) {
+    if (accept && accept.charAt(0) === '.' && UI.isTouchDevice()) accept = '';
     var input = el('input', { type: 'file', accept: accept, multiple: !!multiple, style: { display: 'none' } });
     document.body.appendChild(input);
     input.addEventListener('change', function () {

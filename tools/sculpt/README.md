@@ -458,8 +458,17 @@ millimetres (×1000).
 | glTF / GLB | ✓ | ✓ | Node transforms baked in; 16- or 32-bit indices as needed |
 | `.sculpt` | ✓ | ✓ | The project: exact topology, masks, colours, transforms, camera |
 
-Drag any of them onto the window to open it. There is no size limit beyond
-your machine's memory.
+☰ → **Open a model** → *Choose files…*, and pick the file from wherever it is
+on your phone or computer. On a computer you can also drag files straight onto
+the window. There is no size limit beyond your machine's memory.
+
+The picker asks for **any** file on a phone rather than filtering by
+extension. Android's file chooser turns a list like `.obj,.stl,.ply` into
+media types it cannot resolve — nothing on the system claims those
+extensions — and then shows every file greyed out, which looks exactly like
+the app refusing to import. The format is read from the file's own contents
+anyway, so a model works whatever it is called, even with no extension at
+all. On a computer the extension filter is kept, where it works and helps.
 
 Your work never leaves your computer. The recovery copy (every two minutes)
 lives in your browser's own storage, and projects are files you keep.
@@ -572,11 +581,11 @@ node test/boolean.test.mjs      # 51   union / subtract / intersect against anal
 node test/texture.test.mjs      # 474  PNG writer, unwrap, bake, textured export, stencils, presets
 node test/paint.test.mjs        # 66   the paint image: atlas, rasteriser, stencils, undo, export
 node test/gizmo.test.mjs        # 52   handle layout, hit testing, move/turn/resize maths
-node build.js && node test/browser.test.mjs   # 426 end-to-end in a real browser
+node build.js && node test/browser.test.mjs   # 431 end-to-end in a real browser
 node test/shots.mjs             # renders the screenshots in test/screens
 ```
 
-1,828 checks in total. Some of them are worth naming, because they are the
+1,833 checks in total. Some of them are worth naming, because they are the
 ones that catch a regression you would otherwise ship:
 
 - **Brushes have to add, not stretch.** The same pull is run with dynamic

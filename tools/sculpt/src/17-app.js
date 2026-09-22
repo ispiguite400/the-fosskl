@@ -3026,7 +3026,7 @@
         el('div.row.wrap', null, [
           (replaceCheck = UI.check({ label: 'Replace the current scene', value: false }))
         ]),
-        el('div.hint', { text: 'You can also drag files onto the window at any time.' })
+        el('div.hint', { text: 'Tap Choose files and pick the model from your phone\u2019s storage \u2014 Downloads, or wherever you saved it. The format is worked out from the file itself, so it does not matter what the file is called. On a computer you can also drag files straight onto the window.' })
       ],
       buttons: [
         { label: 'Cancel' },
