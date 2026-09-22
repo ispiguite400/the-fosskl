@@ -15,6 +15,15 @@
   C.box([0, 1.72, 0.103], [0.022, 0.018, 0.012], 0.005, [-35, 0, 0]);                      // NVG shroud
   T('cover', 0.004);
   C.ell([0, 1.742, -0.02], [0.05, 0.02, 0.06]);                                            // cover bunch on top
+  { const rnd = (() => { let s = 777; return () => (s = (s * 16807) % 2147483647) / 2147483647; })();
+    for (let i = 0; i < 40; i++) {                                                          // the cover is lumpy where it is gathered
+      const th = rnd() * Math.PI * 2, ph = 0.15 + rnd() * 1.1, r = [0.106, 0.1, 0.122];
+      const p = [Math.sin(ph) * Math.cos(th) * r[0], 1.674 + Math.cos(ph) * r[1], -0.012 + Math.sin(ph) * Math.sin(th) * r[2]];
+      if (p[1] < 1.66 || (p[2] > 0.06 && p[1] < 1.72)) continue;
+      C.ell(p, [0.012 + rnd() * 0.012, 0.006, 0.012 + rnd() * 0.012], [rnd() * 40, rnd() * 180, 0], { k: 0.01 });
+    } }
+  T('strap', 0.003);
+  C.torus([0, 1.705, -0.01], 0.103, 0.004, [4, 0, 0]);                                     // band round the helmet
   C.build(0.002, 1, HL);
   // sunglasses
   const G = C.newObject('Glasses');
@@ -29,8 +38,5 @@
   headForms(0.006, true, 'scarf');
   T('scarf', 0.01);
   C.box([0, 1.5, 0.02], [0.2, 0.123, 0.2], 0.0, [-10, 0, 0], { mode: 'intersect' });     // top edge runs over the nose
-  T('scarf', 0.02);
-  C.torus([0, 1.5, 0.008], 0.064, 0.024, [8, 0, 0]);                                       // gathered round the neck
-  C.torus([0, 1.47, 0.0], 0.07, 0.026, [4, 0, 0]);
   C.build(0.0025, 2, W);
 }

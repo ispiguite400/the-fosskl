@@ -1,46 +1,62 @@
-// ---- palette: multicam uniform, coyote kit, tan boots, black rifle ----
+// ---- palette: multicam uniform, coyote kit, tan boots, black rifle, all with wear and dust ----
 const HEX = h => [parseInt(h.slice(1,3),16)/255, parseInt(h.slice(3,5),16)/255, parseInt(h.slice(5,7),16)/255];
-const mix = (a, b, t) => [0,1,2].map(i => a[i] + (b[i] - a[i]) * t);
+const mix = (a, b, t) => [0,1,2].map(i => a[i] + (b[i] - a[i]) * Math.max(0, Math.min(1, t)));
 const P = {
-  base: HEX('#8e7e60'), dark: HEX('#5c4f38'), mid: HEX('#766748'), light: HEX('#ac9b78'), olive: HEX('#6f6c4b'),
-  coyote: HEX('#7c6748'), coyoteD: HEX('#65543a'), pad: HEX('#5f523d'), boot: HEX('#8d7657'), sole: HEX('#34302a'),
-  glove: HEX('#4a4135'), skin: HEX('#c29776'), lip: HEX('#a06b58'), eye: HEX('#e8e2d8'), rim: HEX('#3a372f'),
-  lens: HEX('#0c0e11'), frame: HEX('#17171a'), scarfA: HEX('#9c8a6b'), scarfB: HEX('#6f5f48'), rifle: HEX('#232426'),
-  belt: HEX('#5a4b35')
+  tan: HEX('#9a8b6b'), sage: HEX('#7f7c5e'), brown: HEX('#5e4b35'), mid: HEX('#7b6a4d'), cream: HEX('#c2b28e'), twig: HEX('#3f3326'),
+  coyote: HEX('#7d6849'), coyoteD: HEX('#5f4f37'), web: HEX('#6d5a3f'), strap: HEX('#4e4130'), buckle: HEX('#1c1b19'),
+  pad: HEX('#5d5140'), boot: HEX('#9a8360'), sole: HEX('#2e2a25'), lace: HEX('#4a3e2e'),
+  glove: HEX('#4a4136'), skin: HEX('#c29776'), lip: HEX('#a06b58'), eye: HEX('#e8e2d8'), rim: HEX('#3a372f'),
+  lens: HEX('#0b0d10'), frame: HEX('#17171a'), scarfA: HEX('#a18e6d'), scarfB: HEX('#6e5e47'), rifle: HEX('#222325'),
+  belt: HEX('#5b4b35'), dust: HEX('#b5a584')
 };
+for (const k in P) if (!['lens', 'frame', 'buckle', 'sole', 'rifle'].includes(k)) P[k] = P[k].map(v => Math.min(1, v * 1.13));   // lift the whole palette
+const N = (x, y, z, f) => M.clay.noise(x * f, y * f, z * f);
+const F = (x, y, z, f, o) => M.clay.fbm(x * f, y * f, z * f, o || 3);
+// multicam: a soft tan-to-sage ground, mid-brown shapes, darker brown blobs, cream highlights, fine dark twigs
 function multicam(x, y, z) {
-  const n1 = M.clay.fbm(x * 9, y * 9, z * 9, 3), n2 = M.clay.fbm(x * 21 + 7, y * 21, z * 21, 2), n3 = M.clay.noise(x * 45, y * 45, z * 45);
-  let c = P.base;
-  if (n1 > 0.58) c = P.mid;
-  if (n1 < 0.4) c = P.light;
-  if (n2 > 0.66) c = P.dark;
-  if (n2 < 0.28) c = P.olive;
-  return mix(c, [0.5, 0.45, 0.36], (n3 - 0.5) * 0.12);
+  let c = mix(P.tan, P.sage, F(x + 3, y, z, 3.5, 2) * 1.4 - 0.2);
+  const m = F(x, y, z, 11), b = F(x + 9, y, z - 4, 17), h = F(x - 5, y + 2, z, 23, 2), tw = N(x + 1, y, z, 60);
+  if (m > 0.56) c = mix(c, P.mid, 0.85);
+  if (b > 0.62) c = mix(c, P.brown, 0.9);
+  if (h > 0.68) c = mix(c, P.cream, 0.7);
+  if (tw > 0.78 && b > 0.45) c = mix(c, P.twig, 0.6);
+  return c;
 }
-function grime(c, x, y, z, amt) { const n = M.clay.fbm(x * 30, y * 30, z * 30, 2); return mix(c, [0.25, 0.22, 0.18], Math.max(0, n - 0.55) * (amt || 0.5)); }
+// the weave of the cloth and dust that builds up towards the ground
+function fabric(c, x, y, z, amt) {
+  const weave = (N(x, y, z, 700) - 0.5) * 0.06 + (N(x, y, z, 180) - 0.5) * 0.05;
+  c = c.map(v => v * (1 + weave));
+  const dust = Math.max(0, 0.55 - y) / 0.55 * 0.35 + Math.max(0, F(x, y, z, 14) - 0.6) * 0.5;
+  return mix(c, P.dust, dust * (amt === undefined ? 1 : amt));
+}
 function paintFor(tag, x, y, z, nx, ny, nz) {
-  if ((tag === 'boot' || tag === 'sole') && y < 0.2) tag = y < 0.03 ? 'sole' : 'boot';   // a clean line where the upper meets the sole
   switch (tag) {
-    case 'uniform': return grime(multicam(x, y, z), x, y, z, 0.6);
-    case 'helmet': case 'cover': return multicam(x * 1.3, y * 1.3, z * 1.3);
-    case 'vest': return grime(mix(P.coyote, P.coyoteD, M.clay.noise(x*60, y*60, z*60) * 0.5), x, y, z);
-    case 'pouch': return grime(mix(P.coyote, P.light, 0.08 + M.clay.noise(x*50, y*50, z*50) * 0.12), x, y, z);
-    case 'belt': return P.belt;
-    case 'pad': return P.pad;
-    case 'boot': return grime(mix(P.boot, P.coyoteD, M.clay.noise(x*40, y*40, z*40) * 0.3), x, y, z, 0.3);
+    case 'uniform': return fabric(multicam(x, y, z), x, y, z);
+    case 'helmet': case 'cover': return fabric(multicam(x * 1.3, y * 1.3, z * 1.3), x, y + 0.6, z, 0.4);
+    case 'vest': return fabric(mix(P.coyote, P.coyoteD, N(x, y, z, 40) * 0.5), x, y, z, 0.6);
+    case 'pouch': return fabric(mix(P.coyote, P.cream, 0.06 + N(x, y, z, 35) * 0.12), x, y, z, 0.6);
+    case 'flap': return fabric(mix(P.coyote, P.coyoteD, 0.25), x, y, z, 0.6);
+    case 'webbing': return fabric(P.web, x, y, z, 0.3);
+    case 'strap': return fabric(P.strap, x, y, z, 0.3);
+    case 'buckle': return P.buckle;
+    case 'belt': return fabric(P.belt, x, y, z, 0.4);
+    case 'pad': return mix(P.pad, P.dust, Math.max(0, 0.6 - y) * 0.5);
+    case 'boot': return fabric(mix(P.boot, P.coyoteD, N(x, y, z, 40) * 0.3), x, y, z, 0.7);
     case 'sole': return P.sole;
-    case 'glove': return mix(P.glove, P.coyoteD, M.clay.noise(x*70, y*70, z*70) * 0.3);
-    case 'skin': return mix(P.skin, [0.62, 0.45, 0.36], M.clay.noise(x*120, y*120, z*120) * 0.25);
+    case 'lace': return P.lace;
+    case 'glove': return fabric(mix(P.glove, P.coyoteD, N(x, y, z, 70) * 0.3), x, y, z, 0.2);
+    case 'skin': return mix(P.skin, [0.62, 0.45, 0.36], N(x, y, z, 120) * 0.25);
     case 'lip': return P.lip;
     case 'eye': return P.eye;
     case 'rim': return P.rim;
     case 'lens': return P.lens;
     case 'frame': return P.frame;
-    case 'scarf': {                                   // shemagh check
+    case 'scarf': {                                   // shemagh check, softly woven
       const a = Math.abs(Math.sin((x + z * 0.5) * 130)), b = Math.abs(Math.sin((y - z * 0.2) * 130));
-      return grime(mix(P.scarfA, P.scarfB, (a > 0.96 ? 0.45 : 0) + (b > 0.96 ? 0.45 : 0) + 0.05), x, y, z, 0.3);
+      return fabric(mix(P.scarfA, P.scarfB, (a > 0.95 ? 0.45 : 0) + (b > 0.95 ? 0.45 : 0) + 0.05), x, y, z, 0.3);
     }
-    case 'rifle': return mix(P.rifle, [0.3, 0.3, 0.3], M.clay.noise(x*80, y*80, z*80) * 0.12);
-    default: return P.base;
+    case 'rifle': return mix(P.rifle, [0.3, 0.3, 0.3], N(x, y, z, 80) * 0.12);
+    default: return P.tan;
   }
 }
+M.clay.autoPaint = paintFor;

@@ -6,7 +6,7 @@
  */
 (function () {
   const S = window.SCULPT, app = M.app, D = Math.PI / 180;
-  const C = M.clay = { ops: [], tags: [], palette: {} };
+  const C = M.clay = { ops: [], tags: [], palette: {}, grids: [], folds: [] };
   function rotm(deg) {                       // rows of R (local->world); we use R^T to go world->local
     const [a, b, c] = (deg || [0, 0, 0]).map(v => v * D);
     const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(b), sb = Math.sin(b), cc = Math.cos(c), sc = Math.sin(c);
@@ -73,6 +73,7 @@
     }
   }
   C.sdf = sdf;
+  C.bounds = (op) => bounds(op);
   function bounds(op) {
     if (op.type === 'rcone') {
       const m = Math.max(op.ra, op.rb) + (op.grow || 0);
@@ -132,6 +133,7 @@
     });
     app.afterMeshOp(obj);
     C.grid = { field, tag, mn, voxel, dims };
+    C.grids.push({ g: C.grid, obj });
     C.ops = [];
     if (C.autoPaint) C.paint(C.autoPaint, obj);
     console.log('# clay: grid ' + dims.join('x') + ', ' + M.tris() + ' triangles');
@@ -186,5 +188,176 @@
     for (const o of sc.objects) app.renderer.releaseObject(o);
     sc.objects = [merged]; sc.selected = 0;
     app.refreshObjects(); app.afterMeshOp(merged);
+  };
+})();
+
+(function () {
+  const C = M.clay, app = M.app, S = window.SCULPT;
+  const sub = (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]], addv = (a, b) => [a[0]+b[0], a[1]+b[1], a[2]+b[2]];
+  const mul = (a, s) => [a[0]*s, a[1]*s, a[2]*s], dot = (a, b) => a[0]*b[0] + a[1]*b[1] + a[2]*b[2];
+  const cross = (a, b) => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+  const norm = (a) => mul(a, 1 / (Math.hypot(a[0], a[1], a[2]) || 1));
+  C.v = { sub, addv, mul, dot, cross, norm, lerp: (a, b, t) => addv(a, mul(sub(b, a), t)) };
+
+  // the field of the forms queued so far, at one point (same blending as the build)
+  C.fieldAt = function (x, y, z) {
+    let a = 1e3;
+    for (const op of C.ops) {
+      const bx = op._bb || (op._bb = C.bounds(op)), m = op.k + 0.01;
+      if (x < bx[0]-m || y < bx[1]-m || z < bx[2]-m || x > bx[3]+m || y > bx[4]+m || z > bx[5]+m) {
+        if (op.mode === 'intersect') a = Math.max(a, 1);
+        continue;
+      }
+      const d = C.sdf(op, x, y, z), k = op.k;
+      if (op.mode === 'union') {
+        if (k > 0) { const h = Math.max(k - Math.abs(a - d), 0) / k; a = Math.min(a, d) - h*h*k*0.25; } else a = Math.min(a, d);
+      } else if (op.mode === 'subtract') a = Math.max(a, -d);
+      else a = Math.max(a, d);
+    }
+    return a;
+  };
+  // where a line from `from` (outside) towards `to` first meets the surface
+  C.surf = function (from, to) {
+    const N = 48; let prev = from, fp = C.fieldAt(...from);
+    for (let i = 1; i <= N; i++) {
+      const p = C.v.lerp(from, to, i / N), f = C.fieldAt(...p);
+      if (f < 0 && fp >= 0) {
+        let lo = prev, hi = p;
+        for (let k = 0; k < 20; k++) { const mid = C.v.lerp(lo, hi, 0.5); if (C.fieldAt(...mid) < 0) hi = mid; else lo = mid; }
+        return C.v.lerp(lo, hi, 0.5);
+      }
+      prev = p; fp = f;
+    }
+    return null;
+  };
+  // from inside a form, straight out along `dir`: where the surface is first crossed
+  C.surfOut = function (c, dir, reach) {
+    const N = 60; let prev = c, fp = C.fieldAt(...c);
+    if (fp > 0) return null;
+    for (let i = 1; i <= N; i++) {
+      const p = addv(c, mul(dir, reach * i / N)), f = C.fieldAt(...p);
+      if (f >= 0) {
+        let lo = prev, hi = p;
+        for (let k = 0; k < 20; k++) { const mid = C.v.lerp(lo, hi, 0.5); if (C.fieldAt(...mid) < 0) lo = mid; else hi = mid; }
+        return C.v.lerp(lo, hi, 0.5);
+      }
+      prev = p; fp = f;
+    }
+    return null;
+  };
+  /*
+   * A cloth fold: a ridge that wraps round a limb (axis a -> b) at parameter t,
+   * from angle th0 to th1 (0 = `front`, measured round the axis), tilting by
+   * `tilt` metres along the axis across its length and sagging by `sag` in the
+   * middle. The ridge sits on the actual surface of the forms queued so far.
+   * Each fold is remembered so the brush pass can cut the valley beside it.
+   */
+  C.fold = function (a, b, t, th0, th1, o) {
+    o = o || {};
+    const ax = norm(sub(b, a)), P0 = C.v.lerp(a, b, t);
+    const front = o.front || [0, 0, 1];
+    const e1 = norm(sub(front, mul(ax, dot(front, ax)))), e2 = cross(ax, e1);
+    const n = o.n || 11, r = o.r || 0.016, h = o.h || 0.0045, tilt = o.tilt || 0, sag = o.sag || 0;
+    const pts = [], dirs = [], us = [];
+    for (let i = 0; i < n; i++) {
+      const u = i / (n - 1), th = th0 + (th1 - th0) * u;
+      const c = addv(P0, mul(ax, tilt * (u - 0.5) + sag * Math.sin(Math.PI * u)));
+      const dir = addv(mul(e1, Math.cos(th)), mul(e2, Math.sin(th)));
+      const s = C.surfOut(c, dir, o.reach || 0.2);
+      if (s) { pts.push(s); dirs.push(dir); us.push(u); }
+    }
+    // a fold is one continuous ridge: stop at any jump (the ray found some other form)
+    const step = Math.max(0.02, 2.5 * (o.reach || 0.2) * Math.abs(th1 - th0) / (n - 1));
+    for (let i = 1; i < pts.length; i++) if (Math.hypot(...sub(pts[i], pts[i - 1])) > step) { pts.length = dirs.length = us.length = i; break; }
+    if (pts.length < 3) return null;
+    const centre = (i) => { const w = Math.sin(Math.PI * (0.08 + 0.84 * us[i])), ri = r * (0.3 + 0.7 * w); return [addv(pts[i], mul(dirs[i], h * w - ri)), ri]; };
+    const k = o.k === undefined ? 0.012 : o.k;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const [p, rp] = centre(i), [q, rq] = centre(i + 1);
+      C.limb(p, q, rp, rq, { k, tag: o.tag });
+    }
+    C.folds.push({ pts, dirs, ax, r, deep: o.deep === undefined ? 1 : o.deep });
+    return pts;
+  };
+
+  // turn an object about a pivot (the head group looking down a little)
+  C.pivotRotate = function (obj, pivot, deg) {
+    const D = Math.PI / 180;
+    S.Q4.fromEuler(obj.rotation, deg[0] * D, deg[1] * D, deg[2] * D);
+    const q = obj.rotation, v = [0, 0, 0];
+    S.Q4.rotateVec3(v, q, pivot);
+    obj.position[0] = pivot[0] - v[0]; obj.position[1] = pivot[1] - v[1]; obj.position[2] = pivot[2] - v[2];
+    obj.touch();
+  };
+
+  /*
+   * Bake shading into the colour, so the model carries its own light:
+   *  - ambient occlusion from the clay fields (every piece's, so the helmet
+   *    darkens the head and the vest shadows the shirt),
+   *  - cavity from the sculpted surface itself, so every brushed crease gets
+   *    a dark line and every ridge a lighter edge.
+   */
+  C.bakeShading = function (o) {
+    o = o || {};
+    const mesh = M.obj().mesh, P = mesh.positions.array, Nn = mesh.normals.array, Col = mesh.colors.array;
+    const nv = mesh.vertCount(), dead = mesh.vertDead.array, T = mesh.tris.array, tdead = mesh.triDead.array, nt = mesh.triCount();
+    const grids = C.grids.map(({ g, obj }) => ({ g, inv: obj.inverseMatrix().slice ? Array.from(obj.inverseMatrix()) : obj.inverseMatrix() }));
+    function sample(gr, x, y, z) {
+      const m = gr.inv, g = gr.g;
+      const lx = m[0]*x + m[4]*y + m[8]*z + m[12], ly = m[1]*x + m[5]*y + m[9]*z + m[13], lz = m[2]*x + m[6]*y + m[10]*z + m[14];
+      const fx = (lx - g.mn[0]) / g.voxel, fy = (ly - g.mn[1]) / g.voxel, fz = (lz - g.mn[2]) / g.voxel;
+      const [nx, ny, nz] = g.dims;
+      if (fx < 0 || fy < 0 || fz < 0 || fx >= nx - 1 || fy >= ny - 1 || fz >= nz - 1) return 1e3;
+      const i = fx | 0, j = fy | 0, k = fz | 0, u = fx - i, v = fy - j, w = fz - k, F = g.field, sy = nx, sz = nx * ny, b = i + j*sy + k*sz;
+      const c00 = F[b] + (F[b+1] - F[b]) * u, c10 = F[b+sy] + (F[b+sy+1] - F[b+sy]) * u;
+      const c01 = F[b+sz] + (F[b+sz+1] - F[b+sz]) * u, c11 = F[b+sy+sz] + (F[b+sy+sz+1] - F[b+sy+sz]) * u;
+      return (c00 + (c10 - c00) * v) * (1 - w) + (c01 + (c11 - c01) * v) * w;
+    }
+    const field = (x, y, z) => { let f = 1e3; for (const gr of grids) { const s = sample(gr, x, y, z); if (s < f) f = s; } return f; };
+    const steps = o.steps || [0.006, 0.013, 0.024, 0.04, 0.065, 0.1];
+    const ao = new Float32Array(nv);
+    for (let v = 0; v < nv; v++) {
+      if (dead[v]) continue;
+      const x = P[v*3], y = P[v*3+1], z = P[v*3+2], nx = Nn[v*3], ny = Nn[v*3+1], nz = Nn[v*3+2];
+      let occ = 0, wsum = 0;
+      for (let i = 0; i < steps.length; i++) {
+        const d = steps[i], f = field(x + nx*d, y + ny*d, z + nz*d), wgt = 1 / (1 + i * 0.6);
+        occ += Math.max(0, Math.min(1, (d - f) / d)) * wgt; wsum += wgt;
+      }
+      ao[v] = occ / wsum;
+    }
+    // cavity: how far each vertex sits below the average of its neighbours, along its normal
+    const sum = new Float32Array(nv * 3), cnt = new Float32Array(nv), elen = new Float32Array(nv);
+    for (let t = 0; t < nt; t++) {
+      if (tdead[t]) continue;
+      for (let e = 0; e < 3; e++) {
+        const a = T[t*3+e], b = T[t*3+(e+1)%3];
+        sum[a*3] += P[b*3]; sum[a*3+1] += P[b*3+1]; sum[a*3+2] += P[b*3+2]; cnt[a]++;
+        sum[b*3] += P[a*3]; sum[b*3+1] += P[a*3+1]; sum[b*3+2] += P[a*3+2]; cnt[b]++;
+        const L = Math.hypot(P[a*3]-P[b*3], P[a*3+1]-P[b*3+1], P[a*3+2]-P[b*3+2]); elen[a] += L; elen[b] += L;
+      }
+    }
+    let cav = new Float32Array(nv);
+    for (let v = 0; v < nv; v++) {
+      if (dead[v] || !cnt[v]) continue;
+      const ax = sum[v*3]/cnt[v] - P[v*3], ay = sum[v*3+1]/cnt[v] - P[v*3+1], az = sum[v*3+2]/cnt[v] - P[v*3+2];
+      cav[v] = (ax*Nn[v*3] + ay*Nn[v*3+1] + az*Nn[v*3+2]) / (elen[v] / cnt[v] + 1e-9);
+    }
+    // blur the cavity a couple of times over the mesh, so it reads as shading rather than noise
+    for (let it = 0; it < (o.blur === undefined ? 2 : o.blur); it++) {
+      const acc = new Float32Array(nv), c2 = new Float32Array(nv);
+      for (let t = 0; t < nt; t++) { if (tdead[t]) continue; for (let e = 0; e < 3; e++) { const a = T[t*3+e], b = T[t*3+(e+1)%3]; acc[a] += cav[b]; c2[a]++; acc[b] += cav[a]; c2[b]++; } }
+      for (let v = 0; v < nv; v++) if (c2[v]) cav[v] = cav[v] * 0.4 + 0.6 * acc[v] / c2[v];
+    }
+    const kA = o.ao === undefined ? 1.1 : o.ao, kD = o.dark === undefined ? 5 : o.dark, kL = o.light === undefined ? 2.5 : o.light;
+    for (let v = 0; v < nv; v++) {
+      if (dead[v]) continue;
+      let f = Math.max(0.3, 1 - kA * ao[v]);
+      const c = cav[v];
+      f *= c > 0 ? Math.max(0.35, 1 - kD * c) : Math.min(1.35, 1 - kL * c);
+      if (o.floor) f *= 1 - Math.max(0, 0.12 - P[v*3+1]) * o.floor;    // a little contact shadow near the ground
+      for (let k = 0; k < 3; k++) Col[v*3+k] = Math.min(1, Col[v*3+k] * f);
+    }
+    mesh.dirtyMinVert = 0; mesh.dirtyMaxVert = nv - 1; app.afterMeshOp(M.obj());
   };
 })();

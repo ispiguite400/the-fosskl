@@ -2,7 +2,7 @@
  * Builds the soldier by running the build steps inside the real app.
  *
  *   node build.mjs            writes soldier.sculpt, soldier.glb and the renders
- *   TARGET=100000 node build.mjs   reduce to a different triangle count first
+ *   TARGET=150000 node build.mjs   reduce to a different triangle count first
  *
  * Needs the standalone build (node ../../build.js) and Playwright's Chromium.
  */
@@ -16,8 +16,8 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(execSync('npm root -g').toString().trim() + '/playwright');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appFile = 'file://' + path.join(here, '..', '..', 'sculpt.html');
-const target = +(process.env.TARGET || 250000);
-const steps = ['paint.js', 'body.js', 'head.js', 'gear.js', 'rifle.js', 'folds.js'];
+const target = +(process.env.TARGET || 300000);
+const steps = ['paint.js', 'body.js', 'head.js', 'gear.js', 'rifle.js', 'finish.js', 'creases.js', 'look.js'];
 
 const browser = await chromium.launch({
   executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
@@ -62,9 +62,9 @@ const files = await page.evaluate(async (target) => {
 fs.writeFileSync(path.join(here, 'soldier.sculpt'), Buffer.from(files.sculpt, 'base64'));
 fs.writeFileSync(path.join(here, 'soldier.glb'), Buffer.from(files.glb, 'base64'));
 
-const shots = { front: [0, 0.05, 0.92, 0.98], 'three-quarter': [0.5, 0.08, 0.92, 0.98],
-                back: [Math.PI + 0.5, 0.08, 0.92, 0.98], upper: [0.45, 0.05, 1.3, 0.4],
-                face: [0.35, 0.05, 1.6, 0.14], boots: [0.6, 0.2, 0.2, 0.3] };
+const shots = { front: [0, 0.05, 0.92, 0.98], 'three-quarter': [0.5, 0.08, 0.92, 0.98], side: [1.45, 0.05, 0.92, 0.98],
+                back: [Math.PI + 0.5, 0.08, 0.92, 0.98], upper: [0.45, 0.05, 1.3, 0.4], legs: [0.6, 0.1, 0.45, 0.48],
+                face: [0.35, 0.05, 1.6, 0.14], boots: [0.6, 0.12, 0.2, 0.3] };
 for (const [name, v] of Object.entries(shots)) {
   const url = await page.evaluate((v) => { M.view(v[0], v[1], [0, v[2], 0], v[3]); return M.snap(); }, v);
   fs.writeFileSync(path.join(here, name + '.png'), Buffer.from(url.split(',')[1], 'base64'));
