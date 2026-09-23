@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mario Model</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: system-ui, sans-serif; }
+  body { background: linear-gradient(#5c94fc, #a8d0ff); }
+  canvas { display: block; touch-action: none; }
+  #ui { position: fixed; left: 0; right: 0; bottom: 16px; display: flex; gap: 8px;
+        justify-content: center; flex-wrap: wrap; padding: 0 16px; }
+  #ui button { font: 600 15px system-ui, sans-serif; padding: 10px 16px; border: 0; border-radius: 999px;
+               background: #fff; color: #222; box-shadow: 0 2px 6px rgba(0,0,0,.25); cursor: pointer; }
+  #ui button.on { background: #d21f25; color: #fff; }
+  #hint { position: fixed; top: 12px; left: 0; right: 0; text-align: center; color: #fff;
+          font-size: 13px; text-shadow: 0 1px 2px rgba(0,0,0,.5); pointer-events: none; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "../vendor/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="hint">Drag to orbit · scroll or pinch to zoom</div>
+<div id="ui">
+  <button data-anim="idle" class="on">Idle</button>
+  <button data-anim="wave">Wave</button>
+  <button data-anim="jump">Jump</button>
+  <button data-anim="run">Run</button>
+  <button id="spin">Turntable: on</button>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { buildMario } from '../src/entities/mario.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(35, 1, .1, 100);
+
+scene.add(new THREE.HemisphereLight(0xdfefff, 0xb0a080, 1.3));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(3, 6, 4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3 });
+sun.shadow.bias = -.0005;
+scene.add(sun);
+const rim = new THREE.DirectionalLight(0xfff0d0, .8);
+rim.position.set(-4, 3, -4);
+scene.add(rim);
+
+// A round grass platform with a dirt edge.
+const ground = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, .1, 64),
+  new THREE.MeshStandardMaterial({ color: 0x5fbf3a, roughness: .9 }));
+ground.position.y = -.05; ground.receiveShadow = true;
+scene.add(ground);
+const dirt = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.1, .5, 64),
+  new THREE.MeshStandardMaterial({ color: 0xc27c3e, roughness: 1 }));
+dirt.position.y = -.35;
+scene.add(dirt);
+
+const mario = buildMario();
+scene.add(mario);
+const J = mario.userData.joints, REST = mario.userData.rest;
+
+/* ---------- orbit camera ---------- */
+const orbit = { yaw: .5, pitch: .18, dist: 5.2, target: new THREE.Vector3(0, .95, 0) };
+let spin = true;
+const pointers = new Map();
+let pinch = 0;
+renderer.domElement.addEventListener('pointerdown', e => {
+  renderer.domElement.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+});
+renderer.domElement.addEventListener('pointermove', e => {
+  const p = pointers.get(e.pointerId);
+  if (!p) return;
+  if (pointers.size === 1) {
+    orbit.yaw -= (e.clientX - p.x) * .008;
+    orbit.pitch = THREE.MathUtils.clamp(orbit.pitch + (e.clientY - p.y) * .006, -.2, 1.3);
+  }
+  p.x = e.clientX; p.y = e.clientY;
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinch) zoom(pinch / d);
+    pinch = d;
+  }
+});
+const up = e => { pointers.delete(e.pointerId); pinch = 0; };
+renderer.domElement.addEventListener('pointerup', up);
+renderer.domElement.addEventListener('pointercancel', up);
+renderer.domElement.addEventListener('wheel', e => { e.preventDefault(); zoom(Math.exp(e.deltaY * .001)); }, { passive: false });
+function zoom(f) { orbit.dist = THREE.MathUtils.clamp(orbit.dist * f, 2, 12); }
+
+/* ---------- animation ---------- */
+let anim = 'idle', animT = 0;
+document.querySelectorAll('[data-anim]').forEach(b => b.addEventListener('click', () => {
+  anim = b.dataset.anim; animT = 0;
+  document.querySelectorAll('[data-anim]').forEach(o => o.classList.toggle('on', o === b));
+}));
+const spinBtn = document.getElementById('spin');
+spinBtn.addEventListener('click', () => {
+  spin = !spin;
+  spinBtn.textContent = 'Turntable: ' + (spin ? 'on' : 'off');
+});
+
+function resetPose() {
+  for (const k in J) { J[k].position.copy(REST[k].p); J[k].rotation.copy(REST[k].r); }
+  mario.position.y = 0;
+}
+
+function pose(t) {
+  resetPose();
+  const s = Math.sin;
+  if (anim === 'idle') {
+    J.torso.position.y += s(t * 2.2) * .008;
+    J.head.rotation.z = s(t * .9) * .05;
+    J.head.rotation.y = s(t * .6) * .15;
+    J.shoulderL.rotation.z += s(t * 2.2) * .03;
+    J.shoulderR.rotation.z -= s(t * 2.2) * .03;
+  } else if (anim === 'wave') {
+    J.shoulderR.rotation.z = -2.5;
+    J.shoulderR.rotation.x = -.2;
+    J.elbowR.rotation.z = -.4 + s(t * 9) * .45;
+    J.head.rotation.z = .1;
+    J.head.rotation.y = s(t * 1.2) * .1;
+    J.torso.rotation.z = .04;
+  } else if (anim === 'jump') {
+    // One hop per 1.2 s: crouch, launch with a fist in the air, land.
+    const p = (t % 1.2) / 1.2;
+    const air = p > .15 && p < .85 ? (p - .15) / .7 : -1;
+    if (air >= 0) {
+      mario.position.y = Math.sin(air * Math.PI) * 1.1;
+      J.shoulderR.rotation.z = -2.9; J.elbowR.rotation.z = -.2;
+      J.shoulderL.rotation.z = .9; J.shoulderL.rotation.x = .3;
+      J.legR.rotation.x = -.3;
+      J.legL.rotation.x = .9; J.footL.rotation.x = -1;
+      J.head.rotation.x = -.15;
+    } else {
+      const c = Math.sin((p < .15 ? p / .15 : (1 - p) / .15) * Math.PI / 2);
+      J.hips.position.y -= .08 * (1 - c);
+      J.legL.rotation.x = J.legR.rotation.x = -.4 * (1 - c);
+      J.footL.rotation.x = J.footR.rotation.x = .4 * (1 - c);
+      J.torso.rotation.x = .25 * (1 - c);
+    }
+  } else if (anim === 'run') {
+    const w = t * 11;
+    J.legL.rotation.x = s(w) * .9;
+    J.legR.rotation.x = -s(w) * .9;
+    J.footL.rotation.x = Math.max(0, -s(w)) * .6;
+    J.footR.rotation.x = Math.max(0, s(w)) * .6;
+    J.shoulderL.rotation.x = -s(w) * .9;
+    J.shoulderR.rotation.x = s(w) * .9;
+    J.elbowL.rotation.x = J.elbowR.rotation.x = -.9;
+    J.torso.rotation.x = .2;
+    J.head.rotation.x = -.15;
+    mario.position.y = Math.abs(s(w)) * .08;
+  }
+}
+
+function resize() {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight;
+  // Pull back on narrow screens so the whole figure stays in frame.
+  camera.fov = camera.aspect < .8 ? 50 : 35;
+  camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+resize();
+
+const clock = new THREE.Clock();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), .05);
+  animT += dt;
+  if (spin && !pointers.size) orbit.yaw += dt * .4;
+  pose(animT);
+  const cp = Math.cos(orbit.pitch);
+  camera.position.set(
+    orbit.target.x + Math.sin(orbit.yaw) * cp * orbit.dist,
+    orbit.target.y + Math.sin(orbit.pitch) * orbit.dist,
+    orbit.target.z + Math.cos(orbit.yaw) * cp * orbit.dist);
+  camera.lookAt(orbit.target);
+  renderer.render(scene, camera);
+});
+
+// Handy for poking at the model from the console.
+Object.assign(window, { THREE, mario, orbit, setAnim: a => { anim = a; animT = 0; } });
+</script>
+</body>
+</html>

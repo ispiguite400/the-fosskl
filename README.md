@@ -42,6 +42,19 @@ snapped to texel steps so the map does not shimmer as you walk.
 
 ---
 
+## Mario model viewer
+
+`mario/index.html` is a standalone viewer for a procedural 3D Mario built in
+`src/entities/mario.js`, from primitives like every other model here: cap
+with badge, moustache, overalls with gold buttons, gloves and shoes on a
+proper joint hierarchy. Serve the folder as above and open
+<http://localhost:8080/mario/>. Drag to orbit, scroll or pinch to zoom, and
+switch between idle, wave, jump and run animations.
+
+`buildMario()` returns a `THREE.Group` standing on y = 0 and facing +Z; its
+joints (`hips`, `torso`, `head`, `shoulderL/R`, `elbowL/R`, `handL/R`,
+`legL/R`, `footL/R`) are on `group.userData.joints` for posing.
+
 ## Controls
 
 | Action | Keyboard / Mouse | DualSense (PS5) |
