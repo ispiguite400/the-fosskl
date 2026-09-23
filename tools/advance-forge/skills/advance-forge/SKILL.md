@@ -69,7 +69,8 @@ plan → build (T-pose) → LOOK → fix → ... → rig check → LOOK → ship
         --close "0.4,0.05,1.6,0.16;0.5,0.08,1.2,0.4;0.6,0.1,0.35,0.4"
    ```
    This writes `NAME-sheet.png` (six views), `NAME-close*.png` (face, torso, legs),
-   `NAME.sculpt` and `NAME.glb`. It also prints every stroke that missed the surface.
+   and `NAME.sculpt` (no model file: only `ship.mjs` makes one). It also prints every stroke that
+   missed the surface.
 3. **Look.** Open the sheet and every close-up with the Read tool. Go through the review checklist in
    RULES.md §12 honestly, and write down what's wrong. **Never say a model is done without having
    looked at it.**
