@@ -4,13 +4,27 @@ Read all of this before making anything, every session. It's long because every 
 something to learn. Where a rule says **never** or **always**, it's there because the other way was
 tried, shown to the user, and rejected.
 
+### The two rules that apply to everything
+
+1. **Every character is modelled in a T-pose**: feet under the hips, legs straight, arms straight
+   out to the sides at shoulder height, palms down, fingers pointing out along the arm. No
+   exceptions, not even for a character that will only ever stand still. See §9.
+2. **Every model that leaves the studio goes through `scripts/ship.mjs`, and comes out at 2,000 to
+   5,000 triangles.** Never hand the game anything else: not the full sculpt, not `forge.mjs`'s
+   preview GLB, not `rig.mjs`'s check file. `ship.mjs` is the converter:
+   - it welds the character into one closed skin;
+   - it reduces it to 2k–5k triangles (it refuses anything outside that range);
+   - it bakes the full sculpt's detail into a texture;
+   - it rigs the character and bakes its animations.
+   See §11.
+
 Contents:
 
 1. [Where these rules come from](#1-where-these-rules-come-from)
 2. [What gets a custom model, and what doesn't](#2-what-gets-a-custom-model-and-what-doesnt)
 3. [Style: match the game](#3-style-match-the-game)
 4. [Plan before you build](#4-plan-before-you-build)
-5. [The method: nine stages, in order](#5-the-method-nine-stages-in-order)
+5. [The method: ten stages, in order](#5-the-method-ten-stages-in-order)
 6. [Proportions and anatomy](#6-proportions-and-anatomy)
 7. [Making it feel 3D](#7-making-it-feel-3d)
 8. [Heads and faces](#8-heads-and-faces)
@@ -52,6 +66,7 @@ What happened, and what each round taught:
 | Rig v1 | Soldier rigged as sculpted | Forearm fused to vest, holster fused to glove: stretching | Sculpt limbs clear of the body |
 | Anim v1 | Walk, idle, aim, crouch | Toes pointing up 30–45° | A foot bone is not horizontal when the foot is flat |
 | Ronin (template) | Built while writing this plugin | Balloon obi, dotted pleats, hakama webbing between the legs | See §13: each became a rule |
+| Plugin rules, v2 | The user added two rules | "Make all the character models T-pose"; "a triangle count converter that brings it down to 2k to 5k that the AI will always use to export" | §9 and §11: T-pose always, `ship.mjs` always |
 
 ---
 
@@ -164,22 +179,22 @@ Subject:        who or what, and its role in the game
 Reference:      what it should look like: era, costume pieces, the one image it must evoke
 Silhouette:     the three shapes that make it recognisable at 40 m
 Proportions:    height, heads tall, build (from §6)
-Neutral pose:   feet under hips, arms about 15° out, a clear gap at armpits and between the legs
+Pose:           T-POSE: feet under hips, arms straight out at shoulder height, palms down (§9)
 Pieces:         body (one clay build), head (own build), props (own builds: they ride one bone)
 Detail budget:  where the eye goes (face, chest, weapon) gets the most folds, straps and paint
 Palette:        4–6 named colours + 1 accent
-Triangles:      the ship budget (§11)
+Triangles:      the ship count, 2,000-5,000 (§11). More detail -> nearer 5k, crowds -> nearer 2k
 Rig notes:      anything wide (robes, capes, big sleeves) and how it will move
 ```
 
 ---
 
-## 5. The method: nine stages, in order
+## 5. The method: ten stages, in order
 
 The order is the method. `templates/ronin.js` is written in exactly these stages; copy it.
 
-1. **Skeleton.** Write the joint positions (`J`) first: hips, knees, ankles, shoulders, elbows,
-   wrists. Everything is placed relative to them, and the same numbers become the rig's joints file.
+1. **Skeleton, in a T-pose.** Write the joint positions (`J`) first: hips, knees, ankles,
+   shoulders, elbows, wrists, with the arms straight out to the sides (§9). Everything is placed relative to them, and the same numbers become the rig's joints file.
    This single step prevents most rigging problems.
 2. **Anatomy, under the clothes.** Build a body in masses, even if it will be covered: ribcage,
    chest, belly, pelvis, trapezius, deltoids, upper arm, forearm, thigh, calf. Clothes draped over
@@ -202,6 +217,8 @@ The order is the method. `templates/ronin.js` is written in exactly these stages
 9. **Paint and shade.** Colour by part (`C.autoPaint` runs as each piece is built). Add pattern,
    tonal drift, weave, wear and dust, paint the small details (eyes, the collar V, stripes), then
    `C.bakeShading()`.
+10. **Ship.** `scripts/ship.mjs`, and nothing else, makes the game file at 2,000–5,000 triangles
+    (§11).
 
 **Shapes are allowed, as material, not as the result.** Starting from primitives and clay forms is
 fine; the user said so. Stopping there isn't: every build ends with folds, a brush pass, paint and
@@ -348,11 +365,29 @@ The skeleton is SculptFree's 21-bone humanoid: Hips, Spine, Chest, Neck and Head
 side (.L = the character's left, +X) Shoulder, UpperArm, LowerArm, Hand, UpperLeg, LowerLeg, Foot
 and Toes.
 
-1. **Sculpt in the neutral rig pose**: feet under the hips (ankles about ±0.12), knees straight,
-   arms about 15° out from the body. Leave **a clear gap** at the armpit, between the forearm and the
-   body or vest, between the hand and anything on the hip, and between the legs below the crotch.
-   **Anything the clay build fuses together becomes one surface and stretches when either side
-   moves.** No weight setting can fix it; only moving the geometry apart can.
+1. **Every character is sculpted in a T-pose. Always.**
+   - **Legs**: feet under the hips (ankles about ±0.12 m for a 1.8 m man), knees straight, toes
+     forward, a clear gap between the legs below the crotch.
+   - **Arms**: straight out to the sides, level with the shoulders. For a 1.8 m man: shoulder joint
+     about ±0.19 at y 1.43, elbow about ±0.46, wrist about ±0.70, all at y ≈ 1.42.
+   - **Hands**: open, palms down, fingers together and pointing out along the arm with a slight
+     natural curl, thumb forward and down.
+   - **Head and spine**: straight, facing +Z.
+   - **Clothing hangs as it would with the arms raised**: a kimono sleeve hangs *below* the arm,
+     a cape falls straight down the back.
+
+   Why: in a T-pose nothing touches anything it shouldn't. Anything the clay build fuses together
+   becomes one surface and stretches when either side moves, and no weight setting can fix that.
+   The T-pose keeps the arms far from the body and hips, so this never happens. It's also the
+   industry standard, so the file works in every animation tool.
+
+   The Rig Player and `forge-loader.js` lower the arms automatically when they load a T-posed file.
+   They skin the mesh into an arms-down pose and make that the rest pose, so the clips and the
+   game's own procedural animation (`rotation 0 = arm hanging`) work unchanged, while the file
+   stays a clean T-pose.
+
+   `rig.mjs` and `ship.mjs` print the arm angle, and warn if a character isn't in a T-pose. Treat
+   that warning as a failed build.
 2. **Garments that span both legs** (hakama, robes, long skirts and coats) web between the legs in a
    walk. Build them **split, one leg each**, like real hakama. For a true skirt or robe, keep the
    hem clear of the knees, or ask the user whether a stiff, hips-driven skirt is acceptable.
@@ -364,15 +399,17 @@ and Toes.
    `"$attach": [{ "at": [x, y, z], "bone": "Hips" }]`.
 5. **Weapons in the hand** (the soldier's rifle) are separate pieces touching the hand; they ride
    `Hand.*`. A sheathed sword rides `Hips`, a quiver `Chest`, a hat `Head`.
-6. **Read the pose sheet** (`NAME_poses.png`): rest, step, arms up and crouch, front and side, plus
-   the weight colours. Look for:
+6. **Read the pose sheet** (`NAME_poses.png`): the T-pose rest, arms lowered, step, arms up and
+   crouch, front and side, plus the weight colours. Look for:
+   - the armpit and shoulder deforming badly when the arms come down, the thing a T-pose rig must
+     get right: if it creases or collapses, the shoulder joint is too far in or too far out;
    - stretching between a limb and the body,
    - webbing between the legs,
    - a prop left behind or bending,
    - a joint drawn outside the limb,
    - the head deforming (the Neck and Head joints are wrong).
-7. Keep the rigged model at **60k triangles or fewer** (`rig.mjs --target`, default 60000) unless
-   it's a boss or cutscene character.
+7. `rig.mjs` is for **checking** the rig on a 60k mesh. The game file is always made by
+   `ship.mjs` (§11), which rigs the 2k–5k mesh itself with the same joints file.
 
 ---
 
@@ -401,13 +438,36 @@ and Toes.
 
 ## 11. Putting it in the game
 
-1. **Where files go**: `assets/models/<name>_animated.glb` (make the folder). Keep the build script
-   next to it or in `tools/`, so the model can be rebuilt. Never ship a model you can't rebuild.
+1. **Export with the converter, always**:
+   ```bash
+   node scripts/ship.mjs out/ronin/ronin.sculpt --out out/ronin --joints ronin_joints.json [--tris 4000] [--clips my_clips.js]
+   node scripts/ship.mjs out/katana/katana.sculpt --out out/katana --static --tris 2000       # a prop
+   ```
+   What it does, in order:
+   1. **Welds** the character's pieces (body, head, hair, clothing layers) into one closed skin.
+      Hidden inner layers would show through at low triangle counts and waste the budget.
+      Props named in the joints file's `$attach` stay separate, so they stay rigid.
+   2. **Reduces** to `--tris`, **2,000–5,000 only** (default 4,000). Anything outside that range
+      is clamped into it.
+   3. **Bakes a texture from the full sculpt** ("high to low", as game studios do). Every texel of
+      the reduced mesh looks up the visible surface of the full-detail sculpt and takes its
+      colour: the paint, the pattern, and the baked folds, creases and shading. So a 4,000-triangle
+      model still shows every fold you sculpted. It uses a unique, non-overlapping texture layout,
+      so no two surfaces share pixels.
+   4. **Rigs** it with your joints file and **bakes every clip** (built-in plus `--clips`) into the
+      file.
+   5. **Renders the game file itself** with its texture: `NAME_game-sheet.png`,
+      `NAME_game-face.png` and `NAME_game_anim_walk.png`. Look at all of them. That's what the
+      player will see.
+
+   The output is `NAME_game.glb`. Put it in `assets/models/` (make the folder). Keep the build
+   script, the joints file and the `.sculpt` too, so the model can be rebuilt; never ship a model
+   you can't rebuild.
 2. **Load it** with the bundled loader. Copy `game/forge-loader.js` into `src/entities/` and use it:
    ```js
    import * as THREE from 'three';
    import { loadForgeCharacter } from './forge-loader.js';
-   const ronin = await loadForgeCharacter('assets/models/ronin_animated.glb', THREE);
+   const ronin = await loadForgeCharacter('assets/models/ronin_game.glb', THREE);
    scene.add(ronin.root);
    ronin.play('Walk');            // then ronin.update(dt) every frame
    ```
@@ -419,23 +479,22 @@ and Toes.
 3. **Swap, don't duplicate**: when a character gets a forged model, change the spot that calls
    `buildHumanoid(...)` for it to load the GLB, keeping the same `{ root, rig, height }` shape.
    Keep a fallback to the primitive build if the file fails to load.
-4. **Triangle budgets** (game-ready, after `--target`):
+4. **Triangle counts: always 2,000–5,000** (`ship.mjs --tris`):
 
-   | What | Triangles |
+   | What | `--tris` |
    |---|---|
-   | Player-class body, companion | 40–60k |
-   | Named NPC | 20–35k |
-   | Common enemy (many on screen) | 12–25k |
-   | Boss | 60–120k |
-   | First-person weapon | 8–20k |
-   | Held or cutscene prop | 3–10k |
+   | Boss, player class, main companion | 4,500–5,000 |
+   | Named NPC, elite enemy | 3,500–4,500 |
+   | Common enemy (many on screen) | 2,500–3,500 |
+   | Crowd villager, animal | 2,000–2,500 |
+   | First-person weapon, hero prop | 2,000–3,000 (`--static`) |
 
-   Painted detail (eyes, stripes) blurs below about 150k on a full character. Model small features
-   that must survive reduction (the iris ridge, a crest) as forms, or keep the face a separate
-   piece at higher density.
+   Sculpt at full detail regardless. The detail reaches the game through the texture, not the
+   triangles. The triangles only carry the silhouette, so spend them where the outline is: head,
+   hands, weapon.
 5. **Check in the game's own renderer** (the vendored three.js, strong sun, dark shadows), not just
-   in SculptFree. Colours come out right only through forge-loader, which converts sRGB vertex
-   colours to linear.
+   in SculptFree. `forge-loader.js` shows the texture and lowers the T-pose arms, so always load
+   through it.
 
 ---
 
@@ -470,9 +529,16 @@ Surface:
 - [ ] Do colour edges land on form edges?
 - [ ] Was the shading baked, and are the creases dark and the ridges lit?
 
+Pose and export:
+
+- [ ] Is it a clean T-pose (arms level, straight out, palms down; legs straight, feet under hips)?
+- [ ] Was it exported with `ship.mjs`, at 2,000–5,000 triangles?
+- [ ] Do the `_game` renders look like the sculpt, with the folds, face and pattern all there in
+  the texture?
+
 Rig and animation (once rigged):
 
-- [ ] Is there a gap between the limbs and the body, and between the legs?
+- [ ] Is there a gap between the legs? Do the armpits deform cleanly when the arms come down?
 - [ ] Do all four test poses deform cleanly, with props on the right bones?
 - [ ] Are the feet flat and planted in every clip, from the side?
 
@@ -492,14 +558,16 @@ Rig and animation (once rigged):
 | White boxes that read as buttons | A sculpted panel where a painted one belongs | Paint collars, V-necks and stripes in `autoPaint` |
 | Eyes look dead or startled | No iris or pupil; lids too thin | Paint the iris and pupil; a heavier upper lid |
 | A folded rim looks jagged where two colours meet | Colour changes on a smooth surface | Put a form edge there (a collar band, a seam) |
-| Painted detail blurs after export | Decimation below about 150k merges the painted vertices | Model the feature, or raise `--target` |
-| Arm lift stretches the vest | The forearm was sculpted touching the vest, and fused | Arms about 15° out with a gap, then rebuild |
+| Painted detail blurs after export | Colour kept on vertices, which a 4k mesh can't hold | Export only with `ship.mjs`: it bakes the colour into a texture from the full sculpt |
+| Dark bands, blotches or specks on a shipped model | Hidden inner layers (scalp under hair, neck inside a collar) showing through once reduced; or overlapping texture space | `ship.mjs` welds the pieces into one skin and uses a unique texture layout; never reduce by hand |
+| Character loads in a T-pose in the game | Loaded without forge-loader | Always load through `forge-loader.js` (it lowers the arms) |
+| Arm lift stretches the vest | The forearm was sculpted touching the vest, and fused | T-pose (§9), then rebuild |
 | A strand from the hand to the thigh | The holster touched the glove, and fused | Move the prop lower or away |
 | Web between the legs in a walk | Wide trousers or a robe built as one surface | Split legs with a gap (hakama), or a skirt clear of the knees |
 | The sword swings with the arm | The rig gave the prop to the nearest bone | `$attach` it to Hips |
 | Joints outside the limbs | The automatic skeleton fit | Always pass `--joints` from the build's `J` |
 | Toes pointing up 30–45° in clips | A foot angle of 90 treated as horizontal | Fixed in the player: 90 = flat (per-foot flat angle) |
-| The model walks with a limp | It was sculpted mid-stride | Sculpt neutral (§9). `abs` angles hide it, but game code using `rig` won't |
+| The model walks with a limp | It was sculpted mid-stride | T-pose (§9). `abs` angles hide it, but game code using `rig` won't |
 | Colours washed out in the game | sRGB vertex colours lit as linear | Load through `forge-loader.js` (it converts) |
 | Folds jump onto another limb | The surface probe reached a neighbouring form | Keep `reach` short (0.15–0.3); `C.fold` stops at a jump |
 | Nothing renders / the doctor fails | Playwright or Chromium missing, or the app copy stale | `npm i -g playwright`, or set `CHROME_PATH`; run `sync.sh` |

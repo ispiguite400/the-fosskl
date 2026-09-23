@@ -1,5 +1,8 @@
 # Advance Forge: API reference
 
+**Characters are built in a T-pose** (arms straight out to the sides at shoulder height, palms
+down), and **every export is `ship.mjs` at 2,000–5,000 triangles**. See the top of RULES.md.
+
 Build scripts run **inside the SculptFree page**, after `sculptkit.js` and `clay.js` are loaded. You
 get two globals:
 
@@ -163,11 +166,11 @@ M.opts({ dyntopo: false, symmetryX: true, strokeSmoothing: 0, pressureRadius: fa
 | Command | Does |
 |---|---|
 | `forge.mjs doctor` | Checks the environment. Run it first |
-| `forge.mjs build a.js b.js --out DIR --name N [--close "yaw,pitch,y,halfH;..."] [--target 150000] [--load start.sculpt] [--no-save]` | Build, render, save |
+| `forge.mjs build a.js b.js --out DIR --name N [--close "yaw,pitch,y,halfH;..."] [--load start.sculpt] [--no-save]` | Build, render, save the `.sculpt` |
 | `forge.mjs render FILE --out DIR [--close ...] [--cavity 0]` | Render any `.sculpt` / `.glb` / `.obj` / `.stl` / `.ply` |
-| `forge.mjs export FILE.sculpt --out DIR [--target N] [--format glb\|obj\|stl\|ply\|roblox]` | Reduce and write a model file |
-| `rig.mjs MODEL --out DIR --joints joints.json [--target 60000]` | Fit, bind, pose sheet, rigged GLB |
-| `animate.mjs RIGGED.glb --out DIR [--clips my.js] [--only walk,idle] [--frames 6] [--bake]` | Clip strips, and the baked GLB |
+| `rig.mjs MODEL --out DIR --joints joints.json [--target 60000]` | A rig **check**: fit, bind, pose sheet (T-pose, arms lowered, step, arms up, crouch) |
+| **`ship.mjs MODEL.sculpt --out DIR --joints joints.json [--tris 2000-5000] [--clips my.js] [--texture 1024]`** | **The export.** Weld, reduce to 2,000–5,000 triangles, bake a texture from the full sculpt, rig, bake clips, render the game file. `--static` for a prop (no rig) |
+| `animate.mjs NAME_game.glb --out DIR [--clips my.js] [--only walk,idle] [--frames 6]` | Clip strips, to check each clip (`ship.mjs` already bakes them) |
 
 Close-up spec: `yaw,pitch,y,halfHeight`. Yaw 0 faces the model's front, 1.57 its left side and
 3.14 its back. Examples:

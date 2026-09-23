@@ -7,6 +7,13 @@ app in `tools/sculpt`, and the **Rig Player** in `tools/anim` from scripts. With
 characters and props with real brushes and clay forms, rigs them, animates them, looks at every step
 as rendered images, and loads the result into the game.
 
+Two rules apply to everything it makes:
+
+- **Every character is sculpted in a T-pose.**
+- **Every export goes through `ship.mjs`, the triangle converter.** Nothing reaches the game any
+  other way. It produces 2,000–5,000 triangles, with the full sculpt's detail baked into a texture,
+  rigged and animated.
+
 It also comes with the rules for doing that well. `RULES.md` holds:
 
 - the game's style, and what deserves a custom model and what doesn't;
@@ -15,9 +22,9 @@ It also comes with the rules for doing that well. `RULES.md` holds:
 - faces, rigging, animation, and triangle budgets;
 - a review checklist, and a table of every pitfall already hit.
 
-| | |
-|---|---|
-| ![The ronin template](skills/advance-forge/templates/ronin-sheet.png) | ![The ronin walking](skills/advance-forge/templates/ronin-walk.png) |
+| The sculpt, in a T-pose | The game file: 4,000 triangles, textured | Walking in the game |
+|---|---|---|
+| ![The ronin sculpt](skills/advance-forge/templates/ronin-sheet.png) | ![The shipped ronin](skills/advance-forge/templates/ronin-game-sheet.png) | ![The ronin walking](skills/advance-forge/templates/ronin-walk.png) |
 
 ## Install
 
@@ -49,7 +56,7 @@ skills/advance-forge/
   RULES.md               the rule sheet
   API.md                 every scripting call, with pitfalls
   app/                   SculptFree (with rigging) and the Rig Player, one HTML file each
-  scripts/               forge.mjs (doctor/build/render/export), rig.mjs, animate.mjs, lib/
+  scripts/               forge.mjs (doctor/build/render), rig.mjs (check), ship.mjs (THE export), animate.mjs, lib/
   game/forge-loader.js   load a forged, rigged, animated GLB into three.js with the game's rig names
   templates/ronin.js     a complete worked character: build, joints, previews
 ```
@@ -58,8 +65,8 @@ skills/advance-forge/
 
 ```bash
 S=tools/advance-forge/skills/advance-forge
-node $S/scripts/forge.mjs build $S/templates/ronin.js --out out --name ronin --close "0.4,0.05,1.6,0.16"
-node $S/scripts/rig.mjs out/ronin.sculpt --out out --joints $S/templates/ronin_joints.json
-node $S/scripts/animate.mjs out/ronin_rigged.glb --out out --bake
-# out/ronin_animated.glb  ->  assets/models/, loaded with game/forge-loader.js
+node $S/scripts/forge.mjs build $S/templates/ronin.js --out out --name ronin --close "0.4,0.05,1.6,0.16"   # sculpt (T-pose)
+node $S/scripts/rig.mjs out/ronin.sculpt --out out --joints $S/templates/ronin_joints.json                # check the rig
+node $S/scripts/ship.mjs out/ronin.sculpt --out out --joints $S/templates/ronin_joints.json --tris 4000   # THE export
+# out/ronin_game.glb  ->  assets/models/, loaded with game/forge-loader.js (which lowers the T-pose arms)
 ```

@@ -511,14 +511,19 @@ How the weights are worked out:
   few smoothing passes take out the seams. Each vertex keeps its four
   strongest bones.
 
+With `textureSize` set, **Rigged GLB** also bakes the colour into a texture, using a unique chart
+layout (`Texture.unwrapCharts`): every connected patch facing one way is its own chart, packed
+without overlap. That's what the Advance Forge converter (`tools/advance-forge`) uses to ship
+2k–5k triangle characters.
+
 The skeleton is saved with the project. Every joint's rest orientation is
 the identity, so a pose is just a rotation per joint, and the exported
 inverse bind matrices are plain translations.
 
-**Sculpt with rigging in mind.** Anything the clay build fuses together,
-such as a forearm resting against a vest, becomes one surface and stretches
-when the arm moves. Keep limbs a finger's width clear of the body, as a
-character artist would before rigging.
+**Sculpt with rigging in mind: use a T-pose.** Anything the clay build fuses together, such as a
+forearm resting against a vest, becomes one surface and stretches when the arm moves. With the
+arms straight out, nothing touches. The test poses bring the arms down first, so you can see the
+shoulders deform.
 
 `../anim/` has a player for the result, with walk, idle, aim and crouch
 clips for this skeleton.

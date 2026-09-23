@@ -140,6 +140,135 @@ function readAccessor(g, i, asFloat) {
   return { data: out, size: n };
 }
 
+/*
+ * armsDownRest — turn a T-posed skinned model into an arms-down one at load.
+ *
+ * Characters are sculpted and exported in a T-pose (arms straight out),
+ * which is what rigs cleanly. Animation code, though, is written for arms
+ * that hang: "rotation 0 = arm down" is what the game's rig and the clips
+ * assume. So on load the arms are lowered to hang a little out from the
+ * body, the mesh is skinned into that pose, and that pose becomes the new
+ * rest: every joint back to identity rotation, joint positions and inverse
+ * bind matrices recomputed. The file itself is untouched.
+ *
+ * Rotations recorded against the T-pose (animations inside the file) and
+ * against the new rest (anything authored here) convert both ways:
+ *   upper arm:        conv = orig * q^-1        orig = conv * q
+ *   below the arm:    conv = q * orig * q^-1    orig = q^-1 * conv * q
+ * where q is the rotation that lowered that arm.
+ *
+ * nodes:  [{ name, t:[3], r:[4], parent }]  (edited in place)
+ * joints: node index per skin joint
+ * ibm:    Float32Array(joints.length * 16)   (edited in place)
+ * prims:  [{ pos, nor, jn, wt }] skinned vertex data (edited in place)
+ * Returns null when the model is not in a T-pose or has rest rotations
+ * this does not handle; otherwise { angle, toConverted(i, q), toOriginal(i, q) }.
+ */
+function armsDownRest(nodes, joints, ibm, prims, hangDeg) {
+  const byName = {};
+  nodes.forEach((n, i) => { byName[n.name] = i; });
+  const need = ['UpperArm.L', 'LowerArm.L', 'UpperArm.R', 'LowerArm.R'];
+  if (!need.every((n) => byName[n] !== undefined)) return null;
+  // only rigs whose rest rotations are all identity (what SculptFree exports)
+  if (joints.some((j) => { const r = nodes[j].r; return Math.abs(r[3]) < 0.99999; })) return null;
+  const world = () => {
+    const W = nodes.map(() => null);
+    const solve = (i) => {
+      if (W[i]) return W[i];
+      const n = nodes[i], L = trs(n.t, n.r);
+      W[i] = n.parent >= 0 ? mul4(solve(n.parent), L) : L;
+      return W[i];
+    };
+    nodes.forEach((_, i) => solve(i));
+    return W;
+  };
+  const W0 = world(), pos = (W, i) => [W[i][12], W[i][13], W[i][14]];
+  const a0 = pos(W0, byName['UpperArm.L']), b0 = pos(W0, byName['LowerArm.L']);
+  const angle = Math.atan2(Math.hypot(b0[0] - a0[0], b0[2] - a0[2]), a0[1] - b0[1]) * 180 / Math.PI;
+  if (angle < 50) return null;
+
+  const hang = (hangDeg === undefined ? 8 : hangDeg) * Math.PI / 180;
+  const arms = [];
+  for (const side of ['L', 'R']) {
+    const ai = byName['UpperArm.' + side], a = pos(W0, ai), b = pos(W0, byName['LowerArm.' + side]);
+    const d = norm3([b[0] - a[0], b[1] - a[1], b[2] - a[2]]);
+    const target = norm3([Math.sign(d[0]) * Math.sin(hang), -Math.cos(hang), d[2] * 0.3]);
+    const q = fromTo(d, target);
+    const desc = new Set();
+    const walk = (i) => nodes.forEach((n, k) => { if (n.parent === i) { desc.add(k); walk(k); } });
+    walk(ai);
+    arms.push({ node: ai, q, qi: [-q[0], -q[1], -q[2], q[3]], desc });
+    nodes[ai].r = q;
+  }
+
+  // skin the mesh into the lowered pose
+  const W1 = world();
+  const skinM = joints.map((j, k) => mul4(W1[j], Array.from(ibm.subarray(k * 16, k * 16 + 16))));
+  for (const p of prims) {
+    if (!p.jn || !p.wt) continue;
+    const n = p.pos.length / 3;
+    for (let v = 0; v < n; v++) {
+      const x = p.pos[v * 3], y = p.pos[v * 3 + 1], z = p.pos[v * 3 + 2];
+      const nx = p.nor ? p.nor[v * 3] : 0, ny = p.nor ? p.nor[v * 3 + 1] : 0, nz = p.nor ? p.nor[v * 3 + 2] : 0;
+      let ox = 0, oy = 0, oz = 0, mx = 0, my = 0, mz = 0;
+      for (let k = 0; k < 4; k++) {
+        const w = p.wt[v * 4 + k]; if (!w) continue;
+        const m = skinM[p.jn[v * 4 + k]];
+        ox += w * (m[0] * x + m[4] * y + m[8] * z + m[12]); oy += w * (m[1] * x + m[5] * y + m[9] * z + m[13]); oz += w * (m[2] * x + m[6] * y + m[10] * z + m[14]);
+        mx += w * (m[0] * nx + m[4] * ny + m[8] * nz); my += w * (m[1] * nx + m[5] * ny + m[9] * nz); mz += w * (m[2] * nx + m[6] * ny + m[10] * nz);
+      }
+      p.pos[v * 3] = ox; p.pos[v * 3 + 1] = oy; p.pos[v * 3 + 2] = oz;
+      if (p.nor) { const l = Math.hypot(mx, my, mz) || 1; p.nor[v * 3] = mx / l; p.nor[v * 3 + 1] = my / l; p.nor[v * 3 + 2] = mz / l; }
+    }
+  }
+  // that pose is the new rest: identity rotations, joints where the pose put them
+  const wp = nodes.map((_, i) => pos(W1, i));
+  nodes.forEach((n, i) => {
+    if (!joints.includes(i)) return;
+    const pp = n.parent >= 0 ? wp[n.parent] : [0, 0, 0];
+    n.t = [wp[i][0] - pp[0], wp[i][1] - pp[1], wp[i][2] - pp[2]];
+    n.r = [0, 0, 0, 1];
+  });
+  joints.forEach((j, k) => {
+    const m = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -wp[j][0], -wp[j][1], -wp[j][2], 1];
+    ibm.set(m, k * 16);
+  });
+  const find = (i) => arms.find((a) => a.node === i || a.desc.has(i));
+  return {
+    angle,
+    toConverted(i, r) {
+      const a = find(i); if (!a) return r;
+      return a.node === i ? qmul(r, a.qi) : qmul(qmul(a.q, r), a.qi);
+    },
+    toOriginal(i, r) {
+      const a = find(i); if (!a) return r;
+      return a.node === i ? qmul(r, a.q) : qmul(qmul(a.qi, r), a.q);
+    }
+  };
+
+  function norm3(v) { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; }
+  function fromTo(a, b) {
+    const c = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const q = [c[0], c[1], c[2], 1 + d], l = Math.hypot(q[0], q[1], q[2], q[3]) || 1;
+    return q.map((x) => x / l);
+  }
+  function qmul(a, b) {
+    return [a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1], a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+            a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3], a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]];
+  }
+  function trs(t, q) {
+    const [x, y, z, w] = q, x2 = x + x, y2 = y + y, z2 = z + z;
+    const xx = x * x2, xy = x * y2, xz = x * z2, yy = y * y2, yz = y * z2, zz = z * z2, wx = w * x2, wy = w * y2, wz = w * z2;
+    return [1 - (yy + zz), xy + wz, xz - wy, 0, xy - wz, 1 - (xx + zz), yz + wx, 0, xz + wy, yz - wx, 1 - (xx + yy), 0, t[0], t[1], t[2], 1];
+  }
+  function mul4(a, b) {
+    const o = new Array(16);
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) o[c * 4 + r] = a[r] * b[c * 4] + a[4 + r] * b[c * 4 + 1] + a[8 + r] * b[c * 4 + 2] + a[12 + r] * b[c * 4 + 3];
+    return o;
+  }
+}
+
 /* ---------------- model ---------------- */
 function buildModel(g) {
   const J = g.json;
@@ -165,10 +294,17 @@ function buildModel(g) {
       const jn = at.JOINTS_0 !== undefined ? Float32Array.from(readAccessor(g, at.JOINTS_0).data) : null;
       const wt = at.WEIGHTS_0 !== undefined ? readAccessor(g, at.WEIGHTS_0, true).data : null;
       const idx = p.indices !== undefined ? readAccessor(g, p.indices).data : null;
-      let base = [0.8, 0.8, 0.8, 1];
+      const uv = at.TEXCOORD_0 !== undefined ? readAccessor(g, at.TEXCOORD_0, true).data : null;
+      let base = [0.8, 0.8, 0.8, 1], image = null;
       const mat = p.material !== undefined ? J.materials[p.material] : null;
-      if (mat && mat.pbrMetallicRoughness && mat.pbrMetallicRoughness.baseColorFactor) base = mat.pbrMetallicRoughness.baseColorFactor;
-      prims.push({ node: n.i, skin: n.skin, pos, nor, col, jn, wt, idx, count, base });
+      const pbr = mat && mat.pbrMetallicRoughness;
+      if (pbr && pbr.baseColorFactor) base = pbr.baseColorFactor;
+      if (pbr && pbr.baseColorTexture && uv && J.textures) {
+        // the colour texture, embedded in the GLB's binary chunk
+        const img = J.images[J.textures[pbr.baseColorTexture.index].source], bv = J.bufferViews[img.bufferView];
+        if (bv) image = { bytes: g.bin.slice(bv.byteOffset || 0, (bv.byteOffset || 0) + bv.byteLength), mime: img.mimeType || 'image/png' };
+      }
+      prims.push({ node: n.i, skin: n.skin, pos, nor, col, jn, wt, idx, count, base, uv, image });
     }
   });
   const anims = (J.animations || []).map((a, k) => ({
@@ -261,10 +397,11 @@ if (!gl) document.getElementById('hint').innerHTML = '<div><b>WebGL 2 is needed<
 
 const VS = `#version 300 es
 layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNor; layout(location=2) in vec4 aCol;
-layout(location=3) in vec4 aJoint; layout(location=4) in vec4 aWeight;
+layout(location=3) in vec4 aJoint; layout(location=4) in vec4 aWeight; layout(location=5) in vec2 aUV;
 uniform mat4 uViewProj, uModel; uniform mat4 uJoints[64]; uniform bool uSkinned;
-out vec3 vN; out vec4 vC; out vec3 vW;
+out vec3 vN; out vec4 vC; out vec3 vW; out vec2 vUV;
 void main() {
+  vUV = aUV;
   mat4 m = uModel;
   if (uSkinned) m = aWeight.x * uJoints[int(aJoint.x)] + aWeight.y * uJoints[int(aJoint.y)] + aWeight.z * uJoints[int(aJoint.z)] + aWeight.w * uJoints[int(aJoint.w)];
   vec4 w = m * vec4(aPos, 1.0);
@@ -273,8 +410,9 @@ void main() {
 }`;
 const FS = `#version 300 es
 precision highp float;
-in vec3 vN; in vec4 vC; in vec3 vW; uniform vec3 uEye; out vec4 o;
+in vec3 vN; in vec4 vC; in vec3 vW; in vec2 vUV; uniform vec3 uEye; uniform sampler2D uTex; uniform bool uHasTex; out vec4 o;
 void main() {
+  vec4 base = uHasTex ? vC * texture(uTex, vUV) : vC;
   vec3 n = normalize(vN); vec3 v = normalize(uEye - vW);
   if (dot(n, v) < 0.0) n = -n;
   vec3 key = normalize(vec3(0.45, 0.85, 0.55)), fill = normalize(vec3(-0.7, 0.3, -0.4));
@@ -282,7 +420,7 @@ void main() {
   float d = max(dot(n, key), 0.0), f = max(dot(n, fill), 0.0);
   float spec = pow(max(dot(n, normalize(key + v)), 0.0), 28.0) * 0.12;
   float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0) * 0.25;
-  vec3 c = vC.rgb * (hemi * 0.75 + vec3(1.0, 0.96, 0.9) * d * 0.85 + vec3(0.55, 0.6, 0.7) * f * 0.25) + spec + rim * vec3(0.7, 0.75, 0.85);
+  vec3 c = base.rgb * (hemi * 0.75 + vec3(1.0, 0.96, 0.9) * d * 0.85 + vec3(0.55, 0.6, 0.7) * f * 0.25) + spec + rim * vec3(0.7, 0.75, 0.85);
   o = vec4(pow(c, vec3(0.95)), 1.0);
 }`;
 const GVS = `#version 300 es
@@ -345,6 +483,19 @@ function upload(model) {
     if (pr.nor) attr(1, pr.nor, 3); else gl.vertexAttrib3f(1, 0, 1, 0);
     if (pr.col) attr(2, pr.col, 4); else gl.vertexAttrib4f(2, ...pr.base);
     if (pr.jn && pr.wt) { attr(3, pr.jn, 4); attr(4, pr.wt, 4); } else { gl.vertexAttrib4f(3, 0, 0, 0, 0); gl.vertexAttrib4f(4, 1, 0, 0, 0); }
+    if (pr.uv) attr(5, pr.uv, 2); else gl.vertexAttrib2f(5, 0, 0);
+    if (pr.image) {
+      pr.tex = null;
+      createImageBitmap(new Blob([pr.image.bytes], { type: pr.image.mime })).then((bmp) => {
+        const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        pr.tex = t; state.texturesPending = Math.max(0, (state.texturesPending || 1) - 1);
+      });
+      state.texturesPending = (state.texturesPending || 0) + 1;
+    }
     if (pr.idx) { const b = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, b); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, pr.idx, gl.STATIC_DRAW);
       pr.idxType = pr.idx instanceof Uint32Array ? gl.UNSIGNED_INT : pr.idx instanceof Uint8Array ? gl.UNSIGNED_BYTE : gl.UNSIGNED_SHORT; }
     gl.bindVertexArray(null);
@@ -452,6 +603,8 @@ function frame() {
     gl.uniform1i(progMesh.u.uSkinned, skinned ? 1 : 0);
     gl.uniformMatrix4fv(progMesh.u.uModel, false, m.nodes[pr.node].world);
     if (skinned) gl.uniformMatrix4fv(progMesh.u.uJoints, false, jointMatrices(m, pr.skin));
+    gl.uniform1i(progMesh.u.uHasTex, pr.tex ? 1 : 0);
+    if (pr.tex) { gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, pr.tex); gl.uniform1i(progMesh.u.uTex, 0); }
     gl.bindVertexArray(pr.vao);
     if (pr.idx) gl.drawElements(gl.TRIANGLES, pr.idx.length, pr.idxType, 0); else gl.drawArrays(gl.TRIANGLES, 0, pr.count);
   }
@@ -504,6 +657,16 @@ function tick(now) {
 function load(buf, name) {
   const g = parseGLB(buf), model = buildModel(g);
   if (!model.prims.length) throw new Error('No meshes in that file');
+  // a T-posed character gets arms-down as its rest, so the clips (and the game) can treat 0 as "hanging"
+  model.conv = null;
+  if (model.skins.length && model.skins[0].ibm) {
+    const sk = model.skins[0];
+    model.conv = armsDownRest(model.nodes, sk.joints, sk.ibm, model.prims.filter((p) => p.skin === 0 && p.jn && p.wt), 8);
+    if (model.conv) for (const a of model.anims) for (const c of a.channels) {
+      if (c.path !== 'rotation') continue;
+      for (let k = 0; k < c.output.length; k += 4) c.output.set(model.conv.toConverted(c.node, Array.from(c.output.subarray(k, k + 4))), k);
+    }
+  }
   if (state.model) { /* old buffers are left to the garbage collector with the context objects */ }
   upload(model);
   state.model = model;
@@ -572,7 +735,7 @@ function exportWithAnimations() {
     const hips = state.human.byName['Hips'];
     for (let f = 0; f < frames; f++) {
       applyClip(m, clip, times[f]);
-      driven.forEach((n, k) => rot[k].set(n.pr || n.r, f * 4));
+      driven.forEach((n, k) => rot[k].set(m.conv ? m.conv.toOriginal(n.i, n.pr || n.r) : (n.pr || n.r), f * 4));
       hipT.set(hips.pt || hips.t, f * 3);
     }
     const anim = { name: clip.name, samplers: [], channels: [] };

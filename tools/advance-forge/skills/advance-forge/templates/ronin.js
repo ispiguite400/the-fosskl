@@ -2,8 +2,8 @@
  * TEMPLATE — a ronin, the worked example for Advance Forge.
  *
  * Build it:   node ../scripts/forge.mjs build ronin.js --out out --name ronin --close "0.4,0.05,1.6,0.16"
- * Rig it:     node ../scripts/rig.mjs out/ronin.sculpt --out out --joints ronin_joints.json
- * Animate:    node ../scripts/animate.mjs out/ronin_rigged.glb --out out --bake
+ * Ship it:    node ../scripts/ship.mjs out/ronin.sculpt --out out --joints ronin_joints.json
+ *             (the game file: 2k-5k triangles, textured, rigged, animated. ALWAYS export this way)
  *
  * Copy this file for a new character and change the forms, not the order.
  * The order IS the method:
@@ -17,10 +17,11 @@
  *   8. brush pass    a crease in every fold valley, seams, stitching
  *   9. paint+shade   colours by part, pattern, wear, then baked shading
  *
- * Neutral stance: feet under the hips, knees straight, arms hanging about
- * 15 degrees out from the body with a clear gap. That is the pose that rigs
- * cleanly and that the game's walk cycle expects. Units are metres, feet at
- * y = 0, facing +Z, the character's left is +X.
+ * T-POSE, always, for every character: feet under the hips, knees
+ * straight, arms straight out to the sides at shoulder height, palms down.
+ * Nothing touches anything it shouldn't, so it rigs cleanly, and the player
+ * and the game loader lower the arms themselves when they load it. Units are
+ * metres, feet at y = 0, facing +Z, the character's left is +X.
  */
 M.app.newScene('sphere', 5, true);
 const C = M.clay, V = C.v;
@@ -78,14 +79,14 @@ C.autoPaint = function (tag, x, y, z) {
   }
 };
 
-/* ---------------- 1. skeleton: a neutral, rig-ready stance ---------------- */
+/* ---------------- 1. skeleton: the T-pose ---------------- */
 const J = {
   hipR: [-0.095, 0.94, 0], hipL: [0.095, 0.94, 0],
   kneeR: [-0.112, 0.52, 0.02], kneeL: [0.112, 0.52, 0.02],
   ankleR: [-0.124, 0.09, -0.005], ankleL: [0.124, 0.09, -0.005],
   shR: [-0.192, 1.43, -0.01], shL: [0.192, 1.43, -0.01],
-  elR: [-0.262, 1.17, -0.02], elL: [0.262, 1.17, -0.02],
-  wrR: [-0.31, 0.95, 0.03], wrL: [0.31, 0.95, 0.03]
+  elR: [-0.462, 1.425, -0.012], elL: [0.462, 1.425, -0.012],     // T-pose: arms straight out to the sides,
+  wrR: [-0.697, 1.42, -0.008], wrL: [0.697, 1.42, -0.008]        // palms down
 };
 const sides = [
   { s: -1, hip: J.hipR, knee: J.kneeR, ank: J.ankleR, sh: J.shR, el: J.elR, wr: J.wrR },
@@ -111,9 +112,9 @@ for (const L of sides) {
   C.ell(L3(sh, [0, 1.41, 0], -0.02), [0.062, 0.07, 0.066]);                  // deltoid under the cloth
   C.limb(sh, el, 0.058, 0.052);                                              // upper arm
   C.limb(el, L3(el, wr, 0.8), 0.056, 0.05);                                  // forearm
-  // the kimono sleeve: a deep square bag hanging from the upper arm
+  // the kimono sleeve: a deep square bag hanging from the arm
   T('gi', 0.03);
-  C.box(off(L3(sh, el, 0.75), [0.018 * s, -0.11, -0.005]), [0.05, 0.19, 0.125], 0.045, [0, 0, 10 * s]);
+  C.box(off(L3(sh, wr, 0.55), [0, -0.12, -0.005]), [0.1, 0.13, 0.05], 0.045);     // hangs below the arm, even in the T-pose
   T('skin', 0.02);
   C.limb(L3(el, wr, 0.78), wr, 0.04, 0.036);                                 // bare wrist
   // hakama: wide, pleated, flaring to the ankle -- and SPLIT, one leg each with a clear gap
@@ -165,17 +166,18 @@ for (const L of sides) {
   C.limb(off(ank, [0.045, -0.06, 0.1]), off(ank, [0, -0.02, 0.02]), 0.004, 0.004);
   C.torus(off(ank, [0, 0.0, 0]), 0.047, 0.004, [4, 0, 0]);
 }
-// hands: relaxed fists
+// hands: open, palms down, fingers pointing out along the arm (the T-pose hand)
 for (const L of sides) {
   const { s, wr } = L;
   T('skin', 0.012);
-  C.ell(off(wr, [0.004 * s, -0.055, 0.008]), [0.028, 0.048, 0.04], [6, 0, -6 * s]);
+  C.ell(off(wr, [0.05 * s, -0.004, 0.002]), [0.048, 0.019, 0.04]);                         // palm
   for (let i = 0; i < 4; i++) {
-    const z = wr[2] + 0.028 - i * 0.018;
-    C.limb([wr[0] + 0.012 * s, wr[1] - 0.085, z], [wr[0] + 0.01 * s, wr[1] - 0.125, z + 0.01], 0.0095, 0.0085);
-    C.limb([wr[0] + 0.01 * s, wr[1] - 0.125, z + 0.01], [wr[0] + 0.002 * s, wr[1] - 0.14, z + 0.026], 0.0085, 0.0078);
+    const z = wr[2] + 0.026 - i * 0.0175, len = [0.07, 0.078, 0.074, 0.06][i];
+    const k0 = [wr[0] + 0.092 * s, wr[1] - 0.002, z], k1 = [k0[0] + len * 0.55 * s, k0[1] - 0.006, z];
+    C.limb(k0, k1, 0.0092, 0.0084);                                                      // finger, two segments,
+    C.limb(k1, [k1[0] + len * 0.45 * s, k1[1] - 0.012, z], 0.0084, 0.0074);               // relaxed into a slight curl
   }
-  C.limb(off(wr, [-0.012 * s, -0.04, 0.036]), off(wr, [-0.016 * s, -0.075, 0.054]), 0.011, 0.009);
+  C.limb(off(wr, [0.03 * s, -0.012, 0.034]), off(wr, [0.07 * s, -0.022, 0.058]), 0.011, 0.009);   // thumb, forward and down
 }
 C.build(0.004, 1);                                        // the body is one object
 

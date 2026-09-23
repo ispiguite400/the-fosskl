@@ -20,6 +20,7 @@ You have a sculpting studio, not just a text editor. This skill gives you:
 | **SculptFree** (`app/sculpt.html`) | A full sculpting app: 21 brushes, dynamic topology, clay forms, booleans, remeshing, painting, rigging, and GLB/OBJ/STL/PLY export | `scripts/forge.mjs` drives it headless; `scripts/lib/sculptkit.js` and `clay.js` are the API |
 | **Rig** (inside SculptFree) | A 21-bone humanoid skeleton, automatic skin weights, test poses, and skinned GLB export | `scripts/rig.mjs` |
 | **Rig Player** (`app/player.html`) | Plays and bakes animations (Walk, Idle, Aim & scan, Take cover, plus your own clips) | `scripts/animate.mjs` |
+| **ship** (`scripts/ship.mjs`) | **The only export for the game.** Welds, reduces to 2,000–5,000 triangles, bakes the full sculpt into a texture, rigs, bakes clips, and renders the result | `scripts/ship.mjs` |
 | **forge-loader** (`game/forge-loader.js`) | Loads a forged character into the Three.js game with the game's own rig names and its clips | `import { loadForgeCharacter }` |
 
 Everything renders to PNG, so **you can see what you made**. Use that on every step.
@@ -44,6 +45,11 @@ Mega Man made of plain balls, and a soldier that looked flat and lifeless. The u
 5. **Decide whether the thing deserves a custom model at all** (RULES.md §2). Most things in a
    game don't. Characters do.
 
+Two rules apply to everything (RULES.md, top):
+
+- **Every character is sculpted in a T-pose.**
+- **Every export goes through `scripts/ship.mjs`, at 2,000–5,000 triangles.**
+
 If the user asks for 3D work and you have not done 1–4, stop and do them first. If you catch
 yourself about to hand-place Three.js boxes for a character, stop: that's what this skill replaces.
 
@@ -52,11 +58,11 @@ yourself about to hand-place Three.js boxes for a character, stop: that's what t
 ## The loop: every model, every time
 
 ```text
-plan → build → LOOK → fix → build → LOOK → ... → rig → LOOK → animate → LOOK → ship
+plan → build (T-pose) → LOOK → fix → ... → rig check → LOOK → ship (2k–5k) → LOOK → game
 ```
 
 1. **Plan** in writing, before any code (RULES.md §4): reference, silhouette, proportions, palette,
-   what gets detail, the triangle budget, and the neutral rig pose.
+   what gets detail, the ship triangle count (2,000–5,000), and the T-pose.
 2. **Build** with a script (start from `templates/ronin.js`):
    ```bash
    node scripts/forge.mjs build my_char.js --out out/my_char --name my_char \
@@ -73,17 +79,23 @@ plan → build → LOOK → fix → build → LOOK → ... → rig → LOOK → 
    ```bash
    node scripts/rig.mjs out/my_char/my_char.sculpt --out out/my_char --joints my_char_joints.json
    ```
-   Look at `NAME_poses.png`. Anything stretching between a limb and the body means they were
+   This is a check, not the export. Look at `NAME_poses.png`: the T-pose, arms lowered, step, arms
+   up and crouch. Anything stretching between a limb and the body means they were
    sculpted touching. Move the limb out in the build and rebuild; no weight setting fixes geometry
    that is fused.
-6. **Animate:**
+6. **Ship.** This is the only way anything reaches the game:
    ```bash
-   node scripts/animate.mjs out/my_char/my_char_rigged.glb --out out/my_char --bake [--clips my_clips.js]
+   node scripts/ship.mjs out/my_char/my_char.sculpt --out out/my_char --joints my_char_joints.json \
+        --tris 4000 [--clips my_clips.js]          # --static for a prop; --tris is always 2000-5000
    ```
-   Look at every `NAME_anim_*.png` strip: feet planted flat, nothing through the floor, no webbing,
-   and props moving with the right bone.
-7. **Ship** `NAME_animated.glb` into the game with `game/forge-loader.js` (RULES.md §11), show the
-   user the renders, and tell them honestly what's still weak.
+   It welds the pieces into one skin, reduces to the triangle count, bakes the full sculpt's detail
+   into a texture, rigs the mesh, bakes every clip, and renders the game file itself. Look at
+   `NAME_game-sheet.png`, `NAME_game-face.png` and `NAME_game_anim_walk.png`: the model must still
+   look like the sculpt, and the walk must plant flat feet with the arms down. For custom clips, and
+   to check other clips, use `scripts/animate.mjs NAME_game.glb --out DIR --only idle,aim`.
+7. **Put it in the game.** Copy `NAME_game.glb` into `assets/models/` and load it with
+   `game/forge-loader.js` (RULES.md §11), which lowers the T-pose arms. Show the user the renders,
+   and tell them honestly what's still weak.
 
 ---
 
@@ -98,6 +110,7 @@ app/player.html          Rig Player
 scripts/forge.mjs        doctor | build | render | export
 scripts/rig.mjs          fit, bind, test-pose and export a skinned GLB
 scripts/animate.mjs      render clip strips, add clips, bake them into the GLB
+scripts/ship.mjs         THE export: weld, 2k-5k triangles, texture from the full sculpt, rig, clips
 scripts/lib/             sculptkit.js, clay.js (run inside the app), browser.mjs (node plumbing)
 game/forge-loader.js     load a forged GLB into Three.js, with the game's rig names
 templates/ronin.js       the worked example: build, joints, previews

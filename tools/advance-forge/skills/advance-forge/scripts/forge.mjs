@@ -6,18 +6,18 @@
  *       Check everything is in place (Playwright, a browser, WebGL, the app).
  *
  *   node forge.mjs build step1.js [step2.js ...] --out DIR [--name NAME]
- *                  [--load start.sculpt] [--target TRIS] [--height H] [--close "yaw,pitch,y,halfH;..."]
+ *                  [--load start.sculpt] [--height H] [--close "yaw,pitch,y,halfH;..."]
  *       Run build steps inside the app (joined into one script, so top-level
- *       names are shared between steps), then write DIR/NAME.sculpt,
- *       DIR/NAME.glb, DIR/NAME-sheet.png (six views) and one close-up per
- *       --close entry. The sculpt is reduced to TRIS (default 150000) only
- *       for the files; the build itself keeps full detail.
+ *       names are shared between steps), then write DIR/NAME.sculpt (the full
+ *       sculpt), DIR/NAME-sheet.png (six views) and one close-up per --close
+ *       entry. No model file: the game file comes only from ship.mjs.
  *
  *   node forge.mjs render FILE.(sculpt|glb|obj|stl|ply) --out DIR [--close ...] [--cavity 0]
  *       Render the six review views (and close-ups) of an existing file.
  *
- *   node forge.mjs export FILE.sculpt --out DIR [--target TRIS] [--format glb|obj|stl|ply|roblox]
- *       Reduce and write a model file from a saved project.
+ *   node forge.mjs export ...
+ *       Retired. Every export goes through ship.mjs (2,000-5,000 triangles,
+ *       texture baked from the full sculpt, rigged, animated).
  */
 import fs from 'fs';
 import path from 'path';
@@ -70,28 +70,6 @@ async function review(browser, page, out, name, opts = {}) {
   return files;
 }
 
-async function saveFiles(page, out, name, target, format) {
-  const res = await page.evaluate(async ([target, format, B64]) => {
-    const toB64 = eval(B64);
-    const S = window.SCULPT, a = window.SCULPT_APP;
-    if (a.rig && a.rig.rest) a.rigRest();
-    const proj = S.IO.saveProject({ objects: a.scene.objects, selected: a.scene.selected, camera: a.camera.serialize(),
-      settings: a.exportableSettings(), rig: a.rigForProject ? a.rigForProject() : null });
-    // reduce a copy for the model file; the project keeps full detail
-    const copies = a.scene.objects.map((o) => { const c = o.cloneObject ? o.cloneObject() : o; return c; });
-    let total = 0; for (const o of copies) total += o.mesh.liveTris;
-    if (target && total > target) for (const o of copies) o.mesh.decimate(Math.max(200, Math.round(o.mesh.liveTris * target / total)));
-    const opts = Object.assign(a.exportOptions(), { includeColors: true });
-    const fmt = format === 'roblox' ? 'obj' : format;
-    const out = S.IO.exportGeoms(fmt, S.IO.prepare(copies, opts), opts);
-    let tris = 0; for (const o of copies) tris += o.mesh.liveTris;
-    return { proj: await toB64(proj), model: await toB64(out.data), ext: out.ext, tris };
-  }, [target, format, PAGE_B64]);
-  const pf = path.join(out, name + '.sculpt'), mf = path.join(out, name + '.' + res.ext);
-  writeB64(pf, res.proj); writeB64(mf, res.model);
-  console.log(`wrote ${pf} (full detail) and ${mf} (${res.tris} triangles)`);
-}
-
 /* ---------------- commands ---------------- */
 
 async function doctor() {
@@ -130,7 +108,7 @@ async function build() {
   if (log.length) console.log(`strokes that missed the surface (${log.length}):\n  ` + log.slice(0, 40).join('\n  '));
   if (errors.length) { console.log('BUILD HAD ERRORS — fix them before trusting the renders'); process.exitCode = 1; }
   await review(browser, page, out, name, { close: A.close, height: A.height && +A.height, cavity: A.cavity });
-  if (!A['no-save']) await saveFiles(page, out, name, A.target === undefined ? 150000 : +A.target, A.format || 'glb');
+  if (!A['no-save']) await saveProject(page, out, name);
   await browser.close();
 }
 
@@ -145,15 +123,23 @@ async function render() {
   await browser.close();
 }
 
+async function saveProject(page, out, name) {
+  const b64 = await page.evaluate(async (B64) => {
+    const toB64 = eval(B64), S = window.SCULPT, a = window.SCULPT_APP;
+    if (a.rig && a.rig.rest) a.rigRest();
+    return toB64(S.IO.saveProject({ objects: a.scene.objects, selected: a.scene.selected, camera: a.camera.serialize(),
+      settings: a.exportableSettings(), rig: a.rigForProject ? a.rigForProject() : null }));
+  }, PAGE_B64);
+  const pf = path.join(out, name + '.sculpt');
+  writeB64(pf, b64);
+  console.log(`wrote ${pf} (the full sculpt). For the game: node ship.mjs ${pf} --out ${out} --joints ...`);
+}
+
 async function exportCmd() {
-  const file = A._[0];
-  if (!file) throw new Error('export needs a .sculpt file');
-  const out = A.out || path.dirname(file), name = A.name || path.basename(file).replace(/\.\w+$/, '');
-  const browser = await launch();
-  const { page } = await openApp(browser);
-  await loadInto(page, file);
-  await saveFiles(page, out, name, A.target === undefined ? 150000 : +A.target, A.format || 'glb');
-  await browser.close();
+  console.log('forge.mjs export is retired. Every model for the game is exported with ship.mjs:\n' +
+    '  node ship.mjs MODEL.sculpt --out DIR --joints joints.json [--tris 2000-5000]   (a character)\n' +
+    '  node ship.mjs MODEL.sculpt --out DIR --static [--tris 2000-5000]               (a prop)');
+  process.exit(1);
 }
 
 const COMMANDS = { doctor, build, render, export: exportCmd };

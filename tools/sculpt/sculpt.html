@@ -7033,6 +7033,124 @@ input[type=color] {
     };
   };
 
+  /**
+   * A unique unwrap, for game models. `unwrap` above gives each of the six
+   * directions one chart, so two surfaces that face the same way at the
+   * same place in projection share texels — the top of a shoulder and the
+   * top of a belt, say. That is fine for the paint map, which is sampled
+   * back in 3D, but a game texture needs every surface to own its pixels.
+   *
+   * Here every connected patch of triangles that face the same way is its
+   * own chart, projected flat along that direction and packed into the
+   * atlas on shelves, all at one scale so texel density is even. Same
+   * output as `unwrap`.
+   */
+  Tex.unwrapCharts = function (geom, opts) {
+    opts = opts || {};
+    var size = opts.size || 1024;
+    var margin = opts.margin === undefined ? 3 : opts.margin;
+    var idx = geom.indices, pos = geom.positions;
+    var triCount = idx.length / 3, t, k;
+
+    var faceAxis = new Uint8Array(triCount);
+    for (t = 0; t < triCount; t++) {
+      var a = idx[t * 3] * 3, b = idx[t * 3 + 1] * 3, c = idx[t * 3 + 2] * 3;
+      var e1x = pos[b] - pos[a], e1y = pos[b + 1] - pos[a + 1], e1z = pos[b + 2] - pos[a + 2];
+      var e2x = pos[c] - pos[a], e2y = pos[c + 1] - pos[a + 1], e2z = pos[c + 2] - pos[a + 2];
+      faceAxis[t] = axisOf(e1y * e2z - e1z * e2y, e1z * e2x - e1x * e2z, e1x * e2y - e1y * e2x);
+    }
+
+    /* charts: flood fill across shared edges between triangles of one direction */
+    var edges = new Map();
+    for (t = 0; t < triCount; t++) {
+      for (k = 0; k < 3; k++) {
+        var u = idx[t * 3 + k], w = idx[t * 3 + (k + 1) % 3];
+        var key = u < w ? u * 4294967296 + w : w * 4294967296 + u;
+        var list = edges.get(key);
+        if (list) list.push(t); else edges.set(key, [t]);
+      }
+    }
+    var chart = new Int32Array(triCount).fill(-1), charts = 0, stack = [];
+    for (t = 0; t < triCount; t++) {
+      if (chart[t] >= 0) continue;
+      chart[t] = charts; stack.push(t);
+      while (stack.length) {
+        var s = stack.pop();
+        for (k = 0; k < 3; k++) {
+          var u2 = idx[s * 3 + k], w2 = idx[s * 3 + (k + 1) % 3];
+          var nb = edges.get(u2 < w2 ? u2 * 4294967296 + w2 : w2 * 4294967296 + u2);
+          for (var q = 0; q < nb.length; q++) {
+            var o = nb[q];
+            if (chart[o] < 0 && faceAxis[o] === faceAxis[s]) { chart[o] = charts; stack.push(o); }
+          }
+        }
+      }
+      charts++;
+    }
+
+    /* split vertices per chart, project each chart along its direction */
+    var map = new Map(), newIdx = new Uint32Array(idx.length), srcVert = [], vertChart = [];
+    for (t = 0; t < triCount; t++) {
+      for (k = 0; k < 3; k++) {
+        var v = idx[t * 3 + k], key2 = chart[t] * 4294967296 + v, to = map.get(key2);
+        if (to === undefined) { to = srcVert.length; map.set(key2, to); srcVert.push(v); vertChart.push(chart[t]); }
+        newIdx[t * 3 + k] = to;
+      }
+    }
+    var chartAxis = new Uint8Array(charts);
+    for (t = 0; t < triCount; t++) chartAxis[chart[t]] = faceAxis[t];
+    var n = srcVert.length, uvs = new Float32Array(n * 2), flat = [0, 0];
+    var lo = [], hi = [], i;
+    for (i = 0; i < charts; i++) { lo.push([Infinity, Infinity]); hi.push([-Infinity, -Infinity]); }
+    for (i = 0; i < n; i++) {
+      var sv = srcVert[i] * 3, ch = vertChart[i];
+      project(chartAxis[ch], pos[sv], pos[sv + 1], pos[sv + 2], flat);
+      uvs[i * 2] = flat[0]; uvs[i * 2 + 1] = flat[1];
+      if (flat[0] < lo[ch][0]) lo[ch][0] = flat[0];
+      if (flat[1] < lo[ch][1]) lo[ch][1] = flat[1];
+      if (flat[0] > hi[ch][0]) hi[ch][0] = flat[0];
+      if (flat[1] > hi[ch][1]) hi[ch][1] = flat[1];
+    }
+
+    /* pack on shelves, tallest first, growing the square until everything fits */
+    var order = [], area = 0;
+    for (i = 0; i < charts; i++) {
+      var cw = Math.max(hi[i][0] - lo[i][0], 1e-6), chh = Math.max(hi[i][1] - lo[i][1], 1e-6);
+      order.push(i); area += cw * chh;
+    }
+    order.sort(function (p, r) { return (hi[r][1] - lo[r][1]) - (hi[p][1] - lo[p][1]); });
+    var side = Math.sqrt(area) * 1.1, place = new Float64Array(charts * 2);
+    for (var tries = 0; tries < 200; tries++) {
+      var pad = margin * 2 * side / size, x = pad, y = pad, rowH = 0, ok = true;
+      for (var oi = 0; oi < order.length; oi++) {
+        var c2 = order[oi], wdt = Math.max(hi[c2][0] - lo[c2][0], 1e-6), hgt = Math.max(hi[c2][1] - lo[c2][1], 1e-6);
+        if (x + wdt + pad > side) { x = pad; y += rowH + pad; rowH = 0; }
+        if (x + wdt + pad > side || y + hgt + pad > side) { ok = false; break; }
+        place[c2 * 2] = x; place[c2 * 2 + 1] = y;
+        x += wdt + pad; if (hgt > rowH) rowH = hgt;
+      }
+      if (ok) break;
+      side *= 1.06;
+    }
+    for (i = 0; i < n; i++) {
+      var ch2 = vertChart[i];
+      uvs[i * 2] = (uvs[i * 2] - lo[ch2][0] + place[ch2 * 2]) / side;
+      uvs[i * 2 + 1] = (uvs[i * 2 + 1] - lo[ch2][1] + place[ch2 * 2 + 1]) / side;
+    }
+
+    var outPos = new Float32Array(n * 3), outNor = new Float32Array(n * 3), outCol = geom.colors ? new Float32Array(n * 3) : null;
+    for (i = 0; i < n; i++) {
+      var s3 = srcVert[i] * 3, d3 = i * 3;
+      outPos[d3] = pos[s3]; outPos[d3 + 1] = pos[s3 + 1]; outPos[d3 + 2] = pos[s3 + 2];
+      if (geom.normals) { outNor[d3] = geom.normals[s3]; outNor[d3 + 1] = geom.normals[s3 + 1]; outNor[d3 + 2] = geom.normals[s3 + 2]; }
+      if (outCol) { outCol[d3] = geom.colors[s3]; outCol[d3 + 1] = geom.colors[s3 + 1]; outCol[d3 + 2] = geom.colors[s3 + 2]; }
+    }
+    return {
+      name: geom.name, positions: outPos, normals: outNor, colors: outCol, uvs: uvs, indices: newIdx,
+      vertCount: n, triCount: triCount, color: geom.color, sourceVerts: srcVert, faceAxis: faceAxis, charts: charts
+    };
+  };
+
   /* ================================================================ *
    * crease term
    * ================================================================ */
@@ -7146,7 +7264,7 @@ input[type=color] {
               lnor[pa] * w0 + lnor[pb] * w1 + lnor[pc] * w2,
               lnor[pa + 1] * w0 + lnor[pb + 1] * w1 + lnor[pc + 1] * w2,
               lnor[pa + 2] * w0 + lnor[pb + 2] * w1 + lnor[pc + 2] * w2,
-              paintRGB);
+              paintRGB, t / 3);             // the triangle, for samplers that care which part they are on
             r = paintRGB[0]; g = paintRGB[1]; b = paintRGB[2];
             if (shade) {
               var sh = shade[ia] * w0 + shade[ib] * w1 + shade[ic] * w2;
@@ -7238,7 +7356,7 @@ input[type=color] {
   Tex.build = function (geom, opts) {
     opts = opts || {};
     var size = opts.size || 1024;
-    var uvGeom = Tex.unwrap(geom, { size: size, margin: opts.margin });
+    var uvGeom = (opts.unwrap === 'charts' ? Tex.unwrapCharts : Tex.unwrap)(geom, { size: size, margin: opts.margin });
     /*
      * The unwrap splits vertices at the chart seams, so the object-space
      * copies have to be split the same way for the bake to read the paint
@@ -18109,6 +18227,24 @@ input[type=color] {
       S.IO.axisOut(axis, b.head[0] * scale, b.head[1] * scale, b.head[2] * scale, tmp);
       return { name: b.name, parent: b.parent, head: tmp.slice() };
     });
+    /*
+     * With a texture: the colour is baked into an image (from the object's
+     * paint map when it has one, which keeps detail far finer than the
+     * mesh), and the unwrap splits vertices at chart seams — so the weights
+     * are carried across with the unwrap's map back to the source vertex.
+     */
+    if (opts.textureSize && S.Texture) {
+      var built = S.Texture.build(g, { size: opts.textureSize, cavity: opts.textureCavity || 0, unwrap: opts.unwrap });
+      var tg = built.geom, src = tg.sourceVerts, nj = new Uint16Array(tg.vertCount * 4), nw = new Float32Array(tg.vertCount * 4);
+      for (var tv = 0; tv < tg.vertCount; tv++) {
+        for (var tk = 0; tk < 4; tk++) { nj[tv * 4 + tk] = joints[src[tv] * 4 + tk]; nw[tv * 4 + tk] = weights[src[tv] * 4 + tk]; }
+      }
+      tg.name = g.name;
+      tg.color = g.color;
+      tg.texturePNG = built.png();
+      geoms = [tg];
+      joints = nj; weights = nw;
+    }
     var o2 = {};
     for (var key in opts) o2[key] = opts[key];
     o2.skin = { geom: 0, bones: bones, joints: joints, weights: weights };

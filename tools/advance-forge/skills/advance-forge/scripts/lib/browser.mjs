@@ -74,6 +74,7 @@ export async function openApp(browser, size = 900) {
   await page.evaluate(() => { try { window.SCULPT_APP.settings.autosave = false; } catch (e) { /* fine */ } });
   await page.addScriptTag({ path: path.join(LIB, 'sculptkit.js') });
   await page.addScriptTag({ path: path.join(LIB, 'clay.js') });
+  await page.addScriptTag({ path: path.join(LIB, 'rigkit.js') });
   return { page, errors };
 }
 

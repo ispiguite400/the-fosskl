@@ -677,6 +677,24 @@
       S.IO.axisOut(axis, b.head[0] * scale, b.head[1] * scale, b.head[2] * scale, tmp);
       return { name: b.name, parent: b.parent, head: tmp.slice() };
     });
+    /*
+     * With a texture: the colour is baked into an image (from the object's
+     * paint map when it has one, which keeps detail far finer than the
+     * mesh), and the unwrap splits vertices at chart seams — so the weights
+     * are carried across with the unwrap's map back to the source vertex.
+     */
+    if (opts.textureSize && S.Texture) {
+      var built = S.Texture.build(g, { size: opts.textureSize, cavity: opts.textureCavity || 0, unwrap: opts.unwrap });
+      var tg = built.geom, src = tg.sourceVerts, nj = new Uint16Array(tg.vertCount * 4), nw = new Float32Array(tg.vertCount * 4);
+      for (var tv = 0; tv < tg.vertCount; tv++) {
+        for (var tk = 0; tk < 4; tk++) { nj[tv * 4 + tk] = joints[src[tv] * 4 + tk]; nw[tv * 4 + tk] = weights[src[tv] * 4 + tk]; }
+      }
+      tg.name = g.name;
+      tg.color = g.color;
+      tg.texturePNG = built.png();
+      geoms = [tg];
+      joints = nj; weights = nw;
+    }
     var o2 = {};
     for (var key in opts) o2[key] = opts[key];
     o2.skin = { geom: 0, bones: bones, joints: joints, weights: weights };

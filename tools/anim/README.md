@@ -36,6 +36,12 @@ rest pose and rotates by the difference. That matters for this model: the
 soldier was sculpted mid-stride, and a walk added on top of that pose would
 limp.
 
+**T-posed characters** (arms straight out, the way every Advance Forge character is sculpted)
+are converted on load. The arms are lowered to hang a little out from the body, the mesh is
+skinned into that pose, and that pose becomes the rest pose. The clips then work unchanged, and
+exported animations are written back relative to the file's own T-pose. The player also shows a
+colour **texture** when the GLB has one, which is how `ship.mjs` delivers its detail.
+
 Animations already inside a GLB show up as extra buttons. **Export GLB +
 animations** writes the loaded model back out with the built-in clips baked
 in at 30 fps.
