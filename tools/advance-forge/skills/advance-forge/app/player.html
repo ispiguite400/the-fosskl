@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rig Player</title>
+<meta name="description" content="Plays rigged glTF characters: built-in walk, idle, aim and crouch animations for any humanoid skeleton, and exports them back into the GLB.">
+<style>
+  :root {
+    --bg-top: #7d838d; --bg-bottom: #2e3238;
+    --panel: rgba(22, 25, 31, 0.78); --line: rgba(255, 255, 255, 0.12);
+    --text: #eef1f5; --muted: #a9b1bd; --accent: #ff8a4c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: linear-gradient(var(--bg-top), var(--bg-bottom)); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
+  .top { position: fixed; top: 12px; left: 12px; right: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; pointer-events: none; }
+  .top > * { pointer-events: auto; }
+  .brand { font-weight: 650; letter-spacing: .02em; padding: 8px 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(12px); }
+  .brand small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .spring { flex: 1; }
+  button, label.btn { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 11px;
+    padding: 8px 12px; cursor: pointer; backdrop-filter: blur(12px); display: inline-flex; gap: 6px; align-items: center; }
+  button:hover, label.btn:hover { border-color: rgba(255, 255, 255, .3); }
+  button.on { background: var(--accent); border-color: var(--accent); color: #1a1208; font-weight: 600; }
+  .dock { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(720px, calc(100% - 24px));
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 10px; backdrop-filter: blur(14px);
+    display: grid; gap: 10px; box-shadow: 0 10px 40px rgba(0, 0, 0, .35); }
+  .clips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .clips button { flex: 1 1 auto; justify-content: center; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .row input[type=range] { flex: 1; accent-color: var(--accent); }
+  .row .val { min-width: 44px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .hint { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; color: var(--muted); text-align: center; padding: 20px; }
+  .hint b { color: var(--text); display: block; font-size: 17px; margin-bottom: 4px; }
+  .hint[hidden] { display: none; }
+  .drop { outline: 3px dashed var(--accent); outline-offset: -12px; }
+  input[type=file] { display: none; }
+  @media (max-width: 560px) { .brand small { display: none; } button, label.btn { padding: 8px 10px; } }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div class="top">
+  <div class="brand">Rig Player<small id="info">no model</small></div>
+  <div class="spring"></div>
+  <label class="btn" title="Open a rigged .glb">Open GLB<input id="file" type="file" accept=".glb,model/gltf-binary"></label>
+  <button id="bones" title="Show the skeleton">Skeleton</button>
+  <button id="save" title="Download the model with these animations baked into it">Export GLB + animations</button>
+</div>
+<div class="hint" id="hint"><div><b>Drop a rigged GLB here</b>or use Open GLB. A skeleton with humanoid bone names (Hips, Spine, Chest, Neck, Head, UpperArm.L…) gets the built-in walk, idle, aim and crouch.</div></div>
+<div class="dock">
+  <div class="clips" id="clips"></div>
+  <div class="row">
+    <button id="play" title="Play / pause (space)">Pause</button>
+    <input id="time" type="range" min="0" max="1" step="0.001" value="0" aria-label="Time">
+    <span class="val" id="tval">0.00s</span>
+  </div>
+  <div class="row">
+    <span style="color:var(--muted)">Speed</span>
+    <input id="speed" type="range" min="0.1" max="2" step="0.05" value="1" aria-label="Speed">
+    <span class="val" id="sval">1.00×</span>
+  </div>
+</div>
+<script>
+'use strict';
+/* =====================================================================
+ * Rig Player — a small, dependency-free glTF skinning player.
+ *
+ *   GLB in  →  nodes, skin, mesh  →  GPU skinning (WebGL 2)
+ *   built-in clips (procedural, for humanoid bone names) and any
+ *   animations already in the file; clips can be baked back into the GLB.
+ * ===================================================================== */
+
+/* ---------------- small maths ---------------- */
+const M4 = {
+  ident: () => [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1],
+  mul(a, b) { const o = new Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++)
+    o[c*4+r] = a[r]*b[c*4] + a[4+r]*b[c*4+1] + a[8+r]*b[c*4+2] + a[12+r]*b[c*4+3]; return o; },
+  trs(t, q, s) {
+    const [x, y, z, w] = q, x2 = x+x, y2 = y+y, z2 = z+z;
+    const xx = x*x2, xy = x*y2, xz = x*z2, yy = y*y2, yz = y*z2, zz = z*z2, wx = w*x2, wy = w*y2, wz = w*z2;
+    return [(1-(yy+zz))*s[0], (xy+wz)*s[0], (xz-wy)*s[0], 0, (xy-wz)*s[1], (1-(xx+zz))*s[1], (yz+wx)*s[1], 0,
+            (xz+wy)*s[2], (yz-wx)*s[2], (1-(xx+yy))*s[2], 0, t[0], t[1], t[2], 1];
+  },
+  persp(fov, asp, n, f) { const t = 1 / Math.tan(fov / 2); return [t/asp,0,0,0, 0,t,0,0, 0,0,(f+n)/(n-f),-1, 0,0,2*f*n/(n-f),0]; },
+  lookAt(e, c, u) {
+    let zx = e[0]-c[0], zy = e[1]-c[1], zz = e[2]-c[2]; let l = Math.hypot(zx, zy, zz); zx /= l; zy /= l; zz /= l;
+    let xx = u[1]*zz - u[2]*zy, xy = u[2]*zx - u[0]*zz, xz = u[0]*zy - u[1]*zx; l = Math.hypot(xx, xy, xz); xx /= l; xy /= l; xz /= l;
+    const yx = zy*xz - zz*xy, yy = zz*xx - zx*xz, yz = zx*xy - zy*xx;
+    return [xx,yx,zx,0, xy,yy,zy,0, xz,yz,zz,0, -(xx*e[0]+xy*e[1]+xz*e[2]), -(yx*e[0]+yy*e[1]+yz*e[2]), -(zx*e[0]+zy*e[1]+zz*e[2]), 1];
+  },
+  point(m, p) { return [m[0]*p[0]+m[4]*p[1]+m[8]*p[2]+m[12], m[1]*p[0]+m[5]*p[1]+m[9]*p[2]+m[13], m[2]*p[0]+m[6]*p[1]+m[10]*p[2]+m[14]]; }
+};
+const Q = {
+  euler(x, y, z) {            // degrees, XYZ order (matches SculptFree)
+    const r = Math.PI / 360, c1 = Math.cos(x*r), c2 = Math.cos(y*r), c3 = Math.cos(z*r), s1 = Math.sin(x*r), s2 = Math.sin(y*r), s3 = Math.sin(z*r);
+    return [s1*c2*c3 + c1*s2*s3, c1*s2*c3 - s1*c2*s3, c1*c2*s3 + s1*s2*c3, c1*c2*c3 - s1*s2*s3];
+  },
+  mul(a, b) { return [a[3]*b[0]+a[0]*b[3]+a[1]*b[2]-a[2]*b[1], a[3]*b[1]-a[0]*b[2]+a[1]*b[3]+a[2]*b[0],
+                      a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3], a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]]; },
+  slerp(a, b, t) {
+    let d = a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3], bb = b;
+    if (d < 0) { d = -d; bb = b.map(v => -v); }
+    if (d > 0.9995) { const o = a.map((v, i) => v + (bb[i] - v) * t), l = Math.hypot(...o); return o.map(v => v / l); }
+    const th = Math.acos(d), s = Math.sin(th), wa = Math.sin((1 - t) * th) / s, wb = Math.sin(t * th) / s;
+    return a.map((v, i) => v * wa + bb[i] * wb);
+  }
+};
+
+/* ---------------- GLB ---------------- */
+function parseGLB(buf) {
+  const dv = new DataView(buf);
+  if (dv.getUint32(0, true) !== 0x46546C67) throw new Error('Not a GLB file');
+  let off = 12, json = null, bin = null;
+  while (off < buf.byteLength) {
+    const len = dv.getUint32(off, true), type = dv.getUint32(off + 4, true);
+    if (type === 0x4E4F534A) json = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, off + 8, len)));
+    else if (type === 0x004E4942) bin = new Uint8Array(buf, off + 8, len);
+    off += 8 + len;
+  }
+  return { json, bin };
+}
+const COMP = { 5120: [Int8Array, 1], 5121: [Uint8Array, 1], 5122: [Int16Array, 2], 5123: [Uint16Array, 2], 5125: [Uint32Array, 4], 5126: [Float32Array, 4] };
+const SIZE = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 };
+function readAccessor(g, i, asFloat) {
+  const a = g.json.accessors[i], bv = g.json.bufferViews[a.bufferView], [Ctor, bytes] = COMP[a.componentType], n = SIZE[a.type];
+  const start = g.bin.byteOffset + (bv.byteOffset || 0) + (a.byteOffset || 0), stride = bv.byteStride || bytes * n;
+  let out;
+  if (stride === bytes * n && start % bytes === 0) out = new Ctor(g.bin.buffer, start, a.count * n).slice();
+  else { out = new Ctor(a.count * n); const dv = new DataView(g.bin.buffer);
+    const get = { 5120: 'getInt8', 5121: 'getUint8', 5122: 'getInt16', 5123: 'getUint16', 5125: 'getUint32', 5126: 'getFloat32' }[a.componentType];
+    for (let k = 0; k < a.count; k++) for (let c = 0; c < n; c++) out[k*n+c] = dv[get](start + k*stride + c*bytes, true); }
+  if (asFloat && a.normalized && Ctor !== Float32Array) {
+    const max = { 5120: 127, 5121: 255, 5122: 32767, 5123: 65535 }[a.componentType];
+    out = Float32Array.from(out, v => Math.max(v / max, -1));
+  }
+  return { data: out, size: n };
+}
+
+/* ---------------- model ---------------- */
+function buildModel(g) {
+  const J = g.json;
+  const nodes = J.nodes.map((n, i) => ({
+    i, name: n.name || ('node' + i), children: n.children || [], parent: -1, mesh: n.mesh, skin: n.skin,
+    t: n.translation || [0, 0, 0], r: n.rotation || [0, 0, 0, 1], s: n.scale || [1, 1, 1], matrix: n.matrix || null,
+    pt: null, pr: null, ps: null, world: M4.ident()
+  }));
+  nodes.forEach(n => n.children.forEach(c => { nodes[c].parent = n.i; }));
+  const skins = (J.skins || []).map(s => ({
+    joints: s.joints, ibm: s.inverseBindMatrices !== undefined ? readAccessor(g, s.inverseBindMatrices).data : null
+  }));
+  const prims = [];
+  nodes.forEach(n => {
+    if (n.mesh === undefined) return;
+    for (const p of J.meshes[n.mesh].primitives) {
+      const at = p.attributes;
+      if (at.POSITION === undefined) continue;
+      const pos = readAccessor(g, at.POSITION).data, count = pos.length / 3;
+      const nor = at.NORMAL !== undefined ? readAccessor(g, at.NORMAL).data : null;
+      let col = null;
+      if (at.COLOR_0 !== undefined) { const c = readAccessor(g, at.COLOR_0, true); col = c.size === 4 ? c.data : expand3(c.data); }
+      const jn = at.JOINTS_0 !== undefined ? Float32Array.from(readAccessor(g, at.JOINTS_0).data) : null;
+      const wt = at.WEIGHTS_0 !== undefined ? readAccessor(g, at.WEIGHTS_0, true).data : null;
+      const idx = p.indices !== undefined ? readAccessor(g, p.indices).data : null;
+      let base = [0.8, 0.8, 0.8, 1];
+      const mat = p.material !== undefined ? J.materials[p.material] : null;
+      if (mat && mat.pbrMetallicRoughness && mat.pbrMetallicRoughness.baseColorFactor) base = mat.pbrMetallicRoughness.baseColorFactor;
+      prims.push({ node: n.i, skin: n.skin, pos, nor, col, jn, wt, idx, count, base });
+    }
+  });
+  const anims = (J.animations || []).map((a, k) => ({
+    name: a.name || ('Clip ' + (k + 1)), source: 'file',
+    channels: a.channels.map(c => {
+      const smp = a.samplers[c.sampler];
+      return { node: c.target.node, path: c.target.path, input: readAccessor(g, smp.input).data, output: readAccessor(g, smp.output).data, interp: smp.interpolation || 'LINEAR' };
+    })
+  })).map(a => { a.duration = Math.max(0.001, ...a.channels.map(c => c.input[c.input.length - 1])); return a; });
+  return { g, nodes, skins, prims, anims };
+}
+function expand3(c) { const o = new Float32Array(c.length / 3 * 4); for (let i = 0, j = 0; i < c.length; i += 3, j += 4) { o[j] = c[i]; o[j+1] = c[i+1]; o[j+2] = c[i+2]; o[j+3] = 1; } return o; }
+
+function updateWorld(model) {
+  const done = new Uint8Array(model.nodes.length);
+  const solve = (n) => {
+    if (done[n.i]) return n.world;
+    const local = n.matrix && !n.pr && !n.pt ? n.matrix : M4.trs(n.pt || n.t, n.pr || n.r, n.ps || n.s);
+    n.world = n.parent >= 0 ? M4.mul(solve(model.nodes[n.parent]), local) : local;
+    done[n.i] = 1; return n.world;
+  };
+  model.nodes.forEach(solve);
+}
+
+/* ---------------- humanoid clips ----------------
+ * Written against the bone names SculptFree's rig uses (Hips, Spine, Chest,
+ * Neck, Head, Shoulder/UpperArm/LowerArm/Hand, UpperLeg/LowerLeg/Foot/Toes
+ * with .L/.R). Legs and arms are driven by *absolute* swing angles — how far
+ * forward of straight down each bone points — so a model rigged mid-stride
+ * still walks symmetrically: the player measures each bone's rest angle and
+ * rotates by the difference.
+ */
+const CLIPS = [
+  { id: 'idle', name: 'Idle', duration: 6, loop: true, pose(t) {
+      const b = Math.sin(t / 6 * Math.PI * 2 * 1.5), sway = Math.sin(t / 6 * Math.PI * 2);
+      return {
+        abs: { 'UpperLeg.L': -1 + sway, 'LowerLeg.L': -5 + sway, 'UpperLeg.R': 1 - sway, 'LowerLeg.R': -3 - sway, 'Foot.L': 90, 'Foot.R': 90,
+               'UpperArm.L': 6 + b, 'LowerArm.L': 18 + b * 2, 'UpperArm.R': 4, 'LowerArm.R': 14 },
+        rel: { 'Chest': [b * 1.6, sway * 3, 0], 'Spine': [0, sway * 2, 0], 'Head': [4 + Math.sin(t * 0.9) * 3, Math.sin(t / 6 * Math.PI * 2) * 28, 0],
+               'Hips': [0, -sway * 3, sway * 1.5], 'Shoulder.L': [0, 0, b], 'Shoulder.R': [0, 0, -b] },
+        offset: [sway * 0.012, -0.004 + b * 0.002, 0]
+      };
+  } },
+  { id: 'walk', name: 'Walk', duration: 1.1, loop: true, travel: 1.25, pose(t) {
+      const p = t / 1.1 * Math.PI * 2, leg = (q) => {
+        const thigh = 24 * Math.sin(q);
+        const knee = 4 + 50 * Math.pow(Math.max(0, Math.cos(q + 0.45)), 2) + 8 * Math.max(0, -Math.sin(q + 1.2));
+        const foot = 90 + 18 * Math.max(0, -Math.sin(q - 0.6)) - 10 * Math.max(0, Math.sin(q + 0.8));
+        return [thigh, thigh - knee, foot];
+      };
+      const [tR, sR, fR] = leg(p), [tL, sL, fL] = leg(p + Math.PI);
+      return {
+        abs: { 'UpperLeg.R': tR, 'LowerLeg.R': sR, 'Foot.R': fR, 'UpperLeg.L': tL, 'LowerLeg.L': sL, 'Foot.L': fL,
+               'UpperArm.L': 20 * Math.sin(p) + 4, 'LowerArm.L': 20 * Math.sin(p) + 26,
+               'UpperArm.R': -6 * Math.sin(p) + 6, 'LowerArm.R': -6 * Math.sin(p) + 20 },
+        rel: { 'Hips': [3, 6 * Math.sin(p), 3 * Math.cos(p)], 'Spine': [2, -3 * Math.sin(p), 0], 'Chest': [2, -5 * Math.sin(p), -2 * Math.cos(p)],
+               'Head': [2, 2 * Math.sin(p), 0] },
+        offset: [0.012 * Math.cos(p), -0.012 + 0.018 * Math.abs(Math.cos(p)), 0]
+      };
+  } },
+  { id: 'aim', name: 'Aim & scan', duration: 7, loop: true, pose(t) {
+      const up = Math.min(1, t / 0.8), e = up * up * (3 - 2 * up);                     // bring the rifle up
+      const scan = t > 1 ? Math.sin((t - 1) / 6 * Math.PI * 2) * 28 * Math.min(1, (t - 1) / 0.8) : 0;
+      return {
+        abs: { 'UpperLeg.L': -12 * e, 'LowerLeg.L': -12 - 18 * e, 'Foot.L': 90, 'UpperLeg.R': 10 * e, 'LowerLeg.R': -6 * e, 'Foot.R': 90,
+               'UpperArm.R': 4 + 52 * e, 'LowerArm.R': 14 + 78 * e, 'UpperArm.L': 6 + 58 * e, 'LowerArm.L': 18 + 76 * e },
+        rel: { 'UpperArm.R': [0, 0, -6 * e], 'Hand.R': [-4 * e, 0, 0],
+               'UpperArm.L': [0, 0, -32 * e], 'LowerArm.L': [0, 0, -34 * e],
+               'Hips': [0, scan * 0.25, 0], 'Spine': [6 * e, scan * 0.35, 0], 'Chest': [4 * e, scan * 0.4 + 12 * e, 0],
+               'Neck': [0, -6 * e, 0], 'Head': [-4 * e, -8 * e, 0] },
+        offset: [0, -0.03 * e, 0]
+      };
+  } },
+  { id: 'crouch', name: 'Take cover', duration: 4, loop: true, pose(t) {
+      const c = t < 0.7 ? t / 0.7 : t < 2.8 ? 1 : t < 3.5 ? 1 - (t - 2.8) / 0.7 : 0, e = c * c * (3 - 2 * c);
+      const look = t > 0.8 && t < 2.7 ? Math.sin((t - 0.8) / 1.9 * Math.PI * 2) * 25 : 0;
+      return {
+        abs: { 'UpperLeg.L': 72 * e - 4, 'LowerLeg.L': -38 * e - 8, 'Foot.L': 90 - 8 * e, 'UpperLeg.R': 20 + 20 * e, 'LowerLeg.R': -88 * e - 2, 'Foot.R': 90 - 45 * e,
+               'UpperArm.L': 8 + 30 * e, 'LowerArm.L': 20 + 60 * e, 'UpperArm.R': 4 + 18 * e, 'LowerArm.R': 14 + 45 * e },
+        rel: { 'Spine': [18 * e, 0, 0], 'Chest': [12 * e, look * 0.4, 0], 'Head': [-22 * e, look, 0], 'Hips': [8 * e, 0, 0] },
+        offset: [0, -0.34 * e, -0.05 * e]
+      };
+  } }
+];
+
+/* ---------------- the player ---------------- */
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl2', { antialias: true, preserveDrawingBuffer: true });
+if (!gl) document.getElementById('hint').innerHTML = '<div><b>WebGL 2 is needed</b>Any current browser has it.</div>';
+
+const VS = `#version 300 es
+layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNor; layout(location=2) in vec4 aCol;
+layout(location=3) in vec4 aJoint; layout(location=4) in vec4 aWeight;
+uniform mat4 uViewProj, uModel; uniform mat4 uJoints[64]; uniform bool uSkinned;
+out vec3 vN; out vec4 vC; out vec3 vW;
+void main() {
+  mat4 m = uModel;
+  if (uSkinned) m = aWeight.x * uJoints[int(aJoint.x)] + aWeight.y * uJoints[int(aJoint.y)] + aWeight.z * uJoints[int(aJoint.z)] + aWeight.w * uJoints[int(aJoint.w)];
+  vec4 w = m * vec4(aPos, 1.0);
+  vW = w.xyz; vN = mat3(m) * aNor; vC = aCol;
+  gl_Position = uViewProj * w;
+}`;
+const FS = `#version 300 es
+precision highp float;
+in vec3 vN; in vec4 vC; in vec3 vW; uniform vec3 uEye; out vec4 o;
+void main() {
+  vec3 n = normalize(vN); vec3 v = normalize(uEye - vW);
+  if (dot(n, v) < 0.0) n = -n;
+  vec3 key = normalize(vec3(0.45, 0.85, 0.55)), fill = normalize(vec3(-0.7, 0.3, -0.4));
+  vec3 hemi = mix(vec3(0.24, 0.22, 0.2), vec3(0.62, 0.66, 0.74), n.y * 0.5 + 0.5);
+  float d = max(dot(n, key), 0.0), f = max(dot(n, fill), 0.0);
+  float spec = pow(max(dot(n, normalize(key + v)), 0.0), 28.0) * 0.12;
+  float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0) * 0.25;
+  vec3 c = vC.rgb * (hemi * 0.75 + vec3(1.0, 0.96, 0.9) * d * 0.85 + vec3(0.55, 0.6, 0.7) * f * 0.25) + spec + rim * vec3(0.7, 0.75, 0.85);
+  o = vec4(pow(c, vec3(0.95)), 1.0);
+}`;
+const GVS = `#version 300 es
+layout(location=0) in vec3 aPos; uniform mat4 uViewProj; uniform float uSize; out vec2 vP;
+void main() { vP = aPos.xz * uSize; gl_Position = uViewProj * vec4(vP.x, 0.0, vP.y, 1.0); }`;
+const GFS = `#version 300 es
+precision highp float; in vec2 vP; uniform vec2 uShadow; uniform float uScroll, uSize, uUnit; out vec4 o;
+void main() {
+  vec2 q = vec2(vP.x, vP.y + uScroll) / uUnit;
+  vec2 g = abs(fract(q - 0.5) - 0.5) / fwidth(q);
+  float line = 1.0 - min(min(g.x, g.y), 1.0);
+  float fade = 1.0 - smoothstep(uSize * 0.35, uSize, length(vP));
+  float sh = exp(-dot(vP - uShadow, vP - uShadow) / (uUnit * uUnit * 0.09));
+  o = vec4(vec3(0.0), line * 0.22 * fade + sh * 0.45 * fade);
+  o.rgb = mix(vec3(0.0), vec3(0.95), line * fade * 0.25);
+  o.a = max(o.a, 0.0);
+}`;
+const LVS = `#version 300 es
+layout(location=0) in vec3 aPos; uniform mat4 uViewProj; void main() { gl_Position = uViewProj * vec4(aPos, 1.0); gl_PointSize = 7.0; }`;
+const LFS = `#version 300 es
+precision highp float; uniform vec4 uColor; out vec4 o; void main() { o = uColor; }`;
+
+function program(vs, fs) {
+  const p = gl.createProgram();
+  for (const [type, src] of [[gl.VERTEX_SHADER, vs], [gl.FRAGMENT_SHADER, fs]]) {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    gl.attachShader(p, s);
+  }
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}, n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for (let i = 0; i < n; i++) { const info = gl.getActiveUniform(p, i), name = info.name.replace(/\[0\]$/, ''); u[name] = gl.getUniformLocation(p, info.name); }
+  return { p, u };
+}
+const progMesh = gl && program(VS, FS), progGround = gl && program(GVS, GFS), progLine = gl && program(LVS, LFS);
+let groundVao = null, lineBuf = null, lineVao = null;
+if (gl) {
+  groundVao = gl.createVertexArray(); gl.bindVertexArray(groundVao);
+  const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,0,-1, 1,0,-1, 1,0,1, -1,0,-1, 1,0,1, -1,0,1]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+  lineVao = gl.createVertexArray(); gl.bindVertexArray(lineVao);
+  lineBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, lineBuf);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
+}
+
+const state = { model: null, clip: null, time: 0, playing: true, speed: 1, bones: false, scroll: 0,
+                cam: { yaw: 0.55, pitch: 0.12, dist: 3, target: [0, 0.9, 0] }, human: null, unit: 1 };
+
+function upload(model) {
+  for (const pr of model.prims) {
+    const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+    const attr = (loc, data, size) => {
+      const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+      gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
+    };
+    attr(0, pr.pos, 3);
+    if (pr.nor) attr(1, pr.nor, 3); else gl.vertexAttrib3f(1, 0, 1, 0);
+    if (pr.col) attr(2, pr.col, 4); else gl.vertexAttrib4f(2, ...pr.base);
+    if (pr.jn && pr.wt) { attr(3, pr.jn, 4); attr(4, pr.wt, 4); } else { gl.vertexAttrib4f(3, 0, 0, 0, 0); gl.vertexAttrib4f(4, 1, 0, 0, 0); }
+    if (pr.idx) { const b = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, b); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, pr.idx, gl.STATIC_DRAW);
+      pr.idxType = pr.idx instanceof Uint32Array ? gl.UNSIGNED_INT : pr.idx instanceof Uint8Array ? gl.UNSIGNED_BYTE : gl.UNSIGNED_SHORT; }
+    gl.bindVertexArray(null);
+    pr.vao = vao;
+  }
+}
+
+/* humanoid map: bone name -> node, and each driven bone's rest swing angle */
+function mapHumanoid(model) {
+  const byName = {};
+  model.nodes.forEach(n => { byName[n.name] = n; byName[n.name.toLowerCase()] = n; });
+  const need = ['Hips', 'UpperLeg.L', 'LowerLeg.L', 'UpperLeg.R', 'LowerLeg.R'];
+  if (!need.every(k => byName[k])) return null;
+  model.nodes.forEach(n => { n.pr = null; n.pt = null; });
+  updateWorld(model);
+  const pos = n => [n.world[12], n.world[13], n.world[14]];
+  const swing = (n) => {                          // how far forward of straight down the bone points, degrees
+    const kid = n.children.map(c => model.nodes[c]).find(c => c) || null;
+    if (!kid) return 0;
+    const a = pos(n), b = pos(kid);
+    return Math.atan2(b[2] - a[2], -(b[1] - a[1])) * 180 / Math.PI;
+  };
+  const H = { byName, rest: {}, flat: {} };
+  for (const n of model.nodes) H.rest[n.name] = swing(n);
+  /*
+   * A foot bone runs from the ankle down to the toes, so "flat on the floor"
+   * is not 90 degrees from straight down: it is whatever angle puts the toes
+   * on the ground with the ankle at standing height. The clips write feet as
+   * 90 = flat, and this maps that onto each foot's real flat angle.
+   */
+  const feet = ['Foot.L', 'Foot.R'].map(nm => byName[nm]).filter(Boolean);
+  const toe = (f) => f.children.map(c => model.nodes[c])[0];
+  if (feet.length && feet.every(toe)) {
+    const ankleY = Math.min(...feet.map(f => f.world[13])), toeY = Math.min(...feet.map(f => toe(f).world[13]));
+    for (const f of feet) {
+      const t = toe(f), L = Math.hypot(t.world[12] - f.world[12], t.world[13] - f.world[13], t.world[14] - f.world[14]);
+      H.flat[f.name] = Math.acos(Math.max(-1, Math.min(1, (ankleY - toeY) / L))) * 180 / Math.PI;
+    }
+  }
+  return H;
+}
+
+function applyClip(model, clip, t) {
+  model.nodes.forEach(n => { n.pr = null; n.pt = null; });
+  if (!clip) return;
+  if (clip.source === 'file') {
+    for (const c of clip.channels) {
+      const n = model.nodes[c.node], inp = c.input, out = c.output, k = c.path === 'rotation' ? 4 : 3;
+      let i = 0; while (i < inp.length - 2 && t > inp[i + 1]) i++;
+      const t0 = inp[i], t1 = inp[Math.min(i + 1, inp.length - 1)], f = t1 > t0 ? Math.min(1, Math.max(0, (t - t0) / (t1 - t0))) : 0;
+      const a = Array.from(out.subarray(i * k, i * k + k)), b = Array.from(out.subarray(Math.min(i + 1, inp.length - 1) * k, Math.min(i + 1, inp.length - 1) * k + k));
+      const v = c.interp === 'STEP' ? a : (k === 4 ? Q.slerp(a, b, f) : a.map((x, j) => x + (b[j] - x) * f));
+      if (c.path === 'rotation') n.pr = v; else if (c.path === 'translation') n.pt = v; else if (c.path === 'scale') n.ps = v;
+    }
+    return;
+  }
+  const H = state.human; if (!H) return;
+  const P = clip.pose(t), rel = P.rel || {}, abs = Object.assign({}, P.abs || {});
+  for (const k in abs) if (H.flat[k] !== undefined) abs[k] = H.flat[k] + (abs[k] - 90);
+  const names = new Set([...Object.keys(abs), ...Object.keys(rel)]);
+  for (const name of names) {
+    const n = H.byName[name]; if (!n) continue;
+    let dx = 0;
+    if (abs[name] !== undefined) {
+      // local swing = (target - parent's target) - (rest - parent's rest); a parent with no target keeps its rest
+      const par = n.parent >= 0 ? model.nodes[n.parent] : null, pn = par ? par.name : null;
+      const drivenParent = pn && abs[pn] !== undefined;
+      const local = drivenParent ? (abs[name] - abs[pn]) - (H.rest[name] - H.rest[pn]) : abs[name] - H.rest[name];
+      dx = -local;                                   // +X turns a bone backwards, so a forward swing is negative
+    }
+    const r = rel[name] || [0, 0, 0];
+    n.pr = Q.mul(n.r, Q.euler(dx + r[0], r[1], r[2]));
+  }
+  if (P.offset) { const h = H.byName['Hips']; h.pt = [h.t[0] + P.offset[0] * state.unit, h.t[1] + P.offset[1] * state.unit, h.t[2] + P.offset[2] * state.unit]; }
+}
+
+function jointMatrices(model, skinIndex) {
+  const s = model.skins[skinIndex], out = new Float32Array(64 * 16);
+  s.joints.forEach((j, k) => {
+    if (k >= 64) return;
+    const ibm = s.ibm ? Array.from(s.ibm.subarray(k * 16, k * 16 + 16)) : M4.ident();
+    out.set(M4.mul(model.nodes[j].world, ibm), k * 16);
+  });
+  return out;
+}
+
+function frame() {
+  const m = state.model;
+  const w = Math.floor(canvas.clientWidth * devicePixelRatio), h = Math.floor(canvas.clientHeight * devicePixelRatio);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  gl.viewport(0, 0, w, h);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  if (!m) return;
+  const c = state.cam, eye = [c.target[0] + c.dist * Math.cos(c.pitch) * Math.sin(c.yaw), c.target[1] + c.dist * Math.sin(c.pitch), c.target[2] + c.dist * Math.cos(c.pitch) * Math.cos(c.yaw)];
+  const vp = M4.mul(M4.persp(0.62, w / h, c.dist * 0.02, c.dist * 20), M4.lookAt(eye, c.target, [0, 1, 0]));
+  applyClip(m, state.clip, state.time);
+  updateWorld(m);
+
+  gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+  gl.useProgram(progMesh.p);
+  gl.uniformMatrix4fv(progMesh.u.uViewProj, false, vp);
+  gl.uniform3fv(progMesh.u.uEye, eye);
+  for (const pr of m.prims) {
+    const skinned = pr.skin !== undefined && pr.jn && pr.wt;
+    gl.uniform1i(progMesh.u.uSkinned, skinned ? 1 : 0);
+    gl.uniformMatrix4fv(progMesh.u.uModel, false, m.nodes[pr.node].world);
+    if (skinned) gl.uniformMatrix4fv(progMesh.u.uJoints, false, jointMatrices(m, pr.skin));
+    gl.bindVertexArray(pr.vao);
+    if (pr.idx) gl.drawElements(gl.TRIANGLES, pr.idx.length, pr.idxType, 0); else gl.drawArrays(gl.TRIANGLES, 0, pr.count);
+  }
+
+  // ground: grid that scrolls under a walk, and a soft contact shadow under the hips
+  gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
+  gl.useProgram(progGround.p);
+  gl.uniformMatrix4fv(progGround.u.uViewProj, false, vp);
+  gl.uniform1f(progGround.u.uSize, state.unit * 4);
+  gl.uniform1f(progGround.u.uUnit, state.unit * 0.25);
+  gl.uniform1f(progGround.u.uScroll, state.scroll);
+  const hips = state.human ? state.human.byName['Hips'] : null;
+  gl.uniform2f(progGround.u.uShadow, hips ? hips.world[12] : state.cam.target[0], hips ? hips.world[14] : state.cam.target[2]);
+  gl.bindVertexArray(groundVao); gl.drawArrays(gl.TRIANGLES, 0, 6);
+  gl.depthMask(true);
+
+  if (state.bones && m.skins.length) {
+    const pts = [], dots = [];
+    for (const j of m.skins[0].joints) {
+      const n = m.nodes[j], a = [n.world[12], n.world[13], n.world[14]];
+      dots.push(...a);
+      if (n.parent >= 0 && m.skins[0].joints.includes(n.parent)) { const p = m.nodes[n.parent].world; pts.push(p[12], p[13], p[14], ...a); }
+    }
+    gl.disable(gl.DEPTH_TEST);
+    gl.useProgram(progLine.p); gl.uniformMatrix4fv(progLine.u.uViewProj, false, vp);
+    gl.bindVertexArray(lineVao); gl.bindBuffer(gl.ARRAY_BUFFER, lineBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(pts), gl.DYNAMIC_DRAW);
+    gl.uniform4f(progLine.u.uColor, 1, 0.62, 0.3, 1); gl.drawArrays(gl.LINES, 0, pts.length / 3);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(dots), gl.DYNAMIC_DRAW);
+    gl.uniform4f(progLine.u.uColor, 1, 1, 1, 1); gl.drawArrays(gl.POINTS, 0, dots.length / 3);
+  }
+  gl.bindVertexArray(null);
+}
+
+let last = performance.now();
+function tick(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (state.clip && state.playing) {
+    state.time += dt * state.speed;
+    const d = state.clip.duration;
+    if (state.time > d) state.time = state.clip.loop === false ? d : state.time % d;
+    if (state.clip.travel) state.scroll = (state.scroll - dt * state.speed * state.clip.travel * state.unit) % 1000;
+    ui.time.value = state.time / d; ui.tval.textContent = state.time.toFixed(2) + 's';
+  }
+  if (gl) frame();
+  requestAnimationFrame(tick);
+}
+
+/* ---------------- loading ---------------- */
+function load(buf, name) {
+  const g = parseGLB(buf), model = buildModel(g);
+  if (!model.prims.length) throw new Error('No meshes in that file');
+  if (state.model) { /* old buffers are left to the garbage collector with the context objects */ }
+  upload(model);
+  state.model = model;
+  state.human = mapHumanoid(model);
+  // frame it: bounds of the rest pose
+  updateWorld(model);
+  let mn = [1e9, 1e9, 1e9], mx = [-1e9, -1e9, -1e9];
+  for (const pr of model.prims) {
+    const wm = model.nodes[pr.node].world;
+    for (let i = 0; i < pr.pos.length; i += 3 * 7) {
+      const p = pr.skin !== undefined ? [pr.pos[i], pr.pos[i+1], pr.pos[i+2]] : M4.point(wm, [pr.pos[i], pr.pos[i+1], pr.pos[i+2]]);
+      for (let k = 0; k < 3; k++) { mn[k] = Math.min(mn[k], p[k]); mx[k] = Math.max(mx[k], p[k]); }
+    }
+  }
+  const H = mx[1] - mn[1] || 1;
+  state.unit = H / 1.8;
+  // framed a little low, so the figure sits above the controls docked at the bottom
+  state.cam.target = [(mn[0] + mx[0]) / 2, mn[1] + H * 0.4, (mn[2] + mx[2]) / 2];
+  state.cam.dist = H * (innerWidth < innerHeight ? 2.6 : 2.25);
+  document.getElementById('hint').hidden = true;
+  const joints = model.skins.length ? model.skins[0].joints.length : 0;
+  document.getElementById('info').textContent = (name || 'model') + ' · ' + joints + ' joints' + (state.human ? ' · humanoid' : '');
+  buildClipButtons();
+  const first = (state.human ? CLIPS.find(c => c.id === 'walk') : null) || model.anims[0] || null;
+  setClip(first);
+}
+
+function allClips() {
+  const list = [];
+  if (state.human) list.push(...CLIPS);
+  if (state.model) list.push(...state.model.anims.filter(a => !(state.human && CLIPS.some(c => c.name === a.name))));
+  return list;
+}
+function buildClipButtons() {
+  const host = ui.clips; host.innerHTML = '';
+  const list = allClips();
+  if (!list.length) { host.textContent = 'This model has no animations, and its skeleton is not a humanoid one this player knows.'; return; }
+  for (const c of list) {
+    const b = document.createElement('button'); b.textContent = c.name; b.onclick = () => setClip(c); c.button = b; host.appendChild(b);
+  }
+}
+function setClip(c) {
+  state.clip = c; state.time = 0;
+  for (const x of allClips()) if (x.button) x.button.classList.toggle('on', x === c);
+}
+
+/* ---------------- exporting: bake the clips into the GLB ---------------- */
+function exportWithAnimations() {
+  const m = state.model; if (!m) return;
+  const J = JSON.parse(JSON.stringify(m.g.json)), chunks = [m.g.bin.slice()];
+  let len = m.g.bin.byteLength;
+  const add = (arr) => {
+    const pad = (4 - len % 4) % 4; if (pad) { chunks.push(new Uint8Array(pad)); len += pad; }
+    chunks.push(new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength));
+    J.bufferViews.push({ buffer: 0, byteOffset: len, byteLength: arr.byteLength }); len += arr.byteLength;
+    return J.bufferViews.length - 1;
+  };
+  J.animations = (J.animations || []).filter(a => !CLIPS.some(c => c.name === a.name));
+  const fps = 30;
+  for (const clip of (state.human ? CLIPS : [])) {
+    const frames = Math.round(clip.duration * fps) + 1, times = new Float32Array(frames);
+    for (let f = 0; f < frames; f++) times[f] = Math.min(clip.duration, f / fps);
+    const tAcc = J.accessors.push({ bufferView: add(times), componentType: 5126, count: frames, type: 'SCALAR', min: [0], max: [clip.duration] }) - 1;
+    const driven = m.skins[0].joints.map(j => m.nodes[j]);
+    const rot = driven.map(() => new Float32Array(frames * 4)), hipT = new Float32Array(frames * 3);
+    const hips = state.human.byName['Hips'];
+    for (let f = 0; f < frames; f++) {
+      applyClip(m, clip, times[f]);
+      driven.forEach((n, k) => rot[k].set(n.pr || n.r, f * 4));
+      hipT.set(hips.pt || hips.t, f * 3);
+    }
+    const anim = { name: clip.name, samplers: [], channels: [] };
+    driven.forEach((n, k) => {
+      const oAcc = J.accessors.push({ bufferView: add(rot[k]), componentType: 5126, count: frames, type: 'VEC4' }) - 1;
+      anim.samplers.push({ input: tAcc, output: oAcc, interpolation: 'LINEAR' });
+      anim.channels.push({ sampler: anim.samplers.length - 1, target: { node: n.i, path: 'rotation' } });
+    });
+    const hAcc = J.accessors.push({ bufferView: add(hipT), componentType: 5126, count: frames, type: 'VEC3' }) - 1;
+    anim.samplers.push({ input: tAcc, output: hAcc, interpolation: 'LINEAR' });
+    anim.channels.push({ sampler: anim.samplers.length - 1, target: { node: hips.i, path: 'translation' } });
+    J.animations.push(anim);
+  }
+  applyClip(m, state.clip, state.time);
+  const pad = (4 - len % 4) % 4; if (pad) { chunks.push(new Uint8Array(pad)); len += pad; }
+  J.buffers = [{ byteLength: len }];
+  let js = new TextEncoder().encode(JSON.stringify(J));
+  const jpad = (4 - js.length % 4) % 4, total = 12 + 8 + js.length + jpad + 8 + len;
+  const out = new Uint8Array(total), dv = new DataView(out.buffer);
+  dv.setUint32(0, 0x46546C67, true); dv.setUint32(4, 2, true); dv.setUint32(8, total, true);
+  dv.setUint32(12, js.length + jpad, true); dv.setUint32(16, 0x4E4F534A, true); out.set(js, 20); out.fill(0x20, 20 + js.length, 20 + js.length + jpad);
+  let o = 20 + js.length + jpad; dv.setUint32(o, len, true); dv.setUint32(o + 4, 0x004E4942, true); o += 8;
+  for (const c of chunks) { out.set(c, o); o += c.byteLength; }
+  return out;
+}
+
+/* ---------------- interface ---------------- */
+const ui = { clips: document.getElementById('clips'), time: document.getElementById('time'), tval: document.getElementById('tval'),
+             speed: document.getElementById('speed'), sval: document.getElementById('sval'), play: document.getElementById('play') };
+ui.play.onclick = () => { state.playing = !state.playing; ui.play.textContent = state.playing ? 'Pause' : 'Play'; };
+ui.time.oninput = () => { if (state.clip) { state.time = +ui.time.value * state.clip.duration; ui.tval.textContent = state.time.toFixed(2) + 's'; } };
+ui.speed.oninput = () => { state.speed = +ui.speed.value; ui.sval.textContent = state.speed.toFixed(2) + '×'; };
+document.getElementById('bones').onclick = (e) => { state.bones = !state.bones; e.currentTarget.classList.toggle('on', state.bones); };
+document.getElementById('save').onclick = () => {
+  if (!state.model) return;
+  const data = exportWithAnimations(), a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([data], { type: 'model/gltf-binary' }));
+  a.download = (state.name || 'model').replace(/\.glb$/i, '') + '_animated.glb'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+};
+async function openFile(file) { try { state.name = file.name; load(await file.arrayBuffer(), file.name); } catch (e) { alert(e.message); } }
+document.getElementById('file').onchange = (e) => { if (e.target.files[0]) openFile(e.target.files[0]); };
+addEventListener('dragover', (e) => { e.preventDefault(); document.body.classList.add('drop'); });
+addEventListener('dragleave', () => document.body.classList.remove('drop'));
+addEventListener('drop', (e) => { e.preventDefault(); document.body.classList.remove('drop'); if (e.dataTransfer.files[0]) openFile(e.dataTransfer.files[0]); });
+addEventListener('keydown', (e) => { if (e.code === 'Space') { e.preventDefault(); ui.play.click(); } });
+
+// orbit: drag to turn, wheel or pinch to zoom
+const ptrs = new Map(); let pinch = 0;
+canvas.addEventListener('pointerdown', (e) => { canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]); });
+canvas.addEventListener('pointermove', (e) => {
+  if (!ptrs.has(e.pointerId)) return;
+  const [px, py] = ptrs.get(e.pointerId); ptrs.set(e.pointerId, [e.clientX, e.clientY]);
+  if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    if (pinch) state.cam.dist = Math.min(40, Math.max(0.2, state.cam.dist * pinch / d)); pinch = d; return;
+  }
+  state.cam.yaw -= (e.clientX - px) * 0.008;
+  state.cam.pitch = Math.max(-0.3, Math.min(1.3, state.cam.pitch + (e.clientY - py) * 0.006));
+});
+const up = (e) => { ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = 0; };
+canvas.addEventListener('pointerup', up); canvas.addEventListener('pointercancel', up);
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); state.cam.dist = Math.min(40, Math.max(0.2, state.cam.dist * Math.exp(e.deltaY * 0.001))); }, { passive: false });
+
+// the soldier ships beside this page; an embedded copy (the standalone demo) takes precedence
+window.RigPlayer = { load, setClip, state, CLIPS, exportWithAnimations };
+if (window.EMBEDDED_GLB) {
+  const bin = Uint8Array.from(atob(window.EMBEDDED_GLB), c => c.charCodeAt(0));
+  state.name = 'soldier_rigged.glb'; load(bin.buffer, state.name);
+} else if (location.protocol !== 'file:') {
+  fetch('soldier_rigged.glb').then(r => r.ok ? r.arrayBuffer() : null).then(b => { if (b) { state.name = 'soldier_rigged.glb'; load(b, state.name); } }).catch(() => {});
+}
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>

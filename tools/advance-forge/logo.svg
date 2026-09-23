@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Advance Forge</title>
+  <rect width="512" height="512" rx="96" fill="#D7262B"/>
+  <g fill="#FFFFFF">
+    <!-- two bold chevrons rising off the anvil: advance -->
+    <path d="M256 54 L372 160 L318 160 L256 104 L194 160 L140 160 Z"/>
+    <path d="M256 150 L372 256 L318 256 L256 200 L194 256 L140 256 Z"/>
+    <!-- the anvil: pointed horn to the left, square heel to the right, waisted body, broad foot -->
+    <path d="M60 292 L410 292 L410 344 L372 344
+             C352 348 338 362 334 384 L334 396 L386 410 L390 446 L122 446 L126 410 L178 396 L178 384
+             C174 362 160 348 140 344 L126 342
+             C100 336 76 318 60 292 Z"/>
+  </g>
+</svg>
