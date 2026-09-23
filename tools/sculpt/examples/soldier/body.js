@@ -12,8 +12,8 @@ const J = {
   kneeR: [-0.108, 0.525, 0.125], kneeL: [0.106, 0.52, -0.075],
   ankleR: [-0.118, 0.105, 0.075], ankleL: [0.114, 0.128, -0.215],
   shR: [-0.198, 1.425, -0.005], shL: [0.198, 1.42, -0.02],
-  elR: [-0.25, 1.165, 0.025], elL: [0.262, 1.175, -0.02],
-  wrR: [-0.268, 0.935, 0.105], wrL: [0.274, 0.955, 0.13]
+  elR: [-0.282, 1.17, 0.025], elL: [0.29, 1.178, -0.02],
+  wrR: [-0.312, 0.945, 0.105], wrL: [0.315, 0.962, 0.13]
 };
 const sides = [
   { s: -1, hip: J.hipR, knee: J.kneeR, ank: J.ankleR, sh: J.shR, el: J.elR, wr: J.wrR, footPitch: 0 },
@@ -142,8 +142,8 @@ C.cyl([0.1, 0.985, -0.14], 0.04, 0.05, 0.014);                                 /
 C.box([-0.12, 0.99, -0.13], [0.04, 0.035, 0.025], 0.012);                      // first-aid pouch
 { // holster on the right thigh, hanging from the belt, strapped round the leg
   const { hip, knee } = sides[0];
-  const c = off(L3(hip, knee, 0.33), [-0.1, 0, 0.02]);
-  T('strap', 0.004); C.box(off(c, [0.004, 0.11, -0.005]), [0.012, 0.06, 0.018], 0.005);       // hanger
+  const c = off(L3(hip, knee, 0.45), [-0.098, 0, 0.0]);                 // low on the thigh, clear of the hand
+  T('strap', 0.004); C.box(off(c, [0.004, 0.14, -0.005]), [0.012, 0.09, 0.018], 0.005);       // hanger
   T('pouch', 0.008); C.box(c, [0.028, 0.085, 0.05], 0.014, [8, 0, 4]);
   T('rifle', 0.004); C.box(off(c, [0, 0.085, -0.012]), [0.014, 0.03, 0.022], 0.007, [-15, 0, 4]);   // pistol grip
   T('strap', 0.003);

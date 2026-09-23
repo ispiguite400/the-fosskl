@@ -59,3 +59,15 @@ scripts that drive the app.
 Rebuild with `node ../../build.js && node build.mjs`. This takes about 90
 seconds. The sculpt is about 880k triangles, and the project and GLB are
 reduced to 300k.
+
+## Rigged and animated
+
+This soldier is rigged with SculptFree's **☰ → Rig** and animated in
+`../../../anim/`, which holds the rigged GLB, a version with four clips baked
+in, and a player. To rig cleanly, two things changed from the first sculpt:
+
+- **The arms hang a few centimetres out from the body.** Where a forearm
+  rested against the vest, the clay build fused them into one surface, and
+  lifting the arm stretched the vest with it.
+- **The holster sits lower on the thigh**, clear of the right glove.
+

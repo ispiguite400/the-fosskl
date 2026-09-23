@@ -7,7 +7,7 @@
   const d = nrm([0.02, -1, 0.1]);                                     // towards the muzzle
   const dx = d[0]; const u = nrm([1 - d[0]*dx, -d[1]*dx, -d[2]*dx]);   // top of the rifle, towards his leg
   const w = cross(d, u);
-  const hand = [-0.264, 0.834, 0.158];
+  const hand = [-0.308, 0.844, 0.158];
   const O = [0, 1, 2].map(i => hand[i] - d[i] * 0.06);
   const P = (s, t, q) => [0, 1, 2].map(i => O[i] + d[i]*s + u[i]*t + w[i]*(q || 0));
   const B = C.basis(d, u, w);
