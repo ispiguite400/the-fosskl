@@ -367,8 +367,23 @@ function mapHumanoid(model) {
     const a = pos(n), b = pos(kid);
     return Math.atan2(b[2] - a[2], -(b[1] - a[1])) * 180 / Math.PI;
   };
-  const H = { byName, rest: {} };
+  const H = { byName, rest: {}, flat: {} };
   for (const n of model.nodes) H.rest[n.name] = swing(n);
+  /*
+   * A foot bone runs from the ankle down to the toes, so "flat on the floor"
+   * is not 90 degrees from straight down: it is whatever angle puts the toes
+   * on the ground with the ankle at standing height. The clips write feet as
+   * 90 = flat, and this maps that onto each foot's real flat angle.
+   */
+  const feet = ['Foot.L', 'Foot.R'].map(nm => byName[nm]).filter(Boolean);
+  const toe = (f) => f.children.map(c => model.nodes[c])[0];
+  if (feet.length && feet.every(toe)) {
+    const ankleY = Math.min(...feet.map(f => f.world[13])), toeY = Math.min(...feet.map(f => toe(f).world[13]));
+    for (const f of feet) {
+      const t = toe(f), L = Math.hypot(t.world[12] - f.world[12], t.world[13] - f.world[13], t.world[14] - f.world[14]);
+      H.flat[f.name] = Math.acos(Math.max(-1, Math.min(1, (ankleY - toeY) / L))) * 180 / Math.PI;
+    }
+  }
   return H;
 }
 
@@ -387,7 +402,8 @@ function applyClip(model, clip, t) {
     return;
   }
   const H = state.human; if (!H) return;
-  const P = clip.pose(t), abs = P.abs || {}, rel = P.rel || {};
+  const P = clip.pose(t), rel = P.rel || {}, abs = Object.assign({}, P.abs || {});
+  for (const k in abs) if (H.flat[k] !== undefined) abs[k] = H.flat[k] + (abs[k] - 90);
   const names = new Set([...Object.keys(abs), ...Object.keys(rel)]);
   for (const name of names) {
     const n = H.byName[name]; if (!n) continue;
