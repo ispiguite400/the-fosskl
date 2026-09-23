@@ -1060,9 +1060,52 @@
       var attributes = { POSITION: posAcc, NORMAL: norAcc };
       if (uvAcc >= 0) attributes.TEXCOORD_0 = uvAcc;
       if (colAcc >= 0) attributes.COLOR_0 = colAcc;
+      var skinned = opts.skin && (opts.skin.geom || 0) === i;
+      if (skinned) {
+        // which joints move each vertex, and how much: four of each, weights summing to one
+        var jv = addView(opts.skin.joints, 34962);
+        json.accessors.push({ bufferView: jv, componentType: 5123, count: n, type: 'VEC4' });
+        attributes.JOINTS_0 = json.accessors.length - 1;
+        var wv = addView(opts.skin.weights, 34962);
+        json.accessors.push({ bufferView: wv, componentType: 5126, count: n, type: 'VEC4' });
+        attributes.WEIGHTS_0 = json.accessors.length - 1;
+      }
       json.meshes.push({ name: g.name, primitives: [{ attributes: attributes, indices: idxAcc, material: matIdx, mode: 4 }] });
       json.nodes.push({ name: g.name, mesh: json.meshes.length - 1 });
+      if (skinned) json.nodes[json.nodes.length - 1].skin = 0;
       json.scenes[0].nodes.push(json.nodes.length - 1);
+    }
+
+    /*
+     * The skeleton. Every joint is a node whose rest rotation is the
+     * identity, placed by a translation from its parent, so the inverse bind
+     * matrices are pure translations. Animation then only has to rotate
+     * joints, which is what every tool expects.
+     */
+    if (opts.skin) {
+      var bones = opts.skin.bones, first = json.nodes.length;
+      var ibm = new Float32Array(bones.length * 16);
+      for (var bi = 0; bi < bones.length; bi++) {
+        var bn = bones[bi], ph = bn.parent >= 0 ? bones[bn.parent].head : [0, 0, 0];
+        json.nodes.push({ name: bn.name, translation: [bn.head[0] - ph[0], bn.head[1] - ph[1], bn.head[2] - ph[2]] });
+        ibm[bi * 16] = ibm[bi * 16 + 5] = ibm[bi * 16 + 10] = ibm[bi * 16 + 15] = 1;
+        ibm[bi * 16 + 12] = -bn.head[0]; ibm[bi * 16 + 13] = -bn.head[1]; ibm[bi * 16 + 14] = -bn.head[2];
+      }
+      var roots = [];
+      for (bi = 0; bi < bones.length; bi++) {
+        var par = bones[bi].parent;
+        if (par >= 0) {
+          var pn = json.nodes[first + par];
+          (pn.children || (pn.children = [])).push(first + bi);
+        } else roots.push(first + bi);
+      }
+      var ibmView = addView(ibm, 0);
+      delete json.bufferViews[ibmView].target;
+      json.accessors.push({ bufferView: ibmView, componentType: 5126, count: bones.length, type: 'MAT4' });
+      var joints = [];
+      for (bi = 0; bi < bones.length; bi++) joints.push(first + bi);
+      json.skins = [{ name: 'Armature', joints: joints, inverseBindMatrices: json.accessors.length - 1, skeleton: roots[0] }];
+      for (var ri = 0; ri < roots.length; ri++) json.scenes[0].nodes.push(roots[ri]);
     }
 
     json.buffers.push({ byteLength: byteLength });
@@ -1163,7 +1206,8 @@
       objects: objects,
       selected: state.selected === undefined ? 0 : state.selected,
       camera: state.camera || null,
-      settings: state.settings || null
+      settings: state.settings || null,
+      rig: state.rig || null
     };
     var jsonBytes = encodeUtf8(JSON.stringify(meta));
     var headerLen = PROJECT_MAGIC.length + 4;
@@ -1213,7 +1257,7 @@
       objects.push(loaded);
     }
     return { ok: true, objects: objects, camera: meta.camera, settings: meta.settings,
-             selected: meta.selected, version: meta.version, saved: meta.saved };
+             selected: meta.selected, version: meta.version, saved: meta.saved, rig: meta.rig || null };
   };
 
   /* ================================================================ *

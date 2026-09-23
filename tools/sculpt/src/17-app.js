@@ -510,6 +510,9 @@
    * ================================================================ */
 
   A.closeSheet = function () {
+    // a test pose or the weight colours only last while the Rig sheet is open
+    this._sheetIsRig = false;
+    if (this.rig && this.rig.rest) this.rigRest();
     if (this._sheet) {
       var s = this._sheet;
       this._sheet = null;
@@ -600,6 +603,8 @@
           chevron: true, onclick: function () { self.openObjectsSheet(); } },
         { icon: 'boolean', label: 'Combine', hint: 'Join, union, subtract or intersect two objects',
           chevron: true, onclick: function () { self.openCombineSheet(); } },
+        { icon: 'bone', label: 'Rig', hint: 'Skeleton, skin weights, test poses and a rigged GLB',
+          chevron: true, onclick: function () { self.openRigSheet(); } },
 
         { group: 'Files — all free, no limits' },
         { icon: 'upload', label: 'Open a model', hint: 'OBJ, STL, PLY, GLB or a saved project',
@@ -2081,6 +2086,7 @@
       } : null,
       cursor: this.cursor
     });
+    if (this.drawRig) this.drawRig();
     this.updateHud();
   };
 
@@ -2133,6 +2139,16 @@
         return;
       }
 
+      // editing the skeleton: a press is a joint to drag, or empty space to orbit from
+      if (self.rig && self.rig.editing) {
+        if (self.rigPointerDown(p)) return;
+        self.navigating = { mode: 'orbit', x: p.x, y: p.y };
+        canvas.classList.add('navigating');
+        return;
+      }
+      // a posed or weight-coloured preview goes back to rest before anything is sculpted
+      if (self.rig && self.rig.rest) self.rigRest();
+
       // with the gizmo up, a press is either a handle, a shape to select, or
       // empty space to orbit from — never a brush stroke
       if (self.transform.active) {
@@ -2170,6 +2186,10 @@
         self.transformPointerMove(p);
         return;
       }
+      if (self.rig && self.rig.drag) {
+        self.rigPointerMove(p);
+        return;
+      }
 
       if (self.navigating) {
         var dx = p.x - self.navigating.x, dy = p.y - self.navigating.y;
@@ -2201,6 +2221,7 @@
         self.transformPointerUp();
         self.refreshObjects();
       }
+      if (self.rig && self.rig.drag) self.rigPointerUp();
       if (self.engine.active) {
         var committed = self.engine.end();
         if (committed) self.dirtySinceSave = true;
@@ -2629,6 +2650,7 @@
   };
 
   A.undo = function () {
+    if (this.rig && this.rig.rest) this.rigRest();
     var entry = this.history.undo();
     if (!entry) { UI.toast('Nothing to undo'); return; }
     this.refreshObjects();
@@ -2638,6 +2660,7 @@
   };
 
   A.redo = function () {
+    if (this.rig && this.rig.rest) this.rigRest();
     var entry = this.history.redo();
     if (!entry) { UI.toast('Nothing to redo'); return; }
     this.refreshObjects();
@@ -3332,12 +3355,14 @@
 
   A.saveProject = function () {
     var self = this;
+    if (this.rig && this.rig.rest) this.rigRest();
     UI.busy('Saving project', '', function () {
       var data = S.IO.saveProject({
         objects: self.scene.objects,
         selected: self.scene.selected,
         camera: self.camera.serialize(),
-        settings: self.exportableSettings()
+        settings: self.exportableSettings(),
+        rig: self.rigForProject ? self.rigForProject() : null
       });
       var name = self.exportFilename('sculpt');
       var size = UI.download(data, name, 'application/octet-stream');
@@ -3364,6 +3389,7 @@
 
   A.applyProject = function (project) {
     var self = this;
+    if (this.rig) { this.rigRest(); this.rigSetEditing(false); this.rig = null; }
     this.transform.pending = null;
     this.transform.drag = null;
     for (var i = this.scene.objects.length - 1; i >= 0; i--) {
@@ -3397,6 +3423,7 @@
     }
     if (project.camera) this.camera.restore(project.camera);
     else this.frameAll(true);
+    if (this.rigFromProject) this.rigFromProject(project.rig);
     this.refreshObjects();
     this.refreshStatus();
     this.syncMatcaps();
@@ -3893,6 +3920,7 @@
   A.writeAutosave = function () {
     var self = this;
     if (!this.scene.objects.length) return;
+    if (this.rig && this.rig.rest) return;   // never keep a test pose as the recovery copy
     var total = this.scene.totals();
     if (total.verts > 3000000) return;       // too big to be worth blocking on
     try {
@@ -3900,7 +3928,8 @@
         objects: this.scene.objects,
         selected: this.scene.selected,
         camera: this.camera.serialize(),
-        settings: this.exportableSettings()
+        settings: this.exportableSettings(),
+        rig: this.rigForProject ? this.rigForProject() : null
       });
       this.withDB('readwrite', function (store) {
         store.put({ data: data, time: Date.now(), tris: total.tris, objects: total.objects }, 'autosave');

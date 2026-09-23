@@ -475,6 +475,54 @@ lives in your browser's own storage, and projects are files you keep.
 
 ---
 
+## Rigging
+
+**☰ → Rig** turns a sculpt into a character you can animate:
+
+1. **Add a humanoid skeleton.** It has 21 bones: hips, spine, chest, neck
+   and head, and for each side a shoulder, upper arm, lower arm, hand, upper
+   leg, lower leg, foot and toes. They are fitted to the selected object's
+   height and centred inside its body.
+2. **Edit joints.** Drag any joint, and its mirror follows while **Mirror
+   left and right** is on. **Centre** looks both ways from each joint and
+   moves it into the middle of the limb.
+3. **Bind** works out the skin weights. This takes about 1.5 s on a 100k
+   triangle model.
+4. **Test poses**: Step, Arms up and Crouch bend the model in place, and
+   **Show weights** colours it by bone. Closing the sheet puts everything
+   back exactly.
+5. **Rigged GLB** exports the mesh, colours, skeleton and weights as a
+   skinned glTF that Blender, Unity, Godot and three.js read directly.
+
+How the weights are worked out:
+
+- **Separate pieces stay rigid.** A rifle, a helmet or sunglasses joined
+  without welding are carried whole by the one bone they sit against, so a
+  prop never bends. A piece that has two or more joints inside it, like an
+  arm modelled on its own, is a body part and is skinned normally.
+- **The owner must be able to see the vertex.** Each vertex goes to the
+  nearest bone it can see from inside the body, which stops the side of the
+  chest going to an arm that hangs a few centimetres away. The bone must
+  also sit behind the surface, facing the same way, and be within that
+  limb's own radius. That stops a pouch strapped beside an arm being handed
+  to the arm.
+- **Joints bend in curves.** Near each joint the weight is shared with the
+  neighbouring bone, stray single vertices are voted back into line, and a
+  few smoothing passes take out the seams. Each vertex keeps its four
+  strongest bones.
+
+The skeleton is saved with the project. Every joint's rest orientation is
+the identity, so a pose is just a rotation per joint, and the exported
+inverse bind matrices are plain translations.
+
+**Sculpt with rigging in mind.** Anything the clay build fuses together,
+such as a forearm resting against a vest, becomes one surface and stretches
+when the arm moves. Keep limbs a finger's width clear of the body, as a
+character artist would before rigging.
+
+`../anim/` has a player for the result, with walk, idle, aim and crouch
+clips for this skeleton.
+
 ## How it is built
 
 No dependencies at all — not even Three.js. That is what makes it one portable
@@ -593,6 +641,7 @@ node test/brush.test.mjs        # 411  every brush, adding vs stretching, the st
 node test/camera.test.mjs       # 18   projection, framing, ray casting
 node test/boolean.test.mjs      # 51   union / subtract / intersect against analytic volumes
 node test/texture.test.mjs      # 474  PNG writer, unwrap, bake, textured export, stencils, presets
+node test/rig.test.mjs          # 33   skeleton, weights on a known figure, posing, skinned GLB, project round trip
 node test/paint.test.mjs        # 66   the paint image: atlas, rasteriser, stencils, undo, export
 node test/gizmo.test.mjs        # 52   handle layout, hit testing, move/turn/resize maths
 node build.js && node test/browser.test.mjs   # 488 end-to-end in a real browser

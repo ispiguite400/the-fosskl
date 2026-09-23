@@ -946,3 +946,45 @@ input[type=color] {
   #bar-right { top: 12px; transform: none; padding-top: 52px; }
   #stats { display: none; }
 }
+
+/* ------------------------------------------------- rigging */
+
+#rig-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;                 /* the canvas does the hit-testing */
+}
+#rig-overlay[hidden] { display: none; }
+.rig-bone { fill: rgba(255, 176, 92, 0.34); stroke: #ffb05c; stroke-width: 1.2; }
+.rig-bone.left { fill: rgba(110, 196, 255, 0.3); stroke: #6ec4ff; }
+.rig-bone.right { fill: rgba(255, 120, 150, 0.3); stroke: #ff7896; }
+.rig-bone.sel { fill: rgba(255, 255, 255, 0.55); stroke: #fff; stroke-width: 1.6; }
+.rig-joint { fill: #14171d; stroke: #fff; stroke-width: 1.5; }
+.rig-joint.sel { fill: #ff8a4c; }
+#bar-rig {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 14px;
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+}
+#bar-rig[hidden] { display: none; }
+#bar-rig .btn { padding: 8px 10px; }
+.rig-label { font-size: 12px; color: var(--text); padding: 0 6px; min-width: 90px; }
+.rig-poses { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 12px 10px; }
+.rig-poses .btn { padding: 7px 11px; font-size: 12px; }
+/* the Rig sheet stands to the side on a wide screen, so the pose it is previewing stays in view */
+@media (min-width: 900px) {
+  .sheet.side { left: auto; right: 64px; margin-left: 0; width: 360px; bottom: auto; top: 70px; max-height: calc(100vh - 90px); }
+}
