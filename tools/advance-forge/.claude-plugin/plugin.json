@@ -1,0 +1,7 @@
+{
+  "name": "advance-forge",
+  "version": "1.0.0",
+  "description": "Build good 3D characters, props, rigs and animations by driving the SculptFree sculpting app and the Rig Player from scripts, then load them into a Three.js game. Includes a detailed rule sheet on style, what deserves a custom model, sculpting method, rigging and animation.",
+  "author": { "name": "ispiguite400" },
+  "keywords": ["3d", "sculpting", "modeling", "rigging", "animation", "gltf", "threejs", "game-art"]
+}

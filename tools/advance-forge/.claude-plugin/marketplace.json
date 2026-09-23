@@ -1,0 +1,14 @@
+{
+  "name": "advance-forge-marketplace",
+  "owner": {
+    "name": "ispiguite400"
+  },
+  "description": "Advance Forge: an AI sculpting studio for 3D characters, rigs and animations.",
+  "plugins": [
+    {
+      "name": "advance-forge",
+      "source": "./",
+      "description": "Sculpt, rig and animate 3D models with SculptFree, and put them in the game."
+    }
+  ]
+}
