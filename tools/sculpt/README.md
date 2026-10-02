@@ -671,11 +671,11 @@ node test/boolean.test.mjs      # 51   union / subtract / intersect against anal
 node test/texture.test.mjs      # 474  PNG writer, unwrap, bake, textured export, stencils, presets
 node test/paint.test.mjs        # 66   the paint image: atlas, rasteriser, stencils, undo, export
 node test/gizmo.test.mjs        # 52   handle layout, hit testing, move/turn/resize maths
-node build.js && node test/browser.test.mjs   # 506 end-to-end in a real browser
+node build.js && node test/browser.test.mjs   # 520 end-to-end in a real browser
 node test/shots.mjs             # renders the screenshots in test/screens
 ```
 
-2,046 checks in total. Some of them are worth naming, because they are the
+2,060 checks in total. Some of them are worth naming, because they are the
 ones that catch a regression you would otherwise ship:
 
 - **Brushes have to add, not stretch.** The same pull is run with dynamic
@@ -705,6 +705,12 @@ ones that catch a regression you would otherwise ship:
   it fails if that leaves a needle, a hole, a non-manifold edge, a runaway
   triangle count or a ballooned shape. So are both slider ceilings — from the
   slider, the keyboard, a preset and an old settings file.
+- **Getting a model in is tested as a route, not just as a parser.** The sheet
+  has to hold a real file input, that input has to cover the whole button
+  (a tap landing anywhere else is a tap that does nothing), files put on it
+  have to arrive and the sheet has to get out of the way, the trail has to
+  name the file and its size and reach "Imported", and a pasted cube has to
+  come in with all twelve of its triangles.
 - **A file that cannot be read is a test, in every way it can fail.** A
   coordinate that is not a number, a PLY header claiming a billion vertices, a
   GLB cut to a tenth of its length, a project file cut short, an FBX, a zip, a
