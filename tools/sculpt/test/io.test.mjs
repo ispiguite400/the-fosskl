@@ -403,4 +403,132 @@ end_header
   check('empty OBJ warns', emptyObj.objects.length === 0 && emptyObj.warnings.length > 0);
 }
 
+/* ==== damaged, lying and foreign files ============================= *
+ *
+ * Every one of these used to reach the person as whatever JavaScript called
+ * the problem — "Invalid array length", "Invalid typed array length", an
+ * offset outside a DataView — or as a hang, or as nothing at all. The rule
+ * tested here is: no exception escapes, no loop runs away, and every refusal
+ * is a sentence someone can act on.
+ * ------------------------------------------------------------------- */
+{
+  const enc = (t) => IO.encodeUtf8(t).buffer;
+  /** Import must always answer, never throw. */
+  function tryImport(name, buf) {
+    try { return IO.importBuffer(name, buf); }
+    catch (err) { check(`${name}: importBuffer threw`, false, String(err && err.message)); return null; }
+  }
+  function plainWarning(label, res) {
+    check(`${label}: says something`, !!res && res.warnings.length > 0);
+    const text = res ? res.warnings.join(' ') : '';
+    check(`${label}: no machine talk`, !/typed array|DataView|undefined|NaN|\[object/i.test(text), text);
+    return text;
+  }
+
+  // a coordinate that is not a number: the good triangles still arrive
+  const nanObj = tryImport('nan.obj', enc('v 0 0 0\nv 1 0 0\nv 0 1 0\nv nan 2 2\nv 1 2 2\nv 2 2 1\nf 1 2 3\nf 4 5 6\n'));
+  const nanMesh = new S.Mesh();
+  nanMesh.setFromArrays(nanObj.objects[0].positions, nanObj.objects[0].indices, { weld: true });
+  eq('NaN corner: the sound triangle survives', nanMesh.liveTris, 1);
+  eq('NaN corner: the bad triangle is counted', nanMesh.buildReport.nonFiniteTris, 1);
+  check('NaN corner: no vertex left unreal', (() => {
+    const p = nanMesh.positions.array;
+    for (let i = 0; i < nanMesh.liveVerts * 3; i++) if (!isFinite(p[i])) return false;
+    return true;
+  })());
+  check('NaN corner: the grid was still built', !!nanMesh.grid && nanMesh.grid.buckets.length > 0);
+  // infinity too, by the same door
+  const infMesh = new S.Mesh();
+  infMesh.setFromArrays(new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, Infinity, 0, 0, 1, 1, 0, 0, 0, 1]),
+    new Uint32Array([0, 1, 2, 3, 4, 5]), { weld: false });
+  eq('infinity: the sound triangle survives', infMesh.liveTris, 1);
+
+  // a PLY header that claims more than the file holds
+  const bigPly = tryImport('big.ply', enc('ply\nformat ascii 1.0\nelement vertex 999999999\n' +
+    'property float x\nproperty float y\nproperty float z\nend_header\n0 0 0\n'));
+  plainWarning('PLY claiming a billion vertices', bigPly);
+  check('PLY claiming a billion vertices: capped', bigPly.objects[0].positions.length < 1000,
+    `${bigPly.objects[0].positions.length}`);
+  const binPly = tryImport('big2.ply', enc('ply\nformat binary_little_endian 1.0\nelement vertex 4000000000\n' +
+    'property float x\nproperty float y\nproperty float z\nend_header\n'));
+  plainWarning('binary PLY claiming four billion vertices', binPly);
+  // a truncated binary PLY: the vertices that are there, nothing thrown
+  const goodPly = IO.exportPLY(IO.prepare([objectOf(S.Prim.makeMesh('sphere', 2))], {}), {});
+  for (const cut of [0.9, 0.5, 0.25, 0.05]) {
+    const part = goodPly.slice(0, Math.floor(goodPly.byteLength * cut));
+    const res = tryImport('cut.ply', part);
+    check(`PLY cut to ${cut * 100}%: answered without throwing`, !!res);
+  }
+
+  // an STL header that lies, and one with nothing after it
+  const liar = new ArrayBuffer(84);
+  new DataView(liar).setUint32(80, 4000000000, true);
+  plainWarning('STL claiming four billion triangles', tryImport('liar.stl', liar));
+
+  // GLB: too short, damaged description, a chunk longer than the file
+  plainWarning('GLB of four bytes', tryImport('short.glb', new Uint8Array([0x67, 0x6c, 0x54, 0x46]).buffer));
+  const realGlb = IO.exportGLB(IO.prepare([objectOf(S.Prim.makeMesh('sphere', 2))], {}), {});
+  for (const cut of [0.8, 0.4, 0.1]) {
+    const part = realGlb.slice(0, Math.floor(realGlb.byteLength * cut));
+    const res = tryImport('cut.glb', part);
+    check(`GLB cut to ${cut * 100}%: answered without throwing`, !!res);
+  }
+  const noJson = new ArrayBuffer(20);
+  const dvNo = new DataView(noJson);
+  dvNo.setUint32(0, 0x46546C67, true); dvNo.setUint32(4, 2, true); dvNo.setUint32(8, 20, true);
+  plainWarning('GLB with no description', tryImport('nojson.glb', noJson));
+  // a glTF whose accessor claims more elements than the buffer holds
+  const lyingGltf = { asset: { version: '2.0' },
+    buffers: [{ uri: 'data:application/octet-stream;base64,AAAAAAAAAAAAAAAA' }],
+    bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 12 }],
+    accessors: [{ bufferView: 0, componentType: 5126, type: 'VEC3', count: 100000000 }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0 } }] }],
+    nodes: [{ mesh: 0 }], scenes: [{ nodes: [0] }], scene: 0 };
+  const lying = tryImport('lying.gltf', enc(JSON.stringify(lyingGltf)));
+  check('glTF accessor claiming a hundred million: capped', !!lying &&
+    (!lying.objects.length || lying.objects[0].positions.length < 1000),
+    lying && lying.objects.length ? `${lying.objects[0].positions.length}` : 'no objects');
+  // a node graph that points back at itself
+  const loopGltf = { asset: { version: '2.0' }, nodes: [{ children: [1] }, { children: [0] }],
+    scenes: [{ nodes: [0] }], scene: 0, meshes: [] };
+  check('glTF node loop does not recurse forever', !!tryImport('loop.gltf', enc(JSON.stringify(loopGltf))));
+
+  // a project file cut short
+  const proj = IO.saveProject({ objects: [objectOf(S.Prim.makeMesh('sphere', 2))] }, {});
+  const projBuf = proj.data ? (proj.data.buffer || proj.data) : proj;
+  for (const cut of [0.9, 0.5, 0.2]) {
+    const part = projBuf.slice(0, Math.floor(projBuf.byteLength * cut));
+    const res = tryImport('cut.sculpt', part);
+    check(`project cut to ${cut * 100}%: answered without throwing`, !!res);
+  }
+
+  // files of another kind, named as what they are
+  const foreign = [
+    ['model.fbx', 'Kaydara FBX Binary  \u0000', /FBX/],
+    ['scene.blend', 'BLENDER-v300', /Blender/],
+    ['part.dae', '<?xml version="1.0"?><COLLADA>', /COLLADA/],
+    ['hat.rbxm', '<roblox!', /Roblox/],
+    ['models.zip', 'PK\u0003\u0004', /zip/i],
+    ['skin.png', 'PNG\r\n', /[Ii]mage/]
+  ];
+  for (const [name, head, expect] of foreign) {
+    const res = tryImport(name, enc(head + '\n\n\n'));
+    const text = plainWarning(`foreign file ${name}`, res);
+    check(`${name}: named for what it is`, expect.test(text), text);
+    eq(`${name}: nothing imported`, res.objects.length, 0);
+  }
+
+  // an empty file, and bytes that are nothing at all
+  plainWarning('an empty file', tryImport('empty.obj', new ArrayBuffer(0)));
+  plainWarning('five random bytes', tryImport('mystery', new Uint8Array([3, 1, 4, 1, 5]).buffer));
+  plainWarning('a sentence', tryImport('note.txt', enc('this is just some writing, not a model')));
+
+  // and the formats we do read still come through untouched
+  const sound = IO.prepare([objectOf(S.Prim.makeMesh('sphere', 2))], {});
+  eq('a sound OBJ still imports', tryImport('ok.obj', enc(IO.exportOBJ(sound, {}))).objects.length, 1);
+  eq('a sound PLY still imports', tryImport('ok.ply', IO.exportPLY(sound, {})).objects.length, 1);
+  eq('a sound GLB still imports', tryImport('ok.glb', IO.exportGLB(sound, {})).objects.length, 1);
+  eq('a sound STL still imports', tryImport('ok.stl', IO.exportSTL(sound, {})).objects.length, 1);
+}
+
 report('io');

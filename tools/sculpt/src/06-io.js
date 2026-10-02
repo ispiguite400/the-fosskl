@@ -39,6 +39,29 @@
   }
   IO.encodeUtf8 = encodeUtf8;
 
+  /**
+   * A count read out of a file is a claim, not a fact.
+   *
+   * Every format states how much it holds before it holds it: an STL header
+   * says how many triangles follow, a PLY header how many vertices, a glTF
+   * accessor how many elements. A file that was truncated mid-download, saved
+   * by a buggy exporter, or simply isn't the format we guessed makes that
+   * claim anyway — and the number can be anything: 4 billion, negative, or
+   * not a number at all. Handing such a number to `new Float32Array` throws
+   * "Invalid typed array length", which is JavaScript's way of saying the
+   * file lied, and used to reach the user as exactly that text.
+   *
+   * So every count from a file comes through here: whole, not negative, and
+   * never larger than the bytes actually present.
+   */
+  function fileCount(claimed, capacity) {
+    var n = Math.floor(+claimed);
+    if (!isFinite(n) || n < 0) return 0;
+    if (capacity !== undefined && isFinite(capacity) && n > capacity) return Math.max(0, Math.floor(capacity));
+    return n;
+  }
+  IO.fileCount = fileCount;
+
   IO.extensionOf = function (name) {
     var m = /\.([a-z0-9]+)\s*$/i.exec(name || '');
     return m ? m[1].toLowerCase() : '';
@@ -385,9 +408,10 @@
   IO.parseBinarySTL = function (buffer) {
     var dv = new DataView(buffer);
     var nTri = dv.getUint32(80, true);
-    var maxTri = Math.floor((buffer.byteLength - 84) / 50);
+    var maxTri = Math.max(0, Math.floor((buffer.byteLength - 84) / 50));
     var warnings = [];
-    if (nTri > maxTri) { warnings.push('STL header claims ' + nTri + ' triangles but the file holds ' + maxTri + '.'); nTri = maxTri; }
+    if (nTri > maxTri) { warnings.push('The STL header claims ' + nTri + ' triangles but the file only holds ' + maxTri + ' — the rest was ignored.'); }
+    nTri = fileCount(nTri, maxTri);
     var positions = new Float32Array(nTri * 9);
     var colors = null;
     var off = 84;
@@ -500,17 +524,36 @@
   var PLY_SIZES = { char: 1, uchar: 1, int8: 1, uint8: 1, short: 2, ushort: 2, int16: 2, uint16: 2,
                     int: 4, uint: 4, int32: 4, uint32: 4, float: 4, float32: 4, double: 8, float64: 8 };
 
+  /*
+   * A reader per property type, each one bounded: a truncated file runs the
+   * offset past the end of the buffer, and a DataView answers that with an
+   * exception. Reading zero instead means a half-written file still opens,
+   * with the part that is really there.
+   */
   function plyReader(dv, type, little) {
+    var size = PLY_SIZES[type] || 4;
+    var raw;
     switch (type) {
-      case 'char': case 'int8': return function (o) { return dv.getInt8(o); };
-      case 'uchar': case 'uint8': return function (o) { return dv.getUint8(o); };
-      case 'short': case 'int16': return function (o) { return dv.getInt16(o, little); };
-      case 'ushort': case 'uint16': return function (o) { return dv.getUint16(o, little); };
-      case 'int': case 'int32': return function (o) { return dv.getInt32(o, little); };
-      case 'uint': case 'uint32': return function (o) { return dv.getUint32(o, little); };
-      case 'double': case 'float64': return function (o) { return dv.getFloat64(o, little); };
-      default: return function (o) { return dv.getFloat32(o, little); };
+      case 'char': case 'int8': raw = function (o) { return dv.getInt8(o); }; break;
+      case 'uchar': case 'uint8': raw = function (o) { return dv.getUint8(o); }; break;
+      case 'short': case 'int16': raw = function (o) { return dv.getInt16(o, little); }; break;
+      case 'ushort': case 'uint16': raw = function (o) { return dv.getUint16(o, little); }; break;
+      case 'int': case 'int32': raw = function (o) { return dv.getInt32(o, little); }; break;
+      case 'uint': case 'uint32': raw = function (o) { return dv.getUint32(o, little); }; break;
+      case 'double': case 'float64': raw = function (o) { return dv.getFloat64(o, little); }; break;
+      default: raw = function (o) { return dv.getFloat32(o, little); };
     }
+    return function (o) { return (o >= 0 && o + size <= dv.byteLength) ? raw(o) : 0; };
+  }
+
+  /** Smallest number of bytes one row of this element can occupy. */
+  function plyRowBytes(el) {
+    var total = 0;
+    for (var i = 0; i < el.props.length; i++) {
+      var p = el.props[i];
+      total += p.list ? (PLY_SIZES[p.countType] || 1) : (PLY_SIZES[p.type] || 4);
+    }
+    return Math.max(1, total);
   }
 
   IO.parsePLY = function (buffer) {
@@ -532,7 +575,7 @@
         format = tok[1];
         little = format !== 'binary_big_endian';
       } else if (tok[0] === 'element') {
-        curEl = { name: tok[1], count: parseInt(tok[2], 10), props: [] };
+        curEl = { name: tok[1], count: fileCount(parseInt(tok[2], 10)), props: [] };
         elements.push(curEl);
       } else if (tok[0] === 'property' && curEl) {
         if (tok[1] === 'list') curEl.props.push({ list: true, countType: tok[2], type: tok[3], name: tok[4] });
@@ -545,6 +588,24 @@
     var vertEl = null;
     for (i = 0; i < elements.length; i++) if (elements[i].name === 'vertex') vertEl = elements[i];
     if (!vertEl) return { objects: [], warnings: ['PLY has no vertex element.'] };
+    /*
+     * Cap every element count by the room left in the file. One vertex needs
+     * at least its own properties' worth of bytes (binary) or a line like
+     * "0 0 0" (ascii), so the bytes after the header put a hard ceiling on
+     * how many there can be. Without this a header claiming four billion
+     * vertices asks for a 48 GB array before reading a single one.
+     */
+    var bodyBytes = Math.max(0, bytes.length - headerBytes);
+    for (i = 0; i < elements.length; i++) {
+      /* ascii: at least a digit and a separator per property. binary: the real stride. */
+      var minRow = format === 'ascii' ? Math.max(2, elements[i].props.length * 2) : plyRowBytes(elements[i]);
+      var room = Math.floor(bodyBytes / Math.max(1, minRow));
+      if (elements[i].count > room) {
+        warnings.push('The PLY header claims ' + elements[i].count + ' ' + elements[i].name +
+          ' entries but the file only has room for ' + room + '.');
+        elements[i].count = room;
+      }
+    }
     positions = new Float32Array(vertEl.count * 3);
 
     var colorScale = 1 / 255;
@@ -581,7 +642,7 @@
               colors[o] = map.red * sc; colors[o + 1] = map.green * sc; colors[o + 2] = map.blue * sc;
             }
           } else if (el.name === 'face') {
-            var cnt = +vals[0];
+            var cnt = fileCount(vals[0], vals.length - 1);
             for (var k = 1; k + 1 < cnt; k++) {
               indices.push(+vals[1], +vals[1 + k], +vals[2 + k]);
             }
@@ -612,8 +673,8 @@
             for (var q2 = 0; q2 < readers.length; q2++) {
               var rd = readers[q2];
               if (rd.prop.list) {
-                var c = rd.readCount(off); off += rd.countSize;
-                off += c * rd.size;
+                var c = fileCount(rd.readCount(off), (buffer.byteLength - off) / rd.size);
+                off += rd.countSize + c * rd.size;
                 continue;
               }
               vals2[rd.prop.name] = rd.read(off);
@@ -636,7 +697,8 @@
             for (var q3 = 0; q3 < readers.length; q3++) {
               var rd2 = readers[q3];
               if (rd2.prop.list) {
-                var cnt2 = rd2.readCount(off); off += rd2.countSize;
+                var cnt2 = fileCount(rd2.readCount(off), (buffer.byteLength - off - rd2.countSize) / rd2.size);
+                off += rd2.countSize;
                 if (el2.name === 'face' && /vertex_ind(ex|ices)/.test(rd2.prop.name)) {
                   var poly = [];
                   for (var ci = 0; ci < cnt2; ci++) { poly.push(rd2.read(off)); off += rd2.size; }
@@ -758,21 +820,29 @@
   var GLTF_COUNT = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT2: 4, MAT3: 9, MAT4: 16 };
 
   function readAccessor(json, buffers, index) {
-    var acc = json.accessors[index];
+    var acc = (json.accessors || [])[index];
     if (!acc) return null;
-    var comp = GLTF_COMPONENT[acc.componentType];
+    var comp = GLTF_COMPONENT[acc.componentType] || GLTF_COMPONENT[5126];
     var perElement = GLTF_COUNT[acc.type] || 1;
-    var out = new Float32Array(acc.count * perElement);
-    if (acc.bufferView === undefined) return out;         // all zeroes is legal
-    var view = json.bufferViews[acc.bufferView];
+    var count = fileCount(acc.count, 1 << 26);
+    if (acc.bufferView === undefined) return new Float32Array(count * perElement);  // all zeroes is legal
+    var view = (json.bufferViews || [])[acc.bufferView];
+    if (!view) return null;
     var buf = buffers[view.buffer || 0];
     if (!buf) return null;
     var base = (view.byteOffset || 0) + (acc.byteOffset || 0);
     var stride = view.byteStride || comp.size * perElement;
+    /*
+     * The accessor's count has to fit the bytes the view actually holds. A
+     * glTF written against a binary chunk that was cut short claims the full
+     * count, and believing it means allocating for a model that isn't there.
+     */
+    count = fileCount(count, (buf.byteLength - base) / Math.max(1, stride) + 1);
+    var out = new Float32Array(count * perElement);
     var dv = new DataView(buf);
     var norm = acc.normalized;
     var maxVal = { 5120: 127, 5121: 255, 5122: 32767, 5123: 65535 }[acc.componentType] || 1;
-    for (var i = 0; i < acc.count; i++) {
+    for (var i = 0; i < count; i++) {
       for (var k = 0; k < perElement; k++) {
         var o = base + i * stride + k * comp.size;
         if (o + comp.size > buf.byteLength) return out;
@@ -802,22 +872,34 @@
   }
 
   IO.parseGLB = function (buffer) {
+    if (buffer.byteLength < 12) return { objects: [], warnings: ['That GLB file is too short to read — it looks cut off.'] };
     var dv = new DataView(buffer);
     var magic = dv.getUint32(0, true);
     if (magic !== 0x46546C67) return { objects: [], warnings: ['Not a GLB file.'] };
-    var length = dv.getUint32(8, true);
+    var end = fileCount(dv.getUint32(8, true), buffer.byteLength) || buffer.byteLength;
     var off = 12;
-    var json = null, bin = null;
-    while (off + 8 <= Math.min(length, buffer.byteLength)) {
-      var chunkLen = dv.getUint32(off, true);
-      var chunkType = dv.getUint32(off + 4, true);
+    var json = null, bin = null, warnings = [];
+    while (off + 8 <= end) {
       var start = off + 8;
-      if (chunkType === 0x4E4F534A) json = JSON.parse(decode(new Uint8Array(buffer, start, chunkLen)));
-      else if (chunkType === 0x004E4942) bin = buffer.slice(start, start + chunkLen);
+      /* a chunk that claims more than the file has is read as far as it goes */
+      var chunkLen = fileCount(dv.getUint32(off, true), buffer.byteLength - start);
+      var chunkType = dv.getUint32(off + 4, true);
+      if (chunkType === 0x4E4F534A) {
+        try {
+          json = JSON.parse(decode(new Uint8Array(buffer, start, chunkLen)));
+        } catch (e) {
+          return { objects: [], warnings: ['That GLB file\'s description is damaged, so there is nothing to read. Try exporting it again.'] };
+        }
+      } else if (chunkType === 0x004E4942) {
+        bin = buffer.slice(start, start + chunkLen);
+      }
+      if (!chunkLen) break;                               // nothing left to walk
       off = start + chunkLen + (chunkLen % 4 ? 4 - (chunkLen % 4) : 0);
     }
-    if (!json) return { objects: [], warnings: ['GLB has no JSON chunk.'] };
-    return IO.parseGLTF(json, bin ? [bin] : []);
+    if (!json) return { objects: [], warnings: ['That GLB file has no model description in it.'] };
+    var res = IO.parseGLTF(json, bin ? [bin] : []);
+    res.warnings = warnings.concat(res.warnings || []);
+    return res;
   };
 
   /** Shared by .gltf and .glb. `extraBuffers[0]` is the GLB binary chunk. */
@@ -846,8 +928,8 @@
     var M4 = S.M4;
 
     function emitMesh(meshIndex, matrix, nodeName) {
-      var mesh = json.meshes[meshIndex];
-      if (!mesh) return;
+      var mesh = (json.meshes || [])[meshIndex];
+      if (!mesh || !mesh.primitives) return;
       for (var pi = 0; pi < mesh.primitives.length; pi++) {
         var prim = mesh.primitives[pi];
         if (prim.mode !== undefined && prim.mode !== 4) {
@@ -915,9 +997,11 @@
       }
     }
 
+    var seen = {};
     function walk(nodeIndex, parentMatrix) {
-      var node = json.nodes[nodeIndex];
-      if (!node) return;
+      var node = (json.nodes || [])[nodeIndex];
+      if (!node || seen[nodeIndex]) return;   // a node graph that loops back would recurse forever
+      seen[nodeIndex] = 1;
       var local = nodeMatrix(node);
       var world = parentMatrix ? M4.multiply(M4.create(), parentMatrix, local) : local;
       if (node.mesh !== undefined) emitMesh(node.mesh, world, node.name);
@@ -1179,18 +1263,36 @@
 
   IO.loadProject = function (buffer) {
     var u8 = new Uint8Array(buffer);
-    if (decode(u8.subarray(0, 8)) !== PROJECT_MAGIC) {
+    if (u8.length < 12 || decode(u8.subarray(0, 8)) !== PROJECT_MAGIC) {
       return { ok: false, reason: 'Not a SculptFree project file.' };
     }
-    var jsonLen = new DataView(buffer).getUint32(8, true);
-    var meta = JSON.parse(decode(u8.subarray(12, 12 + jsonLen)));
+    var jsonLen = fileCount(new DataView(buffer).getUint32(8, true), u8.length - 12);
+    var meta;
+    try {
+      meta = JSON.parse(decode(u8.subarray(12, 12 + jsonLen)));
+    } catch (e) {
+      return { ok: false, reason: 'That project file is damaged — the part that lists the objects could not be read.' };
+    }
+    if (!meta || !meta.objects) return { ok: false, reason: 'That project file has no objects in it.' };
     var dataStart = 12 + jsonLen;
+    /*
+     * Each array in the file is described by an offset and a length, and both
+     * are only as true as the file is whole: a project that was cut short in
+     * a download, or copied through something that mangled it, still claims
+     * the full lengths. So a slice never reaches past the bytes present, and
+     * never asks a typed array for a length it cannot hold.
+     */
+    var clipped = 0;
     function grab(entry, Ctor) {
-      var bytes = u8.subarray(dataStart + entry.offset, dataStart + entry.offset + entry.length);
-      // copy so the result is aligned and independent of the source buffer
-      var copy = new Uint8Array(bytes.length);
-      copy.set(bytes);
-      return new Ctor(copy.buffer, 0, entry.length / Ctor.BYTES_PER_ELEMENT);
+      if (!entry) return new Ctor(0);
+      var from = Math.max(0, dataStart + fileCount(entry.offset));
+      var avail = Math.max(0, u8.length - from);
+      var len = fileCount(entry.length, avail);
+      if (len < fileCount(entry.length)) clipped++;
+      len -= len % Ctor.BYTES_PER_ELEMENT;                // whole elements only
+      var copy = new Uint8Array(len);                     // copy: aligned, and independent of the source
+      copy.set(u8.subarray(from, from + len));
+      return new Ctor(copy.buffer, 0, len / Ctor.BYTES_PER_ELEMENT);
     }
     var objects = [];
     for (var i = 0; i < meta.objects.length; i++) {
@@ -1205,15 +1307,22 @@
         masks: grab(o.masks, Float32Array),
         indices: grab(o.indices, Uint32Array)
       };
-      if (o.paint && o.paint.data) {
+      /* a size out of a damaged file would ask for an impossible image */
+      if (o.paint && o.paint.data && o.paint.size >= 16 && o.paint.size <= 8192) {
         var map = new S.PaintMap(o.paint.size, o.paint.frame);
         S.PaintMap.decodeInto(map, grab(o.paint.data, Uint8Array));
         loaded.paint = map;
       }
       objects.push(loaded);
     }
+    var warnings = [];
+    if (clipped) {
+      warnings.push('That project file is cut short \u2014 ' + clipped + ' of its arrays end early, so part of the ' +
+        'model is missing. As much as was there has been loaded. If it came from a download or a chat app, try ' +
+        'saving it again.');
+    }
     return { ok: true, objects: objects, camera: meta.camera, settings: meta.settings,
-             selected: meta.selected, version: meta.version, saved: meta.saved };
+             selected: meta.selected, version: meta.version, saved: meta.saved, warnings: warnings };
   };
 
   /* ================================================================ *
@@ -1228,8 +1337,66 @@
     sculpt: { label: 'SculptFree project', ext: 'sculpt', binary: true, colors: true, note: 'Everything, including masks and camera.' }
   };
 
+  /*
+   * Formats this app cannot read, named out loud.
+   *
+   * A model that arrives as FBX, a Blender file or a Roblox model is not a
+   * damaged OBJ — it is a different thing entirely, and the useful answer is
+   * which format to export instead, not a reader's complaint. Each entry
+   * knows itself either by the file's name or by the bytes it starts with,
+   * because a phone's file picker often hands over a name with no extension
+   * at all.
+   */
+  var FOREIGN = [
+    { ext: ['fbx'], magic: ['Kaydara FBX Binary', 'FBXHeaderExtension'], label: 'an FBX file',
+      how: 'Blender, Maya and 3ds Max can save the same model as OBJ or GLB instead.' },
+    { ext: ['blend'], magic: ['BLENDER'], label: 'a Blender project',
+      how: 'In Blender: File \u2192 Export \u2192 Wavefront (.obj) or glTF 2.0 (.glb).' },
+    { ext: ['dae'], magic: ['<COLLADA', 'COLLADA'], label: 'a COLLADA (.dae) file',
+      how: 'Export it as OBJ or GLB and import that.' },
+    { ext: ['rbxm', 'rbxmx', 'rbxl', 'rbxlx'], magic: ['<roblox', 'roblox!'], label: 'a Roblox model file',
+      how: 'Roblox Studio can export a mesh part as OBJ: right-click the part \u2192 Export Selection.' },
+    { ext: ['3ds'], magic: [], label: 'a 3ds Max scene file',
+      how: 'Export it as OBJ or GLB and import that.' },
+    { ext: ['step', 'stp', 'iges', 'igs'], magic: ['ISO-10303'], label: 'a CAD file',
+      how: 'A CAD program can save it as STL, which this app reads.' },
+    { ext: ['zip', '3mf', 'usdz'], magic: ['PK\u0003\u0004'], label: 'a zip archive',
+      how: 'Unzip it first and import the .obj, .stl, .ply or .glb inside.' },
+    { ext: ['fbm', 'mtl'], magic: [], label: 'a file that goes beside a model, not the model itself',
+      how: 'Import the .obj file instead \u2014 this one only describes its colours.' },
+    { ext: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'], magic: ['PNG\r\n', 'JFIF', 'GIF8'], label: 'an image, not a model',
+      how: 'Images belong on the Stencil sheet, under Brush texture.' },
+    { ext: ['pdf', 'mp4', 'mp3', 'zip', 'doc', 'docx'], magic: ['%PDF'], label: 'not a 3D model at all', how: '' }
+  ];
+
+  /** The name of the format this file really is, when we cannot read it. */
+  IO.describeForeign = function (filename, buffer) {
+    var ext = IO.extensionOf(filename);
+    var head = '';
+    try {
+      head = decode(new Uint8Array(buffer, 0, Math.min(1024, buffer.byteLength)));
+    } catch (e) { head = ''; }
+    for (var i = 0; i < FOREIGN.length; i++) {
+      var f = FOREIGN[i];
+      var hit = ext && f.ext.indexOf(ext) >= 0;
+      for (var m = 0; !hit && m < f.magic.length; m++) if (head.indexOf(f.magic[m]) >= 0) hit = true;
+      if (hit) {
+        return '"' + filename + '" is ' + f.label + ', which this app cannot read.' + (f.how ? ' ' + f.how : '') +
+               ' It reads OBJ, STL, PLY and GLB.';
+      }
+    }
+    return null;
+  };
+
   IO.importBuffer = function (filename, buffer) {
     var ext = IO.extensionOf(filename);
+    if (!buffer || !buffer.byteLength) {
+      return { objects: [], warnings: ['"' + filename + '" is empty \u2014 nothing came through. If it came from a cloud folder, download it to the phone first and import it from there.'] };
+    }
+    var foreign = IO.describeForeign(filename, buffer);
+    if (foreign && ['obj', 'stl', 'ply', 'glb', 'gltf', 'sculpt'].indexOf(ext) < 0) {
+      return { objects: [], warnings: [foreign] };
+    }
     try {
       switch (ext) {
         case 'obj': return IO.parseOBJ(decode(buffer));
@@ -1240,7 +1407,7 @@
         case 'sculpt': {
           var pr = IO.loadProject(buffer);
           if (!pr.ok) return { objects: [], warnings: [pr.reason] };
-          return { project: pr, objects: pr.objects, warnings: [] };
+          return { project: pr, objects: pr.objects, warnings: pr.warnings || [] };
         }
         default: {
           // sniff: GLB magic, PLY/OBJ/STL text
@@ -1249,14 +1416,30 @@
           if (head.slice(0, 3) === 'ply') return IO.parsePLY(buffer);
           if (head.slice(0, 8) === PROJECT_MAGIC) {
             var pr2 = IO.loadProject(buffer);
-            return pr2.ok ? { project: pr2, objects: pr2.objects, warnings: [] } : { objects: [], warnings: [pr2.reason] };
+            return pr2.ok ? { project: pr2, objects: pr2.objects, warnings: pr2.warnings || [] }
+                          : { objects: [], warnings: [pr2.reason] };
           }
           if (/^\s*(v|vn|vt|f|o|g|mtllib|usemtl)\s/m.test(head)) return IO.parseOBJ(decode(buffer));
-          return IO.parseSTL(buffer);
+          if (/^\s*\{/.test(head) && head.indexOf('asset') >= 0) {
+            try { return IO.parseGLTF(JSON.parse(decode(buffer)), []); } catch (e) { /* fall through */ }
+          }
+          if (/solid|facet|vertex/i.test(head) || IO.looksLikeBinarySTL(buffer)) return IO.parseSTL(buffer);
+          return { objects: [], warnings: ['Could not tell what "' + filename + '" is. This app reads OBJ, STL, PLY and GLB \u2014 if the file has one of those names, rename it so it ends in .obj, .stl, .ply or .glb and try again.'] };
         }
       }
     } catch (err) {
-      return { objects: [], warnings: ['Could not read "' + filename + '": ' + (err && err.message || err)] };
+      /*
+       * The reader gave up. Whatever JavaScript called the problem ("Invalid
+       * typed array length", an offset outside a DataView) describes our
+       * machinery, not anything the person can act on, so it goes to the
+       * console and they get told what to do instead.
+       */
+      if (typeof console !== 'undefined' && console.warn) console.warn('import failed:', filename, err);
+      var plain = IO.describeForeign(filename, buffer);
+      if (plain) return { objects: [], warnings: [plain] };
+      return { objects: [], warnings: ['Could not read "' + filename + '" \u2014 the file looks damaged or cut short' +
+        (ext ? ', or it is not really ' + (ext === 'obj' ? 'an' : 'a') + ' .' + ext + ' file' : '') +
+        '. Try saving it again from the program it came from, as OBJ or GLB.'] };
     }
   };
 

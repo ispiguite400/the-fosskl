@@ -384,8 +384,13 @@
         var ms = performance.now() - t0;
         overlay.hidden = true;
         if (error) {
+          /*
+           * Whatever JavaScript calls the problem describes this app's
+           * machinery, not anything the person can do about it, so the raw
+           * text goes to the console and the toast says which job failed.
+           */
           console.error(error);
-          UI.toast((error && error.message) || String(error), 'bad', 5000);
+          UI.toast(what + ' did not work. Nothing was changed.', 'bad', 5000);
         } else if (then) {
           then(result, ms);
         }

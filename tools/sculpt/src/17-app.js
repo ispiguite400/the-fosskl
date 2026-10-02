@@ -3033,6 +3033,7 @@
       icon: 'upload',
       content: [
         el('p', { text: 'OBJ, STL (binary or ascii), PLY, glTF/GLB and .sculpt projects. Triangle soups such as STL are welded on the way in so they can be sculpted straight away.' }),
+        el('p.hint', { text: 'FBX, .blend, .dae and Roblox files cannot be read \u2014 whatever made them can save the same model as OBJ or GLB, and those come straight in.' }),
         UI.select({ label: 'Up axis', value: axis, options: S.IO.AXIS_MODES,
           onchange: function (v) { axis = v; } }),
         el('div.row.wrap', null, [
@@ -3043,7 +3044,7 @@
         el('div.row.wrap', null, [
           (replaceCheck = UI.check({ label: 'Replace the current scene', value: false }))
         ]),
-        el('div.hint', { text: 'Tap Choose files and pick the model from your phone\u2019s storage \u2014 Downloads, or wherever you saved it. The format is worked out from the file itself, so it does not matter what the file is called. On a computer you can also drag files straight onto the window.' })
+        el('div.hint', { text: 'Tap Choose files and pick the model from your phone\u2019s storage \u2014 Downloads, or wherever you saved it. The format is worked out from the file itself, so it does not matter what the file is called. If the model lives in Google Drive or another cloud folder, download it to the phone first and pick it from there. On a computer you can also drag files straight onto the window.' })
       ],
       buttons: [
         { label: 'Cancel' },
@@ -3064,6 +3065,7 @@
   A.importFiles = function (files, opts) {
     var self = this;
     opts = opts || {};
+    if (!files || !files.length) return;
     var pending = files.length;
     var results = [];
     files.forEach(function (file) {
@@ -3086,13 +3088,26 @@
       var projectLoaded = false;
       for (var i = 0; i < files.length; i++) {
         report(files[i].name);
-        var res = S.IO.importBuffer(files[i].name, files[i].buffer);
+        /*
+         * One file's trouble is that file's trouble. Reading and building are
+         * wrapped per file so a second model still arrives, and so that
+         * whatever went wrong is said as a note against the file's name
+         * rather than thrown out of the whole import.
+         */
+        var res;
+        try {
+          res = S.IO.importBuffer(files[i].name, files[i].buffer);
+        } catch (err) {
+          if (typeof console !== 'undefined' && console.warn) console.warn('import failed:', files[i].name, err);
+          warnings.push('Could not read "' + files[i].name + '" \u2014 the file looks damaged. Try saving it again as OBJ or GLB.');
+          continue;
+        }
+        (res.warnings || []).forEach(function (w) { warnings.push(files[i].name + ': ' + w); });
         if (res.project) {
           self.applyProject(res.project);
           projectLoaded = true;
           continue;
         }
-        (res.warnings || []).forEach(function (w) { warnings.push(files[i].name + ': ' + w); });
         var baseName = files[i].name.replace(/\.[^.]+$/, '');
         for (var k = 0; k < res.objects.length; k++) {
           var src = res.objects[k];
@@ -3107,7 +3122,24 @@
               positions[v] = tmp[0]; positions[v + 1] = tmp[1]; positions[v + 2] = tmp[2];
             }
           }
-          mesh.setFromArrays(positions, src.indices, { colors: src.colors, weld: true });
+          try {
+            mesh.setFromArrays(positions, src.indices, { colors: src.colors, weld: true });
+          } catch (err2) {
+            if (typeof console !== 'undefined' && console.warn) console.warn('building failed:', files[i].name, err2);
+            warnings.push('"' + files[i].name + '" could not be turned into a model \u2014 it may be far too big for a phone, or damaged.');
+            continue;
+          }
+          /*
+           * A file can carry coordinates that are not numbers at all. They
+           * are left out while building (see `setFromArrays`); saying so is
+           * better than a model with a quiet hole in it.
+           */
+          var rep = mesh.buildReport;
+          if (rep && rep.nonFiniteTris) {
+            warnings.push(files[i].name + ': ' + S.formatCount(rep.nonFiniteTris) +
+              ' triangle' + (rep.nonFiniteTris === 1 ? '' : 's') +
+              ' had corners that are not real numbers, so they were left out.');
+          }
           if (!mesh.liveTris) continue;
           var name = res.objects.length > 1 ? baseName + ' / ' + (src.name || (k + 1)) : baseName;
           var obj = new S.SceneObject(name, mesh);
@@ -3150,7 +3182,11 @@
       return { added: added, warnings: warnings, projectLoaded: projectLoaded };
     }, function (result, ms) {
       if (!result) return;
-      if (result.projectLoaded && !result.added.length) return;
+      if (result.projectLoaded && !result.added.length) {
+        /* a project that opened with notes still has them worth reading */
+        if (result.warnings.length) self.showImportWarnings(result.warnings, 1, 0);
+        return;
+      }
       if (!result.added.length) {
         self.showImportWarnings(result.warnings, 0, 0);
         return;
@@ -3371,9 +3407,21 @@
     }
     this.scene.clear();
     this.history.clear();
+    var lost = 0;
     project.objects.forEach(function (o) {
       var mesh = new S.Mesh();
-      mesh.setFromArrays(o.positions, o.indices, { colors: o.colors, weld: false });
+      /*
+       * The scene is already cleared by the time we get here, so one object
+       * that cannot be built must not take the rest of the project with it.
+       */
+      try {
+        mesh.setFromArrays(o.positions, o.indices, { colors: o.colors, weld: false });
+      } catch (err) {
+        if (typeof console !== 'undefined' && console.warn) console.warn('project object failed:', o.name, err);
+        lost++;
+        return;
+      }
+      if (!mesh.liveTris) { lost++; return; }
       if (o.masks && o.masks.length === mesh.masks.length) mesh.masks.array.set(o.masks, 0);
       var obj = new S.SceneObject(o.name, mesh);
       if (o.position) V3.set(obj.position, o.position[0], o.position[1], o.position[2]);
@@ -3403,7 +3451,12 @@
     this.syncViewButtons();
     this.dirtySinceSave = false;
     this.needsRender = true;
-    UI.toast('Project loaded' + (project.saved ? ' (saved ' + new Date(project.saved).toLocaleString() + ')' : ''), 'ok', 3600);
+    if (lost) {
+      UI.toast(lost + ' object' + (lost === 1 ? '' : 's') + ' in that project could not be rebuilt \u2014 the file looks ' +
+        'damaged. The rest of it is here.', 'bad', 6000);
+    } else {
+      UI.toast('Project loaded' + (project.saved ? ' (saved ' + new Date(project.saved).toLocaleString() + ')' : ''), 'ok', 3600);
+    }
   };
 
   A.screenshot = function () {

@@ -711,6 +711,93 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     JSON.stringify(sniffed));
 }
 
+/* ---- a file that cannot be read says why ---------------------------- *
+ *
+ * Reported twice, the second time as "remove the invalid area length thing
+ * cause I can't import anything nothing works". The message was JavaScript's
+ * own: a count read out of a file reached `new Array`/`new Float32Array`, and
+ * "Invalid array length" came out of the catch and onto the screen. These
+ * four files each took that path. Now each one is refused — or partly read —
+ * in a sentence about the file, the app still standing and the scene as it
+ * was.
+ * -------------------------------------------------------------------- */
+{
+  const damaged = {
+    // a model with a coordinate that is not a number: the rest still arrives
+    'has-nan.obj': 'v 0 0 0\nv 1 0 0\nv 0 1 0\nv nan 2 2\nv 1 2 2\nv 2 2 1\nf 1 2 3\nf 4 5 6\n',
+    // the format Roblox and Blender users reach for first
+    'from-blender.fbx': 'Kaydara FBX Binary  \u0000\u001a\u0000 and then bytes\n',
+    // a PLY whose header claims a billion vertices
+    'liar.ply': 'ply\nformat ascii 1.0\nelement vertex 999999999\nproperty float x\nproperty float y\nproperty float z\nend_header\n0 0 0\n',
+    // and a file that is nothing at all
+    'mystery.bin': '\u0003\u0001\u0004\u0001\u0005\u0009\u0002\u0006'
+  };
+  const paths = [];
+  for (const name of Object.keys(damaged)) {
+    const dest = path.join(tmp, name);
+    fs.writeFileSync(dest, damaged[name]);
+    paths.push(dest);
+  }
+  const before = await page.evaluate(() => window.SCULPT_APP.scene.objects.length);
+  for (const file of paths) {
+    const name = path.basename(file);
+    const [chooser] = await Promise.all([
+      page.waitForEvent('filechooser', { timeout: 15000 }),
+      page.evaluate(() => {
+        window.SCULPT_APP.importDialog();
+        const buttons = Array.from(document.querySelectorAll('.dialog footer .btn'));
+        buttons[buttons.length - 1].click();
+      })
+    ]);
+    await chooser.setFiles([file]);
+    await page.waitForFunction(() => {
+      if (!document.getElementById('busy').hidden) return false;
+      const dialogs = Array.from(document.querySelectorAll('.dialog'));
+      return dialogs.some((d) => /Import notes/.test(d.textContent));
+    }, { timeout: 20000 });
+    const state = await page.evaluate(() => {
+      const dialog = Array.from(document.querySelectorAll('.dialog'))
+        .filter((d) => /Import notes/.test(d.textContent))[0];
+      return {
+        dialogText: dialog ? dialog.textContent : '',
+        objects: window.SCULPT_APP.scene.objects.length,
+        alive: !!window.SCULPT_APP.engine && !!window.SCULPT_APP.renderer
+      };
+    });
+    check(`${name}: the app is still running`, state.alive);
+    check(`${name}: the reason is in plain words`,
+      !/Invalid (typed )?array length|DataView|undefined is not|\[object/i.test(state.dialogText),
+      state.dialogText.slice(0, 200));
+    if (name === 'has-nan.obj') {
+      eq(`${name}: the sound part of the model came in`, state.objects, before + 1);
+      check(`${name}: and it says what was left out`, /not real numbers|left out/i.test(state.dialogText),
+        state.dialogText.slice(0, 200));
+    } else {
+      eq(`${name}: nothing was added to the scene`, state.objects, before + 1);
+      check(`${name}: something was said about it`, state.dialogText.length > 20, state.dialogText);
+    }
+    if (name === 'from-blender.fbx') {
+      check(`${name}: FBX is named, with what to do instead`,
+        /FBX/.test(state.dialogText) && /OBJ|GLB/.test(state.dialogText), state.dialogText.slice(0, 200));
+    }
+    await page.evaluate(() => {
+      Array.from(document.querySelectorAll('.dialog')).forEach((d) => {
+        const buttons = Array.from(d.querySelectorAll('footer .btn'));
+        if (buttons.length) buttons[buttons.length - 1].click();
+      });
+    });
+    await page.waitForFunction(() => document.querySelectorAll('.dialog').length === 0, { timeout: 5000 });
+  }
+  await page.screenshot({ path: path.join(screens, '06b-import-notes.png') });
+  // the scene survived all four, and sculpting still works on what is there
+  const after = await page.evaluate(() => {
+    const app = window.SCULPT_APP;
+    return { objects: app.scene.objects.length, tris: app.scene.totals().tris };
+  });
+  check('after four bad files the scene is intact', after.objects === before + 1 && after.tris > 0,
+    JSON.stringify(after));
+}
+
 /* ---- dialogs open and close ---------------------------------------- */
 {
   // the sheets first

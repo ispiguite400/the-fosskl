@@ -236,14 +236,37 @@
     if (this._vertStamp.length < n) this._vertStamp = new Int32Array(n + 64);
     if (this.vertBirth.length < n) this.vertBirth = new Float64Array(n + 64);
 
+    /*
+     * Coordinates that are not numbers.
+     *
+     * An imported file can carry NaN or infinity in a position: an exporter
+     * divided by zero, a value overflowed, or the bytes were never a model in
+     * the first place. One such number poisons everything downstream — the
+     * bounding box, the grid that is sized from it, every average that
+     * touches the vertex — so it is caught here, at the one door every mesh
+     * comes through, and the triangles that use it are left out. The vertex
+     * itself is zeroed and ends up isolated, so `removeIsolatedVertices`
+     * clears it away a few lines below.
+     */
+    var P3 = this.positions.array;
+    var bad = null, nBad = 0;
+    for (i = 0; i < n; i++) {
+      var i3 = i * 3;
+      if (isFinite(P3[i3]) && isFinite(P3[i3 + 1]) && isFinite(P3[i3 + 2])) continue;
+      if (!bad) bad = new Uint8Array(n);
+      bad[i] = 1; nBad++;
+      P3[i3] = 0; P3[i3 + 1] = 0; P3[i3 + 2] = 0;
+    }
+
     // drop degenerate triangles while copying
-    var nt = idx.length / 3, kept = 0;
+    var nt = idx.length / 3, kept = 0, skippedBad = 0;
     this.tris.reserve(nt * 3);
     var T = this.tris.array;
     for (i = 0; i < nt; i++) {
       var a = idx[i * 3], b = idx[i * 3 + 1], c = idx[i * 3 + 2];
       if (a === b || b === c || a === c) continue;
       if (a >= n || b >= n || c >= n) continue;
+      if (bad && (bad[a] || bad[b] || bad[c])) { skippedBad++; continue; }
       var k3 = kept * 3;
       T[k3] = a; T[k3 + 1] = b; T[k3 + 2] = c;
       this.vertTris[a].push(kept);
@@ -265,6 +288,8 @@
     }
     this._boundsDirty = true;
     this.topoDirty = true;
+    /* what had to be left out, for the importer to tell the person about */
+    this.buildReport = { nonFiniteVerts: nBad, nonFiniteTris: skippedBad, triangles: kept };
     this.gridRebuild();
     return this;
   };
@@ -535,6 +560,22 @@
    * uniform triangle grid
    * ------------------------------------------------------------------ */
 
+  /*
+   * One grid dimension, from a count of cells that may be anything.
+   *
+   * The count comes from the model's own size divided by a cell size, and if
+   * a coordinate were ever not a number the division gives NaN — which
+   * `Math.min`/`Math.max` pass straight through, and `new Array(NaN)` answers
+   * with "Invalid array length". `setFromArrays` keeps such coordinates out
+   * of the mesh in the first place; this is the floor under everything else
+   * that moves vertices (brushes, booleans, remeshing), so that the worst
+   * case is a coarse grid rather than a dead app.
+   */
+  function gridDim(cells) {
+    if (!isFinite(cells)) return 1;
+    return Math.max(1, Math.min(GRID_MAX_DIM, Math.ceil(cells)));
+  }
+
   P.gridRebuild = function () {
     if (!this.liveTris) { this.grid = null; return; }
     this._boundsDirty = true;
@@ -563,9 +604,8 @@
     // dimension per axis from a single cell size, capped so memory stays sane
     var dim = Math.min(GRID_MAX_DIM, Math.max(2, Math.round(Math.cbrt(targetCells))));
     cell = maxSide / dim;
-    var dx = Math.max(1, Math.min(GRID_MAX_DIM, Math.ceil(sx / cell)));
-    var dy = Math.max(1, Math.min(GRID_MAX_DIM, Math.ceil(sy / cell)));
-    var dz = Math.max(1, Math.min(GRID_MAX_DIM, Math.ceil(sz / cell)));
+    var dx = gridDim(sx / cell), dy = gridDim(sy / cell), dz = gridDim(sz / cell);
+    if (!isFinite(cell) || cell <= 0) { cell = 1; dx = dy = dz = 1; }
 
     var g = this.grid;
     var nCells = dx * dy * dz;

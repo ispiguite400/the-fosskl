@@ -473,6 +473,47 @@ all. On a computer the extension filter is kept, where it works and helps.
 Your work never leaves your computer. The recovery copy (every two minutes)
 lives in your browser's own storage, and projects are files you keep.
 
+### When a file will not open
+
+A file states how much it holds before it holds it: an STL header says how
+many triangles follow, a PLY header how many vertices, a glTF accessor how
+many elements. Those numbers are claims, not facts. A download that stopped
+early, an exporter with a bug, or a file that simply isn't the format its name
+says still makes the claim — and the number can be four billion, or negative,
+or not a number at all. Handing one of those to `new Float32Array` throws
+*Invalid typed array length*, and a coordinate that is NaN poisons the
+bounding box, the grid sized from it, and finally `new Array(NaN)`: *Invalid
+array length*. Both of those used to reach the screen word for word, which
+described this app's machinery and told nobody anything.
+
+So now:
+
+- **Every count from a file is capped by the bytes actually present** before
+  anything is allocated — `IO.fileCount`, used by the STL, PLY, glTF and
+  project readers. A header claiming a billion vertices in a 200-byte file
+  reads the vertices that are there and says what it did.
+- **Every read is bounded.** A truncated PLY reads zero past the end rather
+  than throwing; a GLB chunk longer than the file is read as far as it goes; a
+  project file's arrays are clipped to what remains, and it says how many.
+- **Coordinates that are not numbers are kept out of the mesh.** They are
+  caught in `Mesh.setFromArrays`, the one door every mesh comes through: the
+  triangles using them are left out, counted, and reported. A model with three
+  bad triangles out of 4,000 now arrives with 3,997.
+- **A format we cannot read is named**, with what to do instead: FBX, `.blend`,
+  `.dae`, Roblox `.rbxm`, a zip, a CAD file, or an image picked by mistake.
+  Recognised by extension *and* by the bytes it starts with, because a phone's
+  picker often hands over a name with no extension.
+- **What is left is a sentence about the file**, not about JavaScript: *Could
+  not read "x.obj" — the file looks damaged or cut short… Try saving it again
+  from the program it came from, as OBJ or GLB.* The exception still goes to
+  the console for whoever is debugging.
+- **One bad file no longer stops the others.** Reading and building are wrapped
+  per file, so a second model still arrives and the note names the file that
+  failed.
+
+The one thing none of this can fix is a format this app does not read. FBX is
+the common one: export OBJ or GLB from whatever made it.
+
 ---
 
 ## How it is built
@@ -588,18 +629,18 @@ A few decisions worth knowing about:
 ```bash
 node test/topology.test.mjs     # 210  mesh invariants, split/collapse/flip, the grid, needles, the nine shapes
 node test/remesh.test.mjs       # 76   watertight and manifold output, volume, colour transfer
-node test/io.test.mjs           # 120  round trips for every format, GLB structure, transforms
+node test/io.test.mjs           # 182  round trips for every format, GLB structure, transforms, damaged files
 node test/brush.test.mjs        # 411  every brush, adding vs stretching, the stroke limits, masking, undo
 node test/camera.test.mjs       # 18   projection, framing, ray casting
 node test/boolean.test.mjs      # 51   union / subtract / intersect against analytic volumes
 node test/texture.test.mjs      # 474  PNG writer, unwrap, bake, textured export, stencils, presets
 node test/paint.test.mjs        # 66   the paint image: atlas, rasteriser, stencils, undo, export
 node test/gizmo.test.mjs        # 52   handle layout, hit testing, move/turn/resize maths
-node build.js && node test/browser.test.mjs   # 488 end-to-end in a real browser
+node build.js && node test/browser.test.mjs   # 506 end-to-end in a real browser
 node test/shots.mjs             # renders the screenshots in test/screens
 ```
 
-1,966 checks in total. Some of them are worth naming, because they are the
+2,046 checks in total. Some of them are worth naming, because they are the
 ones that catch a regression you would otherwise ship:
 
 - **Brushes have to add, not stretch.** The same pull is run with dynamic
@@ -629,6 +670,14 @@ ones that catch a regression you would otherwise ship:
   it fails if that leaves a needle, a hole, a non-manifold edge, a runaway
   triangle count or a ballooned shape. So are both slider ceilings — from the
   slider, the keyboard, a preset and an old settings file.
+- **A file that cannot be read is a test, in every way it can fail.** A
+  coordinate that is not a number, a PLY header claiming a billion vertices, a
+  GLB cut to a tenth of its length, a project file cut short, an FBX, a zip, a
+  PNG and eight random bytes: nothing may throw, nothing may hang, and every
+  refusal is checked for *not* containing machine talk ("Invalid typed array
+  length", "DataView", "undefined"). Four of them also go through the real file
+  picker in the browser, which checks that the app is still standing and the
+  scene unchanged afterwards.
 - **The reported crash is a test, at the sizes reported.** Crease at full
   power and sizes 4 to 10 with all three mirrors on, in the browser, timed:
   it fails if a stroke takes longer than a few seconds, runs to the triangle
