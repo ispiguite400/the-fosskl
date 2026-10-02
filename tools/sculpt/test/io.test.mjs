@@ -1,4 +1,5 @@
-import { load, check, eq, report, audit } from './harness.mjs';
+import { load, check, eq, report, audit, makeZip } from './harness.mjs';
+import zlib from 'zlib';
 const S = load();
 const IO = S.IO;
 
@@ -529,6 +530,217 @@ end_header
   eq('a sound PLY still imports', tryImport('ok.ply', IO.exportPLY(sound, {})).objects.length, 1);
   eq('a sound GLB still imports', tryImport('ok.glb', IO.exportGLB(sound, {})).objects.length, 1);
   eq('a sound STL still imports', tryImport('ok.stl', IO.exportSTL(sound, {})).objects.length, 1);
+}
+
+/* ==== zip archives ================================================= *
+ *
+ * Models arrive zipped: a pack from a model site, a folder off a computer, an
+ * .obj with its .mtl, a .gltf with its .bin. The reader is this app's own —
+ * DEFLATE included — so it is checked against zlib, which wrote the archives
+ * these tests read.
+ * ------------------------------------------------------------------- */
+{
+  const Zip = S.Zip;
+  const bytesOf = (text) => IO.encodeUtf8(text);
+  const TRI = 'v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n';
+  const TETRA = 'v 0 0 0\nv 1 0 0\nv 0 1 0\nv 0 0 1\nf 1 3 2\nf 1 2 4\nf 1 4 3\nf 2 3 4\n';
+
+  /* ---- DEFLATE, against the one that wrote it ---- */
+  const shapes = {
+    nothing: Buffer.alloc(0),
+    short: Buffer.from('hello'),
+    repetitive: Buffer.from('abcabcabcabc'.repeat(500)),
+    model: Buffer.from(TRI.repeat(4000)),
+    incompressible: Buffer.from(Array.from({ length: 40000 }, (_, i) => (i * 2654435761) & 0xff))
+  };
+  for (const [name, buf] of Object.entries(shapes)) {
+    for (const level of [0, 1, 6, 9]) {
+      const comp = zlib.deflateRawSync(buf, { level });
+      let out = null, threw = null;
+      try { out = Zip.inflateRaw(new Uint8Array(comp), buf.length); } catch (e) { threw = e.message; }
+      check(`inflate ${name} at level ${level}`,
+        out && out.length === buf.length && Buffer.compare(Buffer.from(out), buf) === 0,
+        threw || `got ${out && out.length} bytes, want ${buf.length}`);
+    }
+  }
+  // the size the archive claims is a hint, not a promise: a wrong one must not matter
+  const comp6 = zlib.deflateRawSync(shapes.model, { level: 6 });
+  for (const claim of [0, 1, 10, shapes.model.length * 4]) {
+    const out = Zip.inflateRaw(new Uint8Array(comp6), claim);
+    check(`inflate ignores a claimed size of ${claim}`,
+      Buffer.compare(Buffer.from(out), shapes.model) === 0, `${out.length}`);
+  }
+  // and damaged compressed data is a reason, not a crash
+  for (const cut of [0.9, 0.5, 0.1]) {
+    const part = new Uint8Array(comp6.subarray(0, Math.floor(comp6.length * cut)));
+    let threw = '';
+    try { Zip.inflateRaw(part, shapes.model.length); } catch (e) { threw = e.message; }
+    check(`inflate of data cut to ${cut * 100}% says why`, /damaged|ends|early|claims/.test(threw), threw);
+  }
+
+  /* ---- CRC-32, against zlib's ---- */
+  for (const text of ['', 'hello', TRI, TETRA.repeat(10)]) {
+    eq(`crc32 of ${JSON.stringify(text.slice(0, 8))}`, Zip.crc32(bytesOf(text)), zlib.crc32(Buffer.from(text)));
+  }
+
+  /* ---- a model in a zip ---- */
+  const one = makeZip([{ name: 'models/tri.obj', data: TRI }]);
+  check('a zip is recognised as one', Zip.looksLikeZip(one));
+  const oneRes = IO.importBuffer('pack.zip', one);
+  eq('one model in a zip imports', oneRes.objects.length, 1);
+  eq('with no complaints', oneRes.warnings.length, 0, oneRes.warnings.join(';'));
+  {
+    const m = new S.Mesh();
+    m.setFromArrays(oneRes.objects[0].positions, oneRes.objects[0].indices, { weld: true });
+    eq('and its triangle is there', m.liveTris, 1);
+  }
+  // a zip whose name says nothing, recognised by its first bytes
+  eq('a zip with no extension is still opened', IO.importBuffer('download', one).objects.length, 1);
+
+  /* ---- several models, folders, and uncompressed entries ---- */
+  const many = makeZip([
+    { name: 'pack/', data: '' },
+    { name: 'pack/tri.obj', data: TRI },
+    { name: 'pack/deep/tetra.obj', data: TETRA },
+    { name: '__MACOSX/._tri.obj', data: 'junk' },
+    { name: 'pack/.DS_Store', data: 'junk' }
+  ]);
+  const manyRes = IO.importBuffer('pack.zip', many);
+  eq('both models in the zip imported', manyRes.objects.length, 2);
+  check('each is named after its file', manyRes.objects.map((o) => o.name).join(',') === 'tri,tetra',
+    manyRes.objects.map((o) => o.name).join(','));
+  const stored = IO.importBuffer('stored.zip', makeZip([{ name: 'tri.obj', data: TRI }], { store: true }));
+  eq('an uncompressed zip imports too', stored.objects.length, 1);
+
+  /* ---- an OBJ with its .mtl: the colour comes with it ---- */
+  const withMtl = makeZip([
+    { name: 'cube.obj', data: 'mtllib cube.mtl\nusemtl green\n' + TRI },
+    { name: 'cube.mtl', data: 'newmtl green\nKd 0.1 0.8 0.2\n' }
+  ]);
+  const mtlRes = IO.importBuffer('cube.zip', withMtl);
+  eq('the obj in the zip imported', mtlRes.objects.length, 1);
+  const colour = mtlRes.objects[0].color;
+  check('and took its colour from the .mtl beside it',
+    colour && Math.abs(colour[0] - 0.1) < 1e-6 && Math.abs(colour[1] - 0.8) < 1e-6,
+    JSON.stringify(colour));
+  // the same .mtl read on its own
+  const mats = IO.parseMTL('newmtl a\nKd 1 0 0\nnewmtl b\nKs 1 1 1\nKd 0 0.5 1\n');
+  check('parseMTL reads every material', !!mats.a && !!mats.b, JSON.stringify(mats));
+  eq('parseMTL reads the diffuse colour', mats.b[2], 1);
+
+  /* ---- a .gltf with its .bin, which is only a model together ---- */
+  const geoms = IO.prepare([objectOf(S.Prim.makeMesh('sphere', 2), 'Ball')], {});
+  const glb = IO.exportGLB(geoms, {});
+  const split = (() => {
+    const dv = new DataView(glb);
+    let off = 12, json = null, bin = null;
+    while (off + 8 <= glb.byteLength) {
+      const len = dv.getUint32(off, true), type = dv.getUint32(off + 4, true), start = off + 8;
+      if (type === 0x4E4F534A) json = JSON.parse(IO.decode(new Uint8Array(glb, start, len)));
+      else if (type === 0x004E4942) bin = new Uint8Array(glb.slice(start, start + len));
+      off = start + len + (len % 4 ? 4 - (len % 4) : 0);
+    }
+    json.buffers[0].uri = 'ball.bin';
+    return { json, bin };
+  })();
+  const gltfZip = makeZip([
+    { name: 'ball.gltf', data: JSON.stringify(split.json) },
+    { name: 'ball.bin', data: split.bin }
+  ]);
+  const gltfRes = IO.importBuffer('ball.zip', gltfZip);
+  eq('a .gltf plus its .bin imports as one model', gltfRes.objects.length, 1);
+  {
+    const m = new S.Mesh();
+    m.setFromArrays(gltfRes.objects[0].positions, gltfRes.objects[0].indices, { weld: true });
+    check('with its geometry, from the .bin inside the zip', m.liveTris > 100, `${m.liveTris}`);
+    check('and the same count as the GLB it came from', m.liveTris === 320, `${m.liveTris}`);
+  }
+  // without the .bin, it says what is missing
+  const lonely = IO.importBuffer('lonely.zip', makeZip([{ name: 'ball.gltf', data: JSON.stringify(split.json) }]));
+  check('a .gltf on its own names the file it needs',
+    lonely.warnings.join(' ').indexOf('ball.bin') >= 0, lonely.warnings.join(';'));
+
+  /* ---- a project inside a zip ---- */
+  const proj = IO.saveProject({ objects: [objectOf(S.Prim.makeMesh('sphere', 2), 'Blob')] }, {});
+  const projData = proj.data ? (proj.data.buffer || proj.data) : proj;
+  const projZip = makeZip([{ name: 'work.sculpt', data: new Uint8Array(projData) }]);
+  const projRes = IO.importBuffer('work.zip', projZip);
+  check('a .sculpt project inside a zip loads as a project', !!projRes.project);
+  eq('with its object', projRes.objects.length, 1);
+
+  /* ---- a zip inside a zip ---- */
+  const inner = makeZip([{ name: 'tri.obj', data: TRI }]);
+  const outer = makeZip([{ name: 'pack.zip', data: new Uint8Array(inner) }]);
+  eq('a zip inside a zip is opened too', IO.importBuffer('outer.zip', outer).objects.length, 1);
+  const deep = makeZip([{ name: 'a.zip', data: new Uint8Array(makeZip([{ name: 'b.zip', data: new Uint8Array(makeZip([{ name: 'c.zip', data: new Uint8Array(inner) }])) }])) }]);
+  const deepRes = IO.importBuffer('deep.zip', deep);
+  check('but not forever', deepRes.objects.length === 0 && /zip inside a zip/.test(deepRes.warnings.join(' ')),
+    deepRes.warnings.join(';'));
+
+  /* ---- what a zip holds that is not a model ---- */
+  const imagesOnly = makeZip([
+    { name: 'skin.png', data: 'PNG\r\n not really' },
+    { name: 'readme.txt', data: 'hello' }
+  ]);
+  const imagesRes = IO.importBuffer('textures.zip', imagesOnly);
+  eq('a zip with no model imports nothing', imagesRes.objects.length, 0);
+  check('and names what was inside it instead',
+    /skin\.png/.test(imagesRes.warnings.join(' ')), imagesRes.warnings.join(';'));
+  const withTexture = makeZip([
+    { name: 'tri.obj', data: TRI },
+    { name: 'tri_albedo.png', data: 'PNG\r\n pretend' }
+  ]);
+  const texRes = IO.importBuffer('withtex.zip', withTexture);
+  eq('a model beside an image still imports', texRes.objects.length, 1);
+  check('and the image is mentioned, with what to do with it',
+    /tri_albedo\.png/.test(texRes.warnings.join(' ')) && /Brush texture/.test(texRes.warnings.join(' ')),
+    texRes.warnings.join(';'));
+
+  /* ---- archives that are wrong ---- */
+  const badCrc = makeZip([{ name: 'tri.obj', data: TRI, badCrc: true }]);
+  const crcRes = IO.importBuffer('bad.zip', badCrc);
+  check('a damaged entry is called damaged', /checksum/.test(crcRes.warnings.join(' ')), crcRes.warnings.join(';'));
+  // a password-protected entry, as the `zip -P` of the world writes it
+  const locked = makeZip([{ name: 'tri.obj', data: TRI }]);
+  {
+    const u8 = new Uint8Array(locked);
+    u8[6] |= 1;                                  // the encrypted bit, in the local header
+    const dv = new DataView(locked);
+    // and in the central directory, found by its signature
+    for (let i = 0; i + 4 <= u8.length; i++) {
+      if (dv.getUint32(i, true) === 0x02014b50) { u8[i + 8] |= 1; break; }
+    }
+  }
+  const lockedRes = IO.importBuffer('locked.zip', locked);
+  check('a password-protected entry says so',
+    /password/.test(lockedRes.warnings.join(' ')), lockedRes.warnings.join(';'));
+  const weird = makeZip([{ name: 'tri.obj', data: TRI, method: 99 }]);
+  const weirdRes = IO.importBuffer('weird.zip', weird);
+  check('compression this app cannot read is named',
+    /compression this app cannot read/.test(weirdRes.warnings.join(' ')), weirdRes.warnings.join(';'));
+  // a zip claiming a vast file inside a small one (a "zip bomb")
+  const bomb = makeZip([{ name: 'huge.obj', data: TRI, claimSize: 400 * 1024 * 1024 }]);
+  const t0 = Date.now();
+  const bombRes = IO.importBuffer('bomb.zip', bomb);
+  const bombMs = Date.now() - t0;
+  check('a zip claiming 400 MB inside is refused', /too big to unpack/.test(bombRes.warnings.join(' ')),
+    bombRes.warnings.join(';'));
+  check('and refused at once', bombMs < 2000, `${bombMs} ms`);
+  // cut short: what is there still comes out, through the front of the file
+  for (const cut of [0.95, 0.75, 0.4]) {
+    const whole = makeZip([{ name: 'tri.obj', data: TRI }, { name: 'tetra.obj', data: TETRA }]);
+    const part = whole.slice(0, Math.floor(whole.byteLength * cut));
+    let res = null, threw = null;
+    try { res = IO.importBuffer('cut.zip', part); } catch (e) { threw = e.message; }
+    check(`a zip cut to ${cut * 100}% answers without throwing`, !!res && !threw, threw || '');
+    if (res) {
+      check(`and says something about it`, res.warnings.length > 0 || res.objects.length > 0,
+        JSON.stringify(res.warnings));
+    }
+  }
+  const notAZip = IO.importBuffer('fake.zip', IO.encodeUtf8('PK\u0003\u0004 but nothing else at all').buffer);
+  check('bytes that only start like a zip are refused in words',
+    notAZip.objects.length === 0 && notAZip.warnings.length > 0, notAZip.warnings.join(';'));
 }
 
 report('io');

@@ -765,6 +765,13 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
     return seen;
   });
   check('on a computer the picker filters by extension', /\.obj/.test(asked[0]), asked[0]);
+  check('and the import sheet asks for zips as well', await page.evaluate(() => {
+    window.SCULPT_APP.importDialog();
+    const input = document.querySelector('.dialog .file-pick input[type="file"]');
+    const accept = input.accept;
+    Array.from(document.querySelectorAll('.dialog footer .btn')).forEach((b) => b.click());
+    return accept === '' || /\.zip/.test(accept);
+  }));
   eq('and an image picker asks for images', asked[1], 'image/*');
   eq('on a phone the picker takes any file', asked[2], '');
   eq('but an image picker still asks for images', asked[3], 'image/*');
@@ -782,6 +789,62 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   });
   check('a model with no extension at all still imports', sniffed.objects === 1,
     JSON.stringify(sniffed));
+}
+
+/* ---- a zip of models, opened in the app ----------------------------- *
+ *
+ * Asked for directly: models arrive zipped, and telling someone to unzip it
+ * first is no answer on a phone. The archive is built here with Node's zlib,
+ * so what the app reads is a real zip written by something else.
+ * -------------------------------------------------------------------- */
+{
+  const { makeZip } = await import('./harness.mjs');
+  const TRI = 'mtllib paint.mtl\nusemtl red\nv 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n';
+  const TETRA = 'v 0 0 0\nv 1 0 0\nv 0 1 0\nv 0 0 1\nf 1 3 2\nf 1 2 4\nf 1 4 3\nf 2 3 4\n';
+  const archive = makeZip([
+    { name: 'pack/', data: '' },
+    { name: 'pack/tri.obj', data: TRI },
+    { name: 'pack/paint.mtl', data: 'newmtl red\nKd 0.9 0.15 0.1\n' },
+    { name: 'pack/deep/tetra.obj', data: TETRA },
+    { name: 'pack/skin.png', data: 'PNG\r\n pretend' }
+  ]);
+  const zipPath = path.join(tmp, 'models.zip');
+  fs.writeFileSync(zipPath, Buffer.from(archive));
+
+  const before = await page.evaluate(() => window.SCULPT_APP.scene.objects.length);
+  await page.evaluate(() => window.SCULPT_APP.importDialog());
+  await page.locator('.dialog .file-pick input[type="file"]').setInputFiles([zipPath]);
+  await page.waitForFunction((n) => window.SCULPT_APP.scene.objects.length >= n + 2 &&
+    document.getElementById('busy').hidden, before, { timeout: 30000 });
+  const state = await page.evaluate((n) => {
+    const objs = window.SCULPT_APP.scene.objects.slice(n);
+    return {
+      count: objs.length,
+      names: objs.map((o) => o.name),
+      tris: objs.map((o) => o.mesh.liveTris),
+      colours: objs.map((o) => Array.from(o.baseColor)),
+      trail: window.SCULPT_IMPORT_TRAIL || '',
+      notes: Array.from(document.querySelectorAll('.dialog')).map((d) => d.textContent).join(' ')
+    };
+  }, before);
+  eq('both models in the zip became objects', state.count, 2);
+  check('named from inside the archive', state.names.join(',') === 'models / tri,models / tetra',
+    state.names.join(','));
+  check('with their triangles', state.tris.join(',') === '1,4', state.tris.join(','));
+  const red = state.colours[0];
+  check('and the .obj took its colour from the .mtl in the zip',
+    Math.abs(red[0] - 0.9) < 0.02 && red[1] < 0.3, JSON.stringify(red));
+  check('the trail names the archive', /models\.zip/.test(state.trail), state.trail.slice(0, 200));
+  check('and the image inside it is mentioned rather than dropped silently',
+    /skin\.png/.test(state.notes), state.notes.slice(0, 300));
+  await page.screenshot({ path: path.join(screens, '06c-zip-import.png') });
+  await page.evaluate(() => {
+    Array.from(document.querySelectorAll('.dialog')).forEach((d) => {
+      const b = Array.from(d.querySelectorAll('footer .btn'));
+      if (b.length) b[b.length - 1].click();
+    });
+  });
+  await page.waitForFunction(() => document.querySelectorAll('.dialog').length === 0, { timeout: 5000 });
 }
 
 /* ---- a file that cannot be read says why ---------------------------- *

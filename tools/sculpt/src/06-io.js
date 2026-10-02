@@ -186,7 +186,32 @@
    * Wavefront OBJ. Handles v/vn/vt, n-gons, negative indices, o/g groups and
    * the widely used "v x y z r g b" vertex-colour extension.
    */
-  IO.parseOBJ = function (text) {
+  /**
+   * Material colours from a .mtl file: { name: [r, g, b] } from `newmtl` and
+   * `Kd`. An OBJ keeps its colours in a second file beside it, which is why a
+   * model so often arrives as a zip of the two.
+   */
+  IO.parseMTL = function (text) {
+    var out = {};
+    var cur = null;
+    var lines = String(text).split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var hash = line.indexOf('#');
+      if (hash >= 0) line = line.slice(0, hash);
+      var tok = line.trim().split(/\s+/);
+      if (tok[0] === 'newmtl') { cur = tok.slice(1).join(' '); }
+      else if (cur && (tok[0] === 'Kd' || tok[0] === 'kd')) {
+        var r = +tok[1], g = +tok[2], b = +tok[3];
+        if (isFinite(r) && isFinite(g) && isFinite(b)) out[cur] = [r, g, b];
+      }
+    }
+    return out;
+  };
+
+  IO.parseOBJ = function (text, opts) {
+    opts = opts || {};
+    var materials = opts.materials || null;
     var lines = text.split('\n');
     var vp = [], vc = [], vn = [];
     var groups = [];
@@ -259,6 +284,15 @@
       }
       if ((c0 === 111 || c0 === 103) && (line.charCodeAt(1) === 32 || line.charCodeAt(1) === 9)) {
         ensureGroup(line.slice(2).trim());    // 'o ' / 'g '
+        continue;
+      }
+      /*
+       * The first material a group names decides its colour, if a .mtl came
+       * with it. Groups are not split on `usemtl`: an object with several
+       * materials stays one object, as it was modelled.
+       */
+      if (c0 === 117 && line.slice(0, 7) === 'usemtl ' && cur && !cur.material) {
+        cur.material = line.slice(7).trim();
       }
     }
 
@@ -273,6 +307,7 @@
         positions: positions,
         colors: colors,
         indices: new Uint32Array(grp.indices),
+        color: (materials && grp.material && materials[grp.material]) || null,
         shared: true
       });
     }
@@ -902,11 +937,29 @@
     return res;
   };
 
-  /** Shared by .gltf and .glb. `extraBuffers[0]` is the GLB binary chunk. */
-  IO.parseGLTF = function (json, extraBuffers) {
+  /**
+   * Shared by .gltf and .glb. `extraBuffers[0]` is the GLB binary chunk.
+   *
+   * `sideFiles` maps a name to its bytes — what a zip held beside the .gltf.
+   * A .gltf is only half a model: the geometry usually lives in a .bin next
+   * to it, which is exactly why such a model arrives zipped.
+   */
+  IO.parseGLTF = function (json, extraBuffers, sideFiles) {
     var warnings = [];
     var buffers = [];
     var i;
+    function beside(uri) {
+      if (!sideFiles) return null;
+      var want = uri;
+      try { want = decodeURIComponent(uri); } catch (e) { /* leave it as written */ }
+      var base = want.replace(/^.*\//, '');
+      var keys = Object.keys(sideFiles);
+      for (var k = 0; k < keys.length; k++) {
+        var key = keys[k];
+        if (key === want || key.replace(/^.*\//, '') === base) return sideFiles[key];
+      }
+      return null;
+    }
     for (i = 0; i < (json.buffers || []).length; i++) {
       var b = json.buffers[i];
       if (b.uri === undefined) {
@@ -919,8 +972,14 @@
         for (var c = 0; c < binStr.length; c++) arr[c] = binStr.charCodeAt(c);
         buffers[i] = arr.buffer;
       } else {
-        buffers[i] = null;
-        warnings.push('glTF references the external file "' + b.uri + '", which is not available. Use a .glb for a single self-contained file.');
+        var found = beside(b.uri);
+        if (found) {
+          buffers[i] = found.buffer.slice(found.byteOffset, found.byteOffset + found.byteLength);
+        } else {
+          buffers[i] = null;
+          warnings.push('glTF references the external file "' + b.uri + '", which is not available. ' +
+            'Zip it up with the .gltf, or use a .glb for a single self-contained file.');
+        }
       }
     }
 
@@ -1360,13 +1419,13 @@
       how: 'Export it as OBJ or GLB and import that.' },
     { ext: ['step', 'stp', 'iges', 'igs'], magic: ['ISO-10303'], label: 'a CAD file',
       how: 'A CAD program can save it as STL, which this app reads.' },
-    { ext: ['zip', '3mf', 'usdz'], magic: ['PK\u0003\u0004'], label: 'a zip archive',
-      how: 'Unzip it first and import the .obj, .stl, .ply or .glb inside.' },
+    { ext: ['3mf', 'usdz', 'usd', 'usda'], magic: [], label: 'a 3MF or USD file',
+      how: 'Export it as OBJ or GLB and import that \u2014 a zip of models, on the other hand, opens here.' },
     { ext: ['fbm', 'mtl'], magic: [], label: 'a file that goes beside a model, not the model itself',
       how: 'Import the .obj file instead \u2014 this one only describes its colours.' },
     { ext: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'], magic: ['PNG\r\n', 'JFIF', 'GIF8'], label: 'an image, not a model',
       how: 'Images belong on the Stencil sheet, under Brush texture.' },
-    { ext: ['pdf', 'mp4', 'mp3', 'zip', 'doc', 'docx'], magic: ['%PDF'], label: 'not a 3D model at all', how: '' }
+    { ext: ['pdf', 'mp4', 'mp3', 'doc', 'docx'], magic: ['%PDF'], label: 'not a 3D model at all', how: '' }
   ];
 
   /** The name of the format this file really is, when we cannot read it. */
@@ -1388,22 +1447,120 @@
     return null;
   };
 
-  IO.importBuffer = function (filename, buffer) {
+  /* what this app can actually build a model out of */
+  IO.MODEL_EXTS = ['obj', 'stl', 'ply', 'glb', 'gltf', 'sculpt'];
+  /* what a model brings with it: colours, textures, side files */
+  var SIDE_EXTS = ['mtl', 'bin', 'png', 'jpg', 'jpeg', 'webp', 'bmp', 'tga', 'gif', 'txt', 'json'];
+
+  /**
+   * Import everything in a zip.
+   *
+   * Models arrive zipped: a pack from a model site, a folder shared off a
+   * computer, an .obj with its .mtl, a .gltf with its .bin. "Unzip it first"
+   * is no answer on a phone, so the archive is opened here and every model
+   * inside it is imported, with the files that belong to a model handed to
+   * its reader — colours from a .mtl, geometry from a .bin — and the ones
+   * that cannot be used named rather than silently dropped.
+   */
+  IO.importZip = function (filename, buffer, depth) {
+    depth = depth || 0;
+    if (depth > 2) {
+      return { objects: [], warnings: ['"' + filename + '" is a zip inside a zip inside a zip. ' +
+        'Unpack it down to the model and import that.'] };
+    }
+    var unpacked;
+    try {
+      unpacked = S.Zip.unpack(buffer, { accept: function (name) {
+        var ext = IO.extensionOf(name);
+        /* a zip inside the zip is worth opening too: packs are often nested once */
+        return ext === 'zip' || IO.MODEL_EXTS.indexOf(ext) >= 0 || SIDE_EXTS.indexOf(ext) >= 0;
+      } });
+    } catch (err) {
+      if (typeof console !== 'undefined' && console.warn) console.warn('zip failed:', filename, err);
+      return { objects: [], warnings: ['"' + filename + '" could not be opened as a zip \u2014 it looks damaged. ' +
+        'Try downloading it again.'] };
+    }
+
+    var warnings = unpacked.warnings.slice();
+    var models = [], sides = {}, textures = [];
+    var i;
+    for (i = 0; i < unpacked.files.length; i++) {
+      var f = unpacked.files[i];
+      var ext = IO.extensionOf(f.name);
+      sides[f.name] = f.data;
+      if (IO.MODEL_EXTS.indexOf(ext) >= 0 || ext === 'zip') models.push(f);
+      else if (ext === 'png' || ext === 'jpg' || ext === 'jpeg' || ext === 'webp' || ext === 'bmp' ||
+               ext === 'tga' || ext === 'gif') textures.push(f.name);
+    }
+
+    if (!models.length) {
+      var inside = unpacked.skipped.concat(Object.keys(sides)).slice(0, 6);
+      return { objects: [], warnings: warnings.concat([
+        'There is no model this app can read inside "' + filename + '". It reads OBJ, STL, PLY and GLB' +
+        (inside.length ? ', and that archive holds: ' + inside.join(', ') +
+          (unpacked.count > inside.length ? ', \u2026' : '') : '') + '.'
+      ]) };
+    }
+
+    /* colours for an OBJ come from whichever .mtl travelled with it */
+    var materials = {};
+    var keys = Object.keys(sides);
+    for (i = 0; i < keys.length; i++) {
+      if (IO.extensionOf(keys[i]) !== 'mtl') continue;
+      var parsed = IO.parseMTL(decode(sides[keys[i]]));
+      for (var m in parsed) if (Object.prototype.hasOwnProperty.call(parsed, m)) materials[m] = parsed[m];
+    }
+
+    var objects = [];
+    var project = null;
+    for (i = 0; i < models.length; i++) {
+      var model = models[i];
+      var ab = model.data.buffer.slice(model.data.byteOffset, model.data.byteOffset + model.data.byteLength);
+      var res = IO.importBuffer(model.name, ab,
+        { materials: materials, sideFiles: sides, zipDepth: depth + 1 });
+      (res.warnings || []).forEach(function (w) { warnings.push(model.name + ': ' + w); });
+      if (res.project && !project) project = res.project;
+      /* name each object for the file it came out of, when there is more than one */
+      var label = model.name.replace(/^.*\//, '').replace(/\.[^.]+$/, '');
+      for (var k = 0; k < res.objects.length; k++) {
+        var o = res.objects[k];
+        if (models.length > 1 || res.objects.length > 1) {
+          o.name = label + (res.objects.length > 1 && o.name ? ' / ' + o.name : '');
+        }
+        objects.push(o);
+      }
+    }
+
+    if (textures.length) {
+      warnings.push('The archive also holds ' + (textures.length === 1 ? 'an image' : textures.length + ' images') +
+        ' (' + textures.slice(0, 3).join(', ') + (textures.length > 3 ? ', \u2026' : '') + '). Models come in as ' +
+        'shape and colour only \u2014 to use an image, paint with it: Brush texture \u2192 Load image.');
+    }
+    if (project) return { project: project, objects: project.objects, warnings: warnings };
+    return { objects: objects, warnings: warnings };
+  };
+
+  IO.importBuffer = function (filename, buffer, opts) {
     var ext = IO.extensionOf(filename);
     if (!buffer || !buffer.byteLength) {
       return { objects: [], warnings: ['"' + filename + '" is empty \u2014 nothing came through. If it came from a cloud folder, download it to the phone first and import it from there.'] };
     }
+    opts = opts || {};
+    /* a zip is opened, not refused: see `IO.importZip` */
+    if (ext === 'zip' || (!ext && S.Zip && S.Zip.looksLikeZip(buffer))) {
+      return IO.importZip(filename, buffer, opts.zipDepth);
+    }
     var foreign = IO.describeForeign(filename, buffer);
-    if (foreign && ['obj', 'stl', 'ply', 'glb', 'gltf', 'sculpt'].indexOf(ext) < 0) {
+    if (foreign && IO.MODEL_EXTS.indexOf(ext) < 0) {
       return { objects: [], warnings: [foreign] };
     }
     try {
       switch (ext) {
-        case 'obj': return IO.parseOBJ(decode(buffer));
+        case 'obj': return IO.parseOBJ(decode(buffer), opts);
         case 'stl': return IO.parseSTL(buffer);
         case 'ply': return IO.parsePLY(buffer);
         case 'glb': return IO.parseGLB(buffer);
-        case 'gltf': return IO.parseGLTF(JSON.parse(decode(buffer)), []);
+        case 'gltf': return IO.parseGLTF(JSON.parse(decode(buffer)), [], opts.sideFiles);
         case 'sculpt': {
           var pr = IO.loadProject(buffer);
           if (!pr.ok) return { objects: [], warnings: [pr.reason] };
@@ -1412,6 +1569,7 @@
         default: {
           // sniff: GLB magic, PLY/OBJ/STL text
           var head = decode(new Uint8Array(buffer, 0, Math.min(64, buffer.byteLength)));
+          if (S.Zip && S.Zip.looksLikeZip(buffer)) return IO.importZip(filename, buffer, opts.zipDepth);
           if (head.slice(0, 4) === 'glTF') return IO.parseGLB(buffer);
           if (head.slice(0, 3) === 'ply') return IO.parsePLY(buffer);
           if (head.slice(0, 8) === PROJECT_MAGIC) {
@@ -1419,7 +1577,7 @@
             return pr2.ok ? { project: pr2, objects: pr2.objects, warnings: pr2.warnings || [] }
                           : { objects: [], warnings: [pr2.reason] };
           }
-          if (/^\s*(v|vn|vt|f|o|g|mtllib|usemtl)\s/m.test(head)) return IO.parseOBJ(decode(buffer));
+          if (/^\s*(v|vn|vt|f|o|g|mtllib|usemtl)\s/m.test(head)) return IO.parseOBJ(decode(buffer), opts);
           if (/^\s*\{/.test(head) && head.indexOf('asset') >= 0) {
             try { return IO.parseGLTF(JSON.parse(decode(buffer)), []); } catch (e) { /* fall through */ }
           }

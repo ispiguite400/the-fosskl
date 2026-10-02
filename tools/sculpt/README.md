@@ -457,10 +457,54 @@ millimetres (×1000).
 | PLY | ✓ | ✓ | Text and both binary byte orders; the best format for vertex colour |
 | glTF / GLB | ✓ | ✓ | Node transforms baked in; 16- or 32-bit indices as needed |
 | `.sculpt` | ✓ | ✓ | The project: exact topology, masks, colours, transforms, camera |
+| `.zip` | ✓ | — | Opened here: every model inside it is imported, with its .mtl and .bin |
 
 ☰ → **Open a model** → *Choose files…*, and pick the file from wherever it is
 on your phone or computer. On a computer you can also drag files straight onto
 the window. There is no size limit beyond your machine's memory.
+
+### Zips
+
+Models arrive zipped. A pack from a model site, a folder shared off a
+computer, an .obj written next to its .mtl, a .gltf that is only half a model
+without its .bin: all of them turn up as one `.zip`, and "unzip it first" is
+no answer on a phone, where there often is no unzip.
+
+So a zip is opened here. `src/05b-zip.js` is the reader: the central
+directory, stored and deflated entries, CRCs checked, and a DEFLATE decoder
+written out in full, because the whole app is one file with no dependencies.
+Everything in it comes out of a file someone downloaded, so it is written
+defensively throughout — every count capped by the bytes actually present, a
+damaged entry named rather than thrown.
+
+What the importer does with what it finds:
+
+- **Every model inside is imported**, each named after its own file, so a pack
+  of ten parts arrives as ten objects.
+- **An .obj takes its colour from the .mtl beside it.** `Kd` from the material
+  a group names becomes that object's colour — the reason a model so often
+  comes as a zip of two files in the first place.
+- **A .gltf finds its .bin inside the archive.** A .gltf keeps its geometry in
+  a separate file; resolved from the zip, it imports like a .glb. (On its own
+  it says which file is missing.)
+- **A .sculpt project in a zip opens as a project**, camera and masks and all.
+- **A zip inside a zip is opened too**, one level deep, because packs are
+  often nested once. Three deep says so rather than recursing.
+- **Images are named, not silently dropped**: a model comes in as shape and
+  colour, so a texture in the archive is pointed at the stencil loader
+  instead.
+- **A zip claiming 400 MB inside a kilobyte is refused at once** — an entry
+  larger than the unpacking budget is never decompressed, and the budget caps
+  the archive as a whole.
+- **A zip cut short still gives up what is there.** With no readable index at
+  the end, the entries are walked from the front instead.
+- **Compression this app cannot read is named** (an encrypted entry, or one of
+  the rarer methods), rather than producing nonsense.
+
+The DEFLATE decoder is tested against the one that wrote the archives: zlib,
+at four compression levels, over empty, short, repetitive, model-shaped and
+incompressible data, plus CRC-32 checked against zlib's own and compressed
+data cut to 90%, 50% and 10% of its length.
 
 ### Three ways in, and a trail
 
@@ -664,18 +708,18 @@ A few decisions worth knowing about:
 ```bash
 node test/topology.test.mjs     # 210  mesh invariants, split/collapse/flip, the grid, needles, the nine shapes
 node test/remesh.test.mjs       # 76   watertight and manifold output, volume, colour transfer
-node test/io.test.mjs           # 182  round trips for every format, GLB structure, transforms, damaged files
+node test/io.test.mjs           # 248  round trips for every format, GLB structure, transforms, damaged files, zips
 node test/brush.test.mjs        # 411  every brush, adding vs stretching, the stroke limits, masking, undo
 node test/camera.test.mjs       # 18   projection, framing, ray casting
 node test/boolean.test.mjs      # 51   union / subtract / intersect against analytic volumes
 node test/texture.test.mjs      # 474  PNG writer, unwrap, bake, textured export, stencils, presets
 node test/paint.test.mjs        # 66   the paint image: atlas, rasteriser, stencils, undo, export
 node test/gizmo.test.mjs        # 52   handle layout, hit testing, move/turn/resize maths
-node build.js && node test/browser.test.mjs   # 520 end-to-end in a real browser
+node build.js && node test/browser.test.mjs   # 527 end-to-end in a real browser
 node test/shots.mjs             # renders the screenshots in test/screens
 ```
 
-2,060 checks in total. Some of them are worth naming, because they are the
+2,134 checks in total. Some of them are worth naming, because they are the
 ones that catch a regression you would otherwise ship:
 
 - **Brushes have to add, not stretch.** The same pull is run with dynamic
@@ -705,6 +749,14 @@ ones that catch a regression you would otherwise ship:
   it fails if that leaves a needle, a hole, a non-manifold edge, a runaway
   triangle count or a ballooned shape. So are both slider ceilings — from the
   slider, the keyboard, a preset and an old settings file.
+- **A zip is read against the thing that wrote it.** The DEFLATE decoder is
+  this app's own, so it is checked against zlib at four compression levels
+  over empty, short, repetitive, model-shaped and incompressible data, with a
+  lying claimed size, and with the compressed data cut to 90%, 50% and 10%;
+  CRC-32 against zlib's own. Then whole archives: an .obj with its .mtl, a
+  .gltf with its .bin, a project, a nested zip, images only, a damaged
+  checksum, a password-protected entry, an unknown method, a 400 MB claim
+  inside a kilobyte, and archives cut to 95%, 75% and 40%.
 - **Getting a model in is tested as a route, not just as a parser.** The sheet
   has to hold a real file input, that input has to cover the whole button
   (a tap landing anywhere else is a tap that does nothing), files put on it

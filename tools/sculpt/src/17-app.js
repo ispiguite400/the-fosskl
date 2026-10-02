@@ -3078,7 +3078,7 @@
     var picker = UI.filePick({
       label: 'Choose a file\u2026',
       icon: 'upload',
-      accept: '.obj,.stl,.ply,.glb,.gltf,.sculpt',
+      accept: '.obj,.stl,.ply,.glb,.gltf,.sculpt,.zip',
       multiple: true,
       class: 'accent grow',
       onOpen: function () { say('Opening the file picker\u2026'); },
@@ -3099,7 +3099,7 @@
       title: preset.title || 'Import a model',
       icon: 'upload',
       content: [
-        el('p', { text: 'OBJ, STL (binary or ascii), PLY, glTF/GLB and .sculpt projects. Triangle soups such as STL are welded on the way in so they can be sculpted straight away.' }),
+        el('p', { text: 'OBJ, STL (binary or ascii), PLY, glTF/GLB, .sculpt projects \u2014 and .zip files holding any of those, which are opened and read here. Triangle soups such as STL are welded on the way in so they can be sculpted straight away.' }),
         el('p.hint', { text: S.BUILD ? 'Build ' + S.BUILD : 'Unbundled sources' }),
         el('p.hint', { text: 'FBX, .blend, .dae and Roblox files cannot be read \u2014 whatever made them can save the same model as OBJ or GLB, and those come straight in.' }),
         el('div.row.wrap', null, [picker]),
@@ -3249,6 +3249,8 @@
           if (!mesh.liveTris) continue;
           var name = res.objects.length > 1 ? baseName + ' / ' + (src.name || (k + 1)) : baseName;
           var obj = new S.SceneObject(name, mesh);
+          /* a colour the file gave us (an OBJ's .mtl, a glTF material) */
+          if (src.color) V3.set(obj.baseColor, src.color[0], src.color[1], src.color[2]);
           /*
            * Anything with an edge — a wall, a terrain patch, a mesh that
            * arrives with holes in it — has no inside, so culling its back

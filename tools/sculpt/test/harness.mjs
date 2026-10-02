@@ -19,6 +19,63 @@ export function load() {
   return globalThis.SCULPT;
 }
 
+/**
+ * Build a zip archive, for testing the reader against something real.
+ *
+ * Written out by hand rather than shelling out to `zip`, so the suites run
+ * anywhere, and so a test can make an archive that is deliberately wrong:
+ * `store` writes entries uncompressed, `badCrc` corrupts a checksum, and
+ * `method` forges a compression method this app cannot read. CRCs come from
+ * Node's own zlib, so the app's CRC code cannot agree with itself and pass.
+ */
+export function makeZip(files, opts = {}) {
+  const zlib = require('zlib');
+  const enc = (v) => (typeof v === 'string' ? Buffer.from(v, 'utf8') : Buffer.from(v));
+  const parts = [];
+  const central = [];
+  let offset = 0;
+  for (const file of files) {
+    const name = Buffer.from(file.name, 'utf8');
+    const raw = enc(file.data);
+    const store = file.store !== undefined ? file.store : !!opts.store;
+    const body = store ? raw : zlib.deflateRawSync(raw, { level: opts.level === undefined ? 6 : opts.level });
+    const method = file.method !== undefined ? file.method : (store ? 0 : 8);
+    let crc = zlib.crc32(raw);
+    if (file.badCrc) crc = (crc ^ 0xffff) >>> 0;
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);              // version needed
+    local.writeUInt16LE(method, 8);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(body.length, 18);
+    local.writeUInt32LE(raw.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    const dir = Buffer.alloc(46);
+    dir.writeUInt32LE(0x02014b50, 0);
+    dir.writeUInt16LE(20, 4);
+    dir.writeUInt16LE(20, 6);
+    dir.writeUInt16LE(method, 10);
+    dir.writeUInt32LE(crc, 16);
+    dir.writeUInt32LE(body.length, 20);
+    dir.writeUInt32LE(raw.length, 24);
+    dir.writeUInt16LE(name.length, 28);
+    dir.writeUInt32LE(file.claimSize === undefined ? raw.length : file.claimSize, 24);
+    dir.writeUInt32LE(offset, 42);
+    parts.push(local, name, body);
+    central.push(Buffer.concat([dir, name]));
+    offset += 30 + name.length + body.length;
+  }
+  const dirBytes = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(dirBytes.length, 12);
+  end.writeUInt32LE(offset, 16);
+  const all = Buffer.concat([...parts, dirBytes, end]);
+  return all.buffer.slice(all.byteOffset, all.byteOffset + all.byteLength);
+}
+
 let passed = 0, failed = 0;
 const failures = [];
 
