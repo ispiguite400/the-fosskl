@@ -11,6 +11,8 @@
 
   var S = root.SCULPT || (root.SCULPT = {});
   S.VERSION = '1.0.0';
+  /* filled in by build.js with the date and a hash of the code it bundled */
+  S.BUILD = '';
 
   /* ------------------------------------------------------------------ *
    * scalars

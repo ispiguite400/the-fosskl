@@ -462,6 +462,41 @@ millimetres (×1000).
 on your phone or computer. On a computer you can also drag files straight onto
 the window. There is no size limit beyond your machine's memory.
 
+### Three ways in, and a trail
+
+Reported as not working three times, and twice the reason was not the reader
+at all. So the sheet now takes a model three ways, and says what happens.
+
+**The button is the file input.** Opening a picker by calling `click()` on a
+hidden `<input type="file">` is what a desktop browser expects, and what
+several Android browsers and in-app web views refuse outright — the tap then
+does nothing whatsoever, which is indistinguishable from an app that cannot
+import. The button in the sheet is now a real input stretched invisibly across
+it, so the tap lands on the input itself. Every file button in the app works
+this way: the model, the project, the stencil image, the matcap.
+
+**It says so when nothing comes back.** The only way to tell "I cancelled"
+from "this browser will not hand over files" is that the page gets focus again
+with no file, so that is now reported, with what to do: open `sculpt.html` in
+Chrome.
+
+**Every step is on the screen as it happens** — picker opened, file chosen
+with its size, bytes read, format worked out, objects built, triangles in. If
+it stops, where it stopped is visible instead of invisible, there is a button
+that copies the trail, and it stays in `window.SCULPT_IMPORT_TRAIL`
+afterwards.
+
+**A model can be pasted.** The text of an OBJ, an ascii STL or an ascii PLY
+goes straight into a box in the sheet, which needs no file picker at all.
+
+**The build stamp is in the sheet and in About** — the date and a short hash
+of the code it was built from — because "it doesn't work" and "an older copy
+is open" look exactly alike from the outside.
+
+Reading a file has a watchdog as well as an error path: a cloud-folder stub
+that a phone hands over but cannot then read fires neither `load` nor `error`,
+and used to hang the import silently with nothing said.
+
 The picker asks for **any** file on a phone rather than filtering by
 extension. Android's file chooser turns a list like `.obj,.stl,.ply` into
 media types it cannot resolve — nothing on the system claims those

@@ -415,6 +415,54 @@ input[type=color] {
 .btn.accent:hover:not(:disabled) { background: #ff9a63; border-color: #ff9a63; }
 .btn.danger:hover:not(:disabled) { background: rgba(255, 107, 107, 0.14); border-color: var(--red); color: #ffc9c9; }
 .btn svg { width: 15px; height: 15px; }
+/*
+ * A file button that is the file input.
+ *
+ * Opening the picker with `input.click()` from JavaScript is refused outright
+ * by some Android browsers and in-app web views, and then tapping does
+ * nothing at all. A real input stretched invisibly over the button means the
+ * tap lands on the input itself, which every browser that can pick files at
+ * all will honour.
+ */
+.file-pick { position: relative; overflow: hidden; cursor: pointer; }
+.file-pick input[type="file"] {
+  position: absolute;
+  /* past the border on every side, so every pixel of the button is the input */
+  left: -2px; top: -2px; right: -2px; bottom: -2px;
+  width: auto; height: auto;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 100px;              /* some browsers size the hit area from the text */
+}
+.import-steps {
+  margin: 6px 10px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+  max-height: 128px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.import-steps:empty { display: none; }
+.paste-box {
+  width: calc(100% - 20px);
+  margin: 4px 10px 6px;
+  min-height: 64px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  padding: 7px 9px;
+  resize: vertical;
+}
+
 .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 8px 10px; }
 .btn-grid.three { grid-template-columns: 1fr 1fr 1fr; }
 

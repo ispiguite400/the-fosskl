@@ -472,6 +472,63 @@
    *
    * A filter by media type ("image/*") is left alone: those resolve fine.
    */
+  /**
+   * A button that *is* a file input.
+   *
+   * `UI.pickFiles` below opens the picker by calling `click()` on a hidden
+   * input, which is what a desktop browser expects and what several Android
+   * browsers and in-app web views refuse outright — the tap then does
+   * nothing, which looks exactly like an app that cannot import. A real input
+   * stretched invisibly across the button is activated by the tap itself, so
+   * it works wherever picking files works at all.
+   *
+   * It also reports what came back, including nothing: `onNothing` is called
+   * when the page gets focus again without a file, which is the only way to
+   * tell "I cancelled" and "this browser cannot hand over files" apart from
+   * the outside.
+   */
+  UI.filePick = function (opts) {
+    opts = opts || {};
+    var accept = opts.accept || '';
+    if (accept && accept.charAt(0) === '.' && UI.isTouchDevice()) accept = '';
+    var input = el('input', { type: 'file', accept: accept, multiple: !!opts.multiple });
+    var label = el('label.btn.file-pick' + (opts.class ? '.' + opts.class.split(/\s+/).join('.') : ''), null, [
+      opts.icon ? UI.icon(opts.icon) : null,
+      el('span', { text: opts.label || 'Choose files\u2026' }),
+      input
+    ]);
+    var waiting = false;
+    function settle() {
+      waiting = false;
+      root.removeEventListener('focus', onBack);
+      document.removeEventListener('visibilitychange', onVisible);
+    }
+    function onBack() {
+      if (!waiting) return;
+      /* give the change event its chance to arrive first */
+      setTimeout(function () {
+        if (!waiting) return;
+        settle();
+        if (opts.onNothing) opts.onNothing();
+      }, 2500);
+    }
+    function onVisible() { if (!document.hidden) onBack(); }
+    input.addEventListener('click', function () {
+      waiting = true;
+      root.addEventListener('focus', onBack);
+      document.addEventListener('visibilitychange', onVisible);
+      if (opts.onOpen) opts.onOpen();
+    });
+    input.addEventListener('change', function () {
+      var files = Array.prototype.slice.call(input.files || []);
+      settle();
+      if (files.length) opts.onFiles(files);
+      else if (opts.onNothing) opts.onNothing();
+      input.value = '';                 // so picking the same file again fires change
+    });
+    return label;
+  };
+
   UI.pickFiles = function (accept, multiple, onFiles) {
     if (accept && accept.charAt(0) === '.' && UI.isTouchDevice()) accept = '';
     var input = el('input', { type: 'file', accept: accept, multiple: !!multiple, style: { display: 'none' } });
@@ -484,11 +541,49 @@
     input.click();
   };
 
+  /**
+   * Read one file, and never just stop.
+   *
+   * A phone can hand over a file it cannot then read: a cloud-folder stub, a
+   * file the provider has since forgotten, a name with nothing behind it. The
+   * reader then fires neither `load` nor `error` and the import hangs with
+   * nothing said, so there is a watchdog as well as an error path, and the
+   * reason given names what happened.
+   */
   UI.readFile = function (file, onDone, onError) {
+    var done = false;
     var reader = new FileReader();
-    reader.onload = function () { onDone(reader.result); };
-    reader.onerror = function () { if (onError) onError(reader.error); };
-    reader.readAsArrayBuffer(file);
+    var timer = setTimeout(function () {
+      if (done) return;
+      done = true;
+      try { reader.abort(); } catch (e) { /* nothing to abort */ }
+      if (onError) onError(new Error('the phone never finished handing the file over (' +
+        (file && file.size ? UI.formatBytes(file.size) : 'no size reported') + ')'));
+    }, 30000);
+    reader.onload = function () {
+      if (done) return;
+      done = true; clearTimeout(timer);
+      onDone(reader.result);
+    };
+    reader.onerror = reader.onabort = function () {
+      if (done) return;
+      done = true; clearTimeout(timer);
+      var err = reader.error;
+      if (onError) onError(err || new Error('the file could not be read'));
+    };
+    try {
+      reader.readAsArrayBuffer(file);
+    } catch (err) {
+      done = true; clearTimeout(timer);
+      if (onError) onError(err);
+    }
+  };
+
+  UI.formatBytes = function (n) {
+    if (!isFinite(n) || n < 0) return '?';
+    if (n < 1024) return n + ' bytes';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
 })(typeof globalThis !== 'undefined' ? globalThis : this);

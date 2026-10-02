@@ -1043,7 +1043,8 @@
         el('p.sheet-note', { text: 'Material' }),
         matcapHost,
         el('div.sheet-buttons', null, [
-          UI.button('Load matcap', { icon: 'upload', onclick: function () { self.loadMatcapImage(); } }),
+          UI.filePick({ label: 'Load matcap', icon: 'upload', accept: 'image/*',
+            onFiles: function (files) { self.loadMatcapImage(files); } }),
           UI.button('Screenshot', { icon: 'camera', onclick: function () { self.screenshot(); } })
         ])
       ],
@@ -1633,9 +1634,8 @@
       el('p.sheet-note', { text: 'Stencil — the brush works through this pattern instead of a round dab' }),
       grid,
       el('div.sheet-buttons', null, [
-        UI.button('Load image…', { icon: 'image', onclick: function () {
-          UI.pickFiles('image/*', false, function (files) { self.loadAlphaFromFile(files[0], grid); });
-        } }),
+        UI.filePick({ label: 'Load image\u2026', icon: 'image', accept: 'image/*',
+          onFiles: function (files) { self.loadAlphaFromFile(files[0], grid); } }),
         UI.button('Invert', { icon: 'reset', onclick: function () { self.invertCurrentAlpha(grid); } })
       ]),
       modeSeg,
@@ -3024,16 +3024,86 @@
    * import / export
    * ================================================================ */
 
-  A.importDialog = function () {
+  /**
+   * The import sheet.
+   *
+   * Reported three times as simply not working, and the reasons kept being
+   * somewhere other than the reader. So this sheet now does three things it
+   * did not do before.
+   *
+   * The button *is* the file input (`UI.filePick`), rather than a button that
+   * calls `click()` on a hidden one: some Android browsers and in-app web
+   * views refuse a programmatic open and the tap then does nothing at all.
+   *
+   * Every step says so, in the sheet, as it happens — picker opened, file
+   * chosen with its size, bytes read, format worked out, objects built. If it
+   * stops, where it stopped is on the screen instead of being invisible, and
+   * there is a Copy button for sending it on.
+   *
+   * And there is a way in that needs no picker at all: paste the text of an
+   * OBJ, an ascii STL or an ascii PLY straight into the box.
+   */
+  A.importDialog = function (preset) {
     var self = this;
+    preset = preset || {};
     var axis = this.settings.exportAxis;
     var fitCheck, centreCheck, replaceCheck;
-    UI.dialog({
-      title: 'Import a model',
+    var steps = el('div.import-steps');
+    var pasteBox = el('textarea.paste-box', {
+      placeholder: 'or paste the text of an OBJ / ascii STL / ascii PLY here',
+      spellcheck: false
+    });
+    var lines = [];
+    function say(text) {
+      lines.push(text);
+      if (lines.length > 40) lines.shift();
+      steps.textContent = lines.join('\n');
+      steps.scrollTop = steps.scrollHeight;
+      /* kept after the sheet closes, so it can still be read or sent on */
+      self.lastImportTrail = root.SCULPT_IMPORT_TRAIL = lines.join('\n');
+      if (typeof console !== 'undefined' && console.log) console.log('[import] ' + text);
+    }
+    self.importSay = say;                    // so importFiles can report into this sheet
+
+    function options() {
+      return {
+        axis: axis,
+        fit: fitCheck.get(),
+        centre: centreCheck.get(),
+        replace: replaceCheck.get(),
+        onStep: say
+      };
+    }
+
+    var picker = UI.filePick({
+      label: 'Choose a file\u2026',
+      icon: 'upload',
+      accept: '.obj,.stl,.ply,.glb,.gltf,.sculpt',
+      multiple: true,
+      class: 'accent grow',
+      onOpen: function () { say('Opening the file picker\u2026'); },
+      onNothing: function () {
+        say('Nothing came back from the picker. If it never opened, this browser will not let a ' +
+            'page pick files \u2014 open sculpt.html in Chrome (long-press the file \u2192 Open with \u2192 ' +
+            'Chrome) and try again. If you cancelled, nothing is wrong.');
+      },
+      onFiles: function (files) {
+        say('Chosen: ' + files.map(function (f) {
+          return f.name + ' (' + UI.formatBytes(f.size) + ')';
+        }).join(', '));
+        self.importFiles(files, options());
+      }
+    });
+
+    self.importDialogApi = UI.dialog({
+      title: preset.title || 'Import a model',
       icon: 'upload',
       content: [
         el('p', { text: 'OBJ, STL (binary or ascii), PLY, glTF/GLB and .sculpt projects. Triangle soups such as STL are welded on the way in so they can be sculpted straight away.' }),
+        el('p.hint', { text: S.BUILD ? 'Build ' + S.BUILD : 'Unbundled sources' }),
         el('p.hint', { text: 'FBX, .blend, .dae and Roblox files cannot be read \u2014 whatever made them can save the same model as OBJ or GLB, and those come straight in.' }),
+        el('div.row.wrap', null, [picker]),
+        steps,
         UI.select({ label: 'Up axis', value: axis, options: S.IO.AXIS_MODES,
           onchange: function (v) { axis = v; } }),
         el('div.row.wrap', null, [
@@ -3042,46 +3112,80 @@
           (centreCheck = UI.check({ label: 'Centre on origin', value: false }))
         ]),
         el('div.row.wrap', null, [
-          (replaceCheck = UI.check({ label: 'Replace the current scene', value: false }))
+          (replaceCheck = UI.check({ label: 'Replace the current scene', value: !!preset.replace }))
         ]),
-        el('div.hint', { text: 'Tap Choose files and pick the model from your phone\u2019s storage \u2014 Downloads, or wherever you saved it. The format is worked out from the file itself, so it does not matter what the file is called. If the model lives in Google Drive or another cloud folder, download it to the phone first and pick it from there. On a computer you can also drag files straight onto the window.' })
+        el('div.hint', { text: 'Pick the model from your phone\u2019s storage \u2014 Downloads, or wherever you saved it. The format is read out of the file itself, so the name does not matter. A model in Google Drive or another cloud folder has to be downloaded to the phone first. On a computer you can also drag files onto the window.' }),
+        pasteBox,
+        el('div.row.wrap', null, [
+          UI.button('Import pasted text', { onclick: function () {
+            var text = pasteBox.value || '';
+            if (!text.trim()) { say('The paste box is empty.'); return; }
+            say('Pasted ' + UI.formatBytes(text.length) + ' of text.');
+            var bytes = S.IO.encodeUtf8(text);
+            self.importFiles([{ name: 'pasted-model', size: bytes.length,
+                                buffer: bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) }],
+              options());
+          } }),
+          UI.button('Copy what happened', { onclick: function () {
+            var text = lines.join('\n');
+            try {
+              if (root.navigator && root.navigator.clipboard) root.navigator.clipboard.writeText(text);
+              else { pasteBox.value = text; pasteBox.select(); }
+              UI.toast('Copied', 'ok');
+            } catch (e) { pasteBox.value = text; }
+          } })
+        ])
       ],
-      buttons: [
-        { label: 'Cancel' },
-        { label: 'Choose files…', class: 'accent', onclick: function () {
-          UI.pickFiles('.obj,.stl,.ply,.glb,.gltf,.sculpt', true, function (files) {
-            self.importFiles(files, {
-              axis: axis,
-              fit: fitCheck.get(),
-              centre: centreCheck.get(),
-              replace: replaceCheck.get()
-            });
-          });
-        } }
-      ]
+      buttons: [{ label: 'Close' }],
+      onClose: function () { self.importSay = null; self.importDialogApi = null; }
     });
   };
 
   A.importFiles = function (files, opts) {
     var self = this;
     opts = opts || {};
-    if (!files || !files.length) return;
+    var step = opts.onStep || self.importSay || function () {};
+    if (!files || !files.length) { step('No files were handed over.'); return; }
     var pending = files.length;
     var results = [];
+    var failed = [];
+    function finish() {
+      if (results.length) {
+        self.processImports(results, opts);
+      } else {
+        step('Nothing could be read, so there is nothing to import.');
+        UI.toast(failed.length === 1 ? failed[0] : 'None of those files could be read', 'bad', 6000);
+      }
+    }
     files.forEach(function (file) {
+      /* the paste box hands over bytes directly; a picked file has to be read first */
+      if (file.buffer) {
+        results.push({ name: file.name, buffer: file.buffer, size: file.size });
+        if (--pending === 0) finish();
+        return;
+      }
+      step('Reading ' + file.name + '\u2026');
       UI.readFile(file, function (buffer) {
+        step('Read ' + UI.formatBytes(buffer.byteLength) + ' of ' + file.name + '.');
+        if (!buffer.byteLength) {
+          step('That file came through empty. A file in a cloud folder often does this \u2014 ' +
+               'download it to the phone first, then pick it from Downloads.');
+        }
         results.push({ name: file.name, buffer: buffer, size: file.size });
-        if (--pending === 0) self.processImports(results, opts);
+        if (--pending === 0) finish();
       }, function (err) {
         pending--;
-        UI.toast('Could not read ' + file.name, 'bad');
-        if (pending === 0 && results.length) self.processImports(results, opts);
+        var why = 'Could not read ' + file.name + ' \u2014 ' + ((err && (err.message || err.name)) || 'the phone would not hand it over') + '.';
+        step(why);
+        failed.push(why);
+        if (pending === 0) finish();
       });
     });
   };
 
   A.processImports = function (files, opts) {
     var self = this;
+    var step = (opts && opts.onStep) || self.importSay || function () {};
     UI.busy('Importing', files.map(function (f) { return f.name; }).join(', '), function (report) {
       var added = [];
       var warnings = [];
@@ -3103,6 +3207,8 @@
           continue;
         }
         (res.warnings || []).forEach(function (w) { warnings.push(files[i].name + ': ' + w); });
+        step('Read "' + files[i].name + '" as ' + (res.project ? 'a project file'
+          : (res.objects.length + ' object' + (res.objects.length === 1 ? '' : 's'))) + '.');
         if (res.project) {
           self.applyProject(res.project);
           projectLoaded = true;
@@ -3176,6 +3282,7 @@
               mesh.applyMatrix(m);
             }
           }
+          step('Built "' + name + '": ' + S.formatCount(mesh.liveTris) + ' triangles.');
           added.push(obj);
         }
       }
@@ -3188,6 +3295,7 @@
         return;
       }
       if (!result.added.length) {
+        step('Nothing came in. ' + (result.warnings.length ? result.warnings.join(' ') : ''));
         self.showImportWarnings(result.warnings, 0, 0);
         return;
       }
@@ -3207,8 +3315,12 @@
       self.refreshStatus();
       self.dirtySinceSave = true;
       self.needsRender = true;
+      step('Imported ' + result.added.length + ' object' + (result.added.length > 1 ? 's' : '') + ': ' +
+        S.formatCount(tris) + ' triangles.');
       UI.toast('Imported ' + result.added.length + ' object' + (result.added.length > 1 ? 's' : '') + ': ' +
         S.formatCount(tris) + ' triangles in ' + UI.formatMs(ms), 'ok', 3800);
+      /* the model is behind the sheet, so get the sheet out of the way */
+      if (self.importDialogApi) { self.importDialogApi.close(); self.importDialogApi = null; }
       if (result.warnings.length) self.showImportWarnings(result.warnings, tris, verts);
     });
   };
@@ -3392,10 +3504,7 @@
   };
 
   A.openProject = function () {
-    var self = this;
-    UI.pickFiles('.sculpt', false, function (files) {
-      self.importFiles(files, { replace: true });
-    });
+    this.importDialog({ replace: true, title: 'Open a project' });
   };
 
   A.applyProject = function (project) {
@@ -3471,9 +3580,10 @@
     }, 'image/png');
   };
 
-  A.loadMatcapImage = function () {
+  /* the caller hands the chosen file straight over; see `UI.filePick` */
+  A.loadMatcapImage = function (files) {
     var self = this;
-    UI.pickFiles('image/*', false, function (files) {
+    (function (go) { if (files && files.length) go(files); else UI.pickFiles('image/*', false, go); })(function (files) {
       var url = URL.createObjectURL(files[0]);
       var img = new Image();
       img.onload = function () {
@@ -3897,6 +4007,7 @@
       icon: 'brand',
       content: [
         el('p', { html: '<b>SculptFree ' + S.VERSION + '</b> — a digital sculpting app that runs in a browser, in one HTML file, with no account, no network and no paywall.' }),
+        el('p.hint', { text: S.BUILD ? 'Build ' + S.BUILD : 'Running from the unbundled sources' }),
         el('div.warn.ok', { text: 'Import and export are free and unlimited: OBJ, STL, PLY and GLB, in and out, at any triangle count.' }),
         el('h4', { text: 'What is in it' }),
         el('p', { text: '21 brushes with symmetry, masking, stencils and vertex painting; dynamic topology; voxel remeshing; Loop subdivision; quadric decimation; booleans; a multi-object scene with transforms; baked textures; undo that covers topology changes; and its own WebGL2 renderer with generated matcaps, so there are no assets to download.' }),

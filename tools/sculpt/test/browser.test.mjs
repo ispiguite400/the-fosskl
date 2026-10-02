@@ -637,28 +637,101 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
 
 /* ---- import a model through the file picker ------------------------- */
 {
+  /*
+   * The button in the sheet has to be the file input itself. A button that
+   * calls `click()` on a hidden input is refused by some Android browsers and
+   * in-app web views, where the tap then does nothing at all — which is what
+   * "import just doesn't work" turned out to mean. So the test picks files
+   * the way a finger does: by putting them on the input that is in the sheet.
+   */
   const before = await page.evaluate(() => window.SCULPT_APP.scene.objects.length);
-  const [chooser] = await Promise.all([
-    page.waitForEvent('filechooser', { timeout: 15000 }),
-    page.evaluate(() => {
-      // the import dialog's own button opens the picker
-      window.SCULPT_APP.importDialog();
-      const buttons = Array.from(document.querySelectorAll('.dialog footer .btn'));
-      buttons[buttons.length - 1].click();
-    })
-  ]);
-  await chooser.setFiles([exported.obj, exported.ply]);
+  await page.evaluate(() => window.SCULPT_APP.importDialog());
+  const input = page.locator('.dialog .file-pick input[type="file"]');
+  eq('the import sheet holds a real file input', await input.count(), 1);
+  const geometry = await page.evaluate(() => {
+    const el = document.querySelector('.dialog .file-pick');
+    const r = el.getBoundingClientRect();
+    const i = el.querySelector('input[type="file"]').getBoundingClientRect();
+    return { w: r.width, h: r.height, iw: i.width, ih: i.height };
+  });
+  check('and the input covers the whole button, so a tap lands on it',
+    geometry.iw >= geometry.w - 1 && geometry.ih >= geometry.h - 1, JSON.stringify(geometry));
+  await input.setInputFiles([exported.obj, exported.ply]);
   await page.waitForFunction((n) => window.SCULPT_APP.scene.objects.length > n &&
     document.getElementById('busy').hidden, before, { timeout: 30000 });
   const state = await page.evaluate(() => ({
     objects: window.SCULPT_APP.scene.objects.length,
     names: window.SCULPT_APP.scene.objects.map((o) => o.name),
-    tris: window.SCULPT_APP.scene.totals().tris
+    tris: window.SCULPT_APP.scene.totals().tris,
+    sheetGone: document.querySelectorAll('.dialog').length === 0
   }));
   eq('both files imported as objects', state.objects, before + 2);
   check('imported objects are named after the files', state.names.some((n) => /export/.test(n)), state.names.join(','));
   check('imported geometry is present', state.tris > 1000, String(state.tris));
+  check('the sheet gets out of the way once the model is in', state.sheetGone);
   await page.screenshot({ path: path.join(screens, '06-imported.png') });
+}
+
+/* ---- the import sheet says what is happening ------------------------ */
+{
+  const before = await page.evaluate(() => window.SCULPT_APP.scene.objects.length);
+  await page.evaluate(() => window.SCULPT_APP.importDialog());
+  /*
+   * Which file is open has to be answerable in one line: "import doesn't work"
+   * and "an older copy is open" look identical from the outside.
+   */
+  const stamped = await page.evaluate(() => ({
+    build: window.SCULPT.BUILD || '',
+    inSheet: Array.from(document.querySelectorAll('.dialog .hint')).some((h) => /^Build /.test(h.textContent))
+  }));
+  check('the standalone build carries a build stamp', /\d{4}-\d{2}-\d{2}.*\u00b7/.test(stamped.build), stamped.build);
+  check('and the import sheet shows it', stamped.inSheet);
+  await page.locator('.dialog .file-pick input[type="file"]').setInputFiles([exported.stl]);
+  await page.waitForFunction((n) => window.SCULPT_APP.scene.objects.length > n, before, { timeout: 30000 });
+  const trail = await page.evaluate(() => window.SCULPT_IMPORT_TRAIL || '');
+  for (const word of ['Chosen', 'Read', 'Built', 'Imported']) {
+    check(`the trail says "${word}"`, trail.indexOf(word) >= 0, trail.slice(0, 300));
+  }
+  check('the trail names the file and its size', /export\.stl \(/.test(trail), trail.slice(0, 300));
+}
+
+/* ---- a model can be pasted in, with no picker at all ---------------- */
+{
+  /*
+   * The last resort for a browser that will not hand over files: paste the
+   * text of the model. Nothing here touches an input of type file.
+   */
+  const before = await page.evaluate(() => window.SCULPT_APP.scene.objects.length);
+  await page.evaluate(() => window.SCULPT_APP.importDialog());
+  const pasteCount = await page.locator('.dialog .paste-box').count();
+  eq('the sheet has a box to paste into', pasteCount, 1);
+  await page.evaluate(() => {
+    // a small closed shape, pasted the way a phone pastes: the whole value at once
+    const box = document.querySelector('.dialog .paste-box');
+    box.value = [
+      'v -0.3 -0.3 -0.3', 'v 0.3 -0.3 -0.3', 'v 0.3 0.3 -0.3', 'v -0.3 0.3 -0.3',
+      'v -0.3 -0.3 0.3', 'v 0.3 -0.3 0.3', 'v 0.3 0.3 0.3', 'v -0.3 0.3 0.3',
+      'f 1 3 2', 'f 1 4 3', 'f 5 6 7', 'f 5 7 8', 'f 1 2 6', 'f 1 6 5',
+      'f 2 3 7', 'f 2 7 6', 'f 3 4 8', 'f 3 8 7', 'f 4 1 5', 'f 4 5 8'
+    ].join('\n') + '\n';
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    const btn = Array.from(document.querySelectorAll('.dialog .btn'))
+      .filter((b) => /Import pasted/.test(b.textContent))[0];
+    btn.click();
+  });
+  await page.waitForFunction((n) => window.SCULPT_APP.scene.objects.length > n &&
+    document.getElementById('busy').hidden, before, { timeout: 30000 });
+  const pasted = await page.evaluate(() => {
+    const objs = window.SCULPT_APP.scene.objects;
+    const last = objs[objs.length - 1];
+    return { objects: objs.length, name: last.name, tris: last.mesh.liveTris };
+  });
+  eq('pasted text became an object', pasted.objects, before + 1);
+  eq('the pasted cube has all twelve triangles', pasted.tris, 12);
+  check('and it is named for having been pasted', /pasted/.test(pasted.name), pasted.name);
+  await page.evaluate(() => {
+    Array.from(document.querySelectorAll('.dialog footer .btn')).forEach((b) => b.click());
+  });
 }
 
 /* ---- what the file picker is asked for ------------------------------ */
@@ -741,15 +814,8 @@ for (const fmt of ['glb', 'obj', 'ply', 'stl']) {
   const before = await page.evaluate(() => window.SCULPT_APP.scene.objects.length);
   for (const file of paths) {
     const name = path.basename(file);
-    const [chooser] = await Promise.all([
-      page.waitForEvent('filechooser', { timeout: 15000 }),
-      page.evaluate(() => {
-        window.SCULPT_APP.importDialog();
-        const buttons = Array.from(document.querySelectorAll('.dialog footer .btn'));
-        buttons[buttons.length - 1].click();
-      })
-    ]);
-    await chooser.setFiles([file]);
+    await page.evaluate(() => window.SCULPT_APP.importDialog());
+    await page.locator('.dialog .file-pick input[type="file"]').setInputFiles([file]);
     await page.waitForFunction(() => {
       if (!document.getElementById('busy').hidden) return false;
       const dialogs = Array.from(document.querySelectorAll('.dialog'));
