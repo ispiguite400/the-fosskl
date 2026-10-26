@@ -18,7 +18,7 @@ export default {
   build(P, r) {
     P.box({ x: 0, y: -0.5, z: 0, w: 60, h: 0.5, d: 60, mat: 'grass', color: 0x2f3f26, collide: false, cast: false });
     P.cyl({ x: 0, y: 0, z: 0, r: 8, h: 0.03, mat: 'dirt', color: 0x5a4632, seg: 28, collide: false, cast: false });
-    campfire(P, 0, 0, { intensity: 9 });
+    campfire(P, 0, 0, { intensity: 5.5 });
     // log benches round the fire
     for (let i = 0; i < 6; i++) {
       const a = i / 6 * Math.PI * 2 + 0.3, x = Math.cos(a) * 4.2, z = Math.sin(a) * 4.2;

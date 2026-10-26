@@ -70,6 +70,7 @@ class Game {
   }
   startFromTitle() {
     if (this.state !== 'title') return;
+    input.consume('chat'); input.consume('confirm');
     audio.init();
     music.play('lobby', { fade: 2 });
     this.enterLobby(true);
@@ -191,6 +192,7 @@ class Game {
     input.releaseLock();
     this.puzzle.close();
     this.hud.clear();
+    this.worldUi.clear();
     this.touch.setLayout('menu');
     music.play('results', { fade: 2 });
     this.ui.results(res, () => this.finishResults());
