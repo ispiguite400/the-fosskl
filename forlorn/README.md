@@ -21,6 +21,10 @@ python3 -m http.server 8000      # or: npx http-server -p 8000 .
 
 Then open <http://localhost:8000>. It works on GitHub Pages as-is.
 
+To get the whole game as **one HTML file** that opens straight from your files with no server
+(about 90 MB, since it carries every model and picture), run `node tools/bundle.mjs` from this folder.
+It needs esbuild (`npm i -g esbuild`) and writes `dist/forlorn.html`.
+
 Plays in any current browser with WebGL 2: desktop, phones and tablets. On weaker machines, lower
 **Graphics** and **Resolution scale** in Settings. Phones start on Low.
 

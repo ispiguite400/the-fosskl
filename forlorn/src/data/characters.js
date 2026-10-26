@@ -5,6 +5,7 @@
  * Survivors have two abilities (Q and R) and a passive; killers have a basic attack (M1) and
  * three abilities (Q, R, F). Ability behaviour lives in game/abilities.js, keyed by id.
  */
+import { assetUrl } from '../core/assets.js';
 
 export const SURVIVORS = [
   {
@@ -211,5 +212,5 @@ export function characterModel(id, skin = 'default') {
 }
 export function characterPortrait(id, skin = 'default') {
   const name = id + (skin && skin !== 'default' ? '_' + skin : '');
-  return stamped('assets/renders/' + name + '.png', STAMP.renders[name]);
+  return assetUrl(stamped('assets/renders/' + name + '.png', STAMP.renders[name]));
 }

@@ -410,7 +410,7 @@ h1, h2, h3, .hd { font-family: var(--head); font-weight: 400; letter-spacing: 0.
 #ui:has(.results) .chat-btn { display: none; }
 /* in the lobby there is no ability bar, so the chat sits low and narrow, clear of the menu and the vote */
 @media (min-width: 761px) and (min-height: 501px) {
-  #ui:has(#lobby) .chat { bottom: calc(3.2rem + var(--safe-b)); width: min(22rem, 24vw); }
+  #ui:has(#lobby) .chat { bottom: calc(3.2rem + var(--safe-b)); width: min(22rem, 19vw); }
   #ui:has(#lobby) .chat-btn { bottom: calc(0.9rem + var(--safe-b)); }
 }
 .quick { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.3rem; pointer-events: auto; }

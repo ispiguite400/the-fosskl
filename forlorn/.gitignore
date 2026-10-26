@@ -1,2 +1,4 @@
-# forge scratch output lives outside the repo (FORGE_SCRATCH); nothing else to ignore yet
+# forge scratch output lives outside the repo (FORGE_SCRATCH)
 *.sculpt
+# the one-file build (tools/bundle.mjs): about 90 MB, rebuilt from the repo at any time
+dist/
