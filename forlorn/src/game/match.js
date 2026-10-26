@@ -16,6 +16,7 @@ import { Effects } from './effects.js';
 import { Generator, Pickup, PARTS } from './props.js';
 import { ABILITIES, ITEMS, swing } from './abilities.js';
 import { SurvivorBrain, KillerBrain, MinionBrain, placeName } from './brain.js';
+import { Curfew } from './curfew.js';
 import { say } from '../data/bots.js';
 import { lmsTrackFor, music } from '../audio/music.js';
 import { audio } from '../audio/audio.js';
@@ -433,6 +434,7 @@ export class Match {
     this.bondTick(dt);
     this.bloodlustTick(dt);
     this.echoTick(dt);
+    if (this.curfew) this.curfew.update(dt);
     // footsteps
     for (const a of this.actors) if (a.alive && a.grounded && a.speed > 1.2 && a.view && a.view.root.visible) audio.step(a, this.def.surface || 'dirt');
     this.musicTick(dt);
@@ -525,6 +527,8 @@ export class Match {
     } else if (ev.kind === 'alarm') {
       for (const s of this.survivorsAlive()) this.reveal(s, 4, 'killer');
       if (this.killer) this.reveal(this.killer, 4, 'survivor');
+    } else if (ev.kind === 'curfew') {
+      this.curfew = new Curfew(this, ev);
     } else if (ev.kind === 'fog') {
       const f = this.world.scene.fog, d0 = f.density;
       f.density = d0 * 2.2;
@@ -573,6 +577,7 @@ export class Match {
     return { money, xp };
   }
   dispose() {
+    if (this.curfew) this.curfew.dispose();
     this.fx.dispose();
     for (const a of this.actors) a.dispose();
     for (const g of this.gens) g.dispose();

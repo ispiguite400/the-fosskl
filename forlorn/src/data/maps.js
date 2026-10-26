@@ -1,5 +1,5 @@
 /*
- * The maps: seven places from the films, each with its own look, music and mid-round event.
+ * The maps: eight places from the films, each with its own look, music and mid-round event.
  * A map module default-exports { id, name, film, blurb, size, ambience, music, event, build(P, r) }.
  */
 const LOADERS = {
@@ -9,7 +9,8 @@ const LOADERS = {
   war: () => import('../world/maps/war.js'),
   hospital: () => import('../world/maps/hospital.js'),
   forest: () => import('../world/maps/forest.js'),
-  limbo: () => import('../world/maps/limbo.js')
+  limbo: () => import('../world/maps/limbo.js'),
+  city: () => import('../world/maps/city.js')
 };
 export const MAP_IDS = Object.keys(LOADERS);
 const cache = new Map();

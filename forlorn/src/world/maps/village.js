@@ -18,6 +18,7 @@ export default {
     particles: 'embers'
   },
   music: 'village',
+  card: { at: [17, 10, 27], look: [-2, 1, -2] },
   event: { at: 0.45, kind: 'barrage', title: 'AIRSTRIKE', text: 'The Bacon Empire is shelling the village: watch for the red circles', sound: 'siren', count: 16, every: 0.6 },
   landmarks: [['the well', 0, 2], ['the watchtower', -34, -32], ['the barricade', 0, -23], ['the north road', 0, 30]],
   build(P, r) {

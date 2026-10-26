@@ -21,6 +21,7 @@ export default {
     particles: 'motes'
   },
   music: 'school',
+  card: { at: [-20, 8, 6], look: [2, 2, -24] },
   event: { at: 0.45, kind: 'alarm', title: 'FIRE DRILL', text: 'The alarm is ringing: everyone is shown to everyone', sound: 'siren' },
   landmarks: [['the hallway', 0, -26], ['the cafeteria', -14, -17], ['the library', 14, -17], ['the gym', 36, -29], ['the parking lot', -30, 16], ['the field', 24, 22]],
   build(P, r) {

@@ -3,6 +3,7 @@
  * (Enter or / on a keyboard; the chat button on touch; quick lines on a controller).
  * Bots read what the player says and sometimes answer.
  */
+import { icon } from './icons.js';
 import { el, esc, R } from '../core/util.js';
 import { input } from '../core/input.js';
 import { audio } from '../audio/audio.js';
@@ -23,7 +24,7 @@ export class Chat {
     for (const q of QUICK) { const b = el('button', 'btn small', q); b.onclick = () => { this.send(q); this.close(); }; this.quick.appendChild(b); }
     this.box.append(this.logEl, this.input, this.quick);
     root.appendChild(this.box);
-    this.btn = el('button', 'chat-btn', '💬 Chat');
+    this.btn = el('button', 'chat-btn', icon('chat') + ' Chat');
     this.btn.onclick = () => (this.isOpen ? this.close() : this.open());
     root.appendChild(this.btn);
     this.isOpen = false;

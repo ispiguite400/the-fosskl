@@ -21,6 +21,7 @@ export default {
     particles: 'rain'
   },
   music: 'hospital',
+  card: { at: [9, 2.3, -3], look: [-6, 1.3, -14] },
   event: { at: 0.45, kind: 'blackout', title: 'BLACKOUT', text: 'The power has gone: the lights are out for 25 seconds', sound: 'thunder', dur: 25 },
   landmarks: [['reception', 0, -2], ['the wards', -18, -26], ['surgery', 18, -30], ['the pharmacy', 18, -12], ['the staff room', 0, -34], ['the ambulance bay', 26, 18], ['the car park', -26, 22]],
   build(P, r) {

@@ -21,6 +21,7 @@ export default {
     particles: 'ash'
   },
   music: 'war',
+  card: { at: [12, 6, 20], look: [0, 3, 0] },
   event: { at: 0.45, kind: 'barrage', title: 'ARTILLERY', text: 'Shells are falling on no man\'s land: watch for the red circles', sound: 'whistle', count: 20, every: 0.5 },
   landmarks: [['the church', 0, 0], ['the Army trench', 0, 30], ['the Empire trench', 0, -30], ['the tank', 22, 6], ['the bunker', -26, 38]],
   build(P, r) {

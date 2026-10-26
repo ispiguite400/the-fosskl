@@ -119,9 +119,10 @@ export class Actor {
     const absorb = this.fx.entry('absorb');
     if (absorb) { const a = Math.min(absorb.v, dmg); absorb.v -= a; dmg -= a; if (absorb.v <= 0.01) this.fx.remove('absorb'); }
     if (dmg <= 0) { this.view && this.view.flash(0xf2c14e, 0.2); return 0; }
+    const lost = Math.min(dmg, Math.max(0, this.hp));          // credit only the health actually taken
     this.hp -= dmg;
     this.lastHitBy = source; this.lastHurt = this.world.time;
-    if (source) { source.stats.damage += dmg; source.stats.hits++; }
+    if (source) { source.stats.damage += lost; source.stats.hits++; }
     if (this.view) { this.view.flash(0xff2020, 0.22); if (this.hp > 0 && this.role !== 'killer') this.view.once('hurt', { speed: 1.4 }); }
     if (this.busy && this.busy.cancelOnHit !== false) this.cancelBusy();
     if (this.hp <= 0) { this.hp = 0; this.die(source, kind); }

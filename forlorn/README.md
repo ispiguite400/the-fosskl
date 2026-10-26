@@ -61,9 +61,16 @@ and stuns.
   - Survivors: Guest 1337, Matt, Daisy, Rose, Army Captain, Emily, Justin, Rich Guy, Charlie, Jez.
   - Killers: The Terrible (Guest 666), Bacon General (who calls in Bacon Soldiers), Bacon
     Colonel, Elite Guard, Blox Watch.
-- **Seven maps**, each with its own look, ambient score and mid-round event: Guest Village
+- **Eight maps**, each with its own look, ambient score and mid-round event: Guest Village
   (airstrike), Guest Prison (lockdown), Robloxian High (fire drill), The Great War (artillery),
-  Bloxville General (blackout), Camp Bloxwood (fog) and Limbo (astral storm).
+  Bloxville General (blackout), Camp Bloxwood (fog), Limbo (astral storm) and **Bacon City**
+  (curfew).
+- **Bacon City**, from *The Bacon Hair*: the walled city where the Guest Republic keeps the Bacon
+  Hairs in the slums. The Wall and its watch towers all round, the Gate to the south, the tin-shack
+  slums, the tenements, Zayden's block and his dad's garage, the power plant, Republic Square with
+  its obelisk and the Ministry, the school and the shops, under rain and propaganda screens. At
+  the halfway mark the **curfew** starts: the Wall's searchlights sweep the streets, and anyone
+  they catch out in the open is reported to the killer. A roof over your head keeps you hidden.
 - **Generators** are solved with a wire puzzle. A wrong wire sparks, and the killer hears it.
 - **Last Man Standing**: a VS card, and a song chosen for the matchup (the films' own pairings get
   their own songs). The round lasts exactly as long as the song.
@@ -78,6 +85,15 @@ and stuns.
 - **Bloodlust**: the killer's meter fills on hits and chases. When it's full it boils over into a
   Frenzy: faster, harder, red-sighted.
 - **Map events** from each film, mid-round.
+
+### The interface
+
+Built like an asymmetrical horror game's: worn black plates with slanted edges, blood red for the
+killer and cold cyan for survivors, type that looks stamped and scuffed, film grain over the menus.
+In a round: generators left, the clock and survivors alive across the top; every survivor down the
+left with their health and what they're doing (chased, repairing, dead, gone), and the killer
+under them; a heart that beats faster as the killer gets closer, with red creeping in at the edges;
+abilities with sweeping cooldowns. Map cards are photographs of the maps (`tools/mapcards.mjs`).
 
 ## Music, and Soundtrap
 
@@ -107,7 +123,11 @@ node forlorn/forge/make.mjs matt                  # build, render the sheets
 node forlorn/forge/make.mjs matt --ship           # ship to assets/models/matt.glb
 node forlorn/forge/make.mjs matt --skin war --ship
 node forlorn/forge/renders.mjs                    # menu portraits (with the game served on :8765)
+node forlorn/tools/mapcards.mjs                   # map photographs for the vote and loading screens (same)
 ```
+
+The maps themselves (buildings, walls, props) are built from parts in code, as the Advance Forge
+rules say scenery should be; only characters get sculpted models.
 
 `forge/STYLE.md` holds the style rules for the cast. `forge/<id>/` holds each character's build
 script, joints and renders; `forge/lib/` holds the body kit, clothing, faces, accessories and the
@@ -116,7 +136,7 @@ R6 animation clips.
 ## Layout
 
 ```text
-index.html, css/          the page and the UI's look
+index.html, css/          the page and the UI's look (fonts are served locally from assets/fonts)
 src/main.js               boot and the state machine (title, lobby, round, results)
 src/core/                 input (keyboard, mouse, DualSense, touch), save, events, helpers
 src/render/               renderer and post effects, materials, sky, characters (forge-loader)
@@ -126,5 +146,6 @@ src/ui/                   HUD, menus, chat, puzzle, touch controls, world labels
 src/audio/                the synth, sound effects and the score
 src/data/                 the cast, bots' personalities and lines, the map list
 forge/                    the Advance Forge build scripts for every character
-assets/                   shipped models, portrait renders, music manifest
+tools/                    mapcards.mjs: photographs each map for the menus
+assets/                   shipped models, portrait renders, map cards, fonts, music manifest
 ```

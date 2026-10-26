@@ -21,6 +21,7 @@ export default {
     particles: 'fireflies'
   },
   music: 'forest',
+  card: { at: [8, 4, 14], look: [0, 1, 4] },
   event: { at: 0.45, kind: 'fog', title: 'THE FOG ROLLS IN', text: 'Fog off the lake: nobody sees far for 30 seconds', sound: 'whoosh', dur: 30 },
   landmarks: [['the bonfire', 0, 4], ['the lake', 24, -22], ['the dock', 14, -14], ['the cabins', -24, -18], ['the road', -34, 20], ['the boathouse', 36, -6]],
   build(P, r) {

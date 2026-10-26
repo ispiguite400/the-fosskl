@@ -87,6 +87,15 @@ export class CollisionWorld {
     return best;
   }
   /** Is the straight line between two points at eye height free of sight blockers? */
+  /** Is there a roof (anything solid above head height) over this point? */
+  roofed(x, z) {
+    for (const c of this.near(x, z, 0.5, this._tmpR || (this._tmpR = []))) {
+      if (c.type !== 'box' || c.y0 < 2.2 || c.y0 > 12) continue;
+      const rx = x - c.x, rz = z - c.z, lx = rx * c.cos - rz * c.sin, lz = rx * c.sin + rz * c.cos;
+      if (Math.abs(lx) <= c.hw && Math.abs(lz) <= c.hd) return true;
+    }
+    return false;
+  }
   sightClear(ax, az, bx, bz, h = 1.5) {
     const dx = bx - ax, dz = bz - az, L = Math.hypot(dx, dz);
     if (L < 0.01) return true;

@@ -22,6 +22,7 @@ export default {
     particles: 'motes'
   },
   music: 'limbo',
+  card: { at: [14, 8, 18], look: [0, 4, 0] },
   event: { at: 0.45, kind: 'storm', title: 'ASTRAL STORM', text: 'Lightning is striking the stone: watch for the gold circles', sound: 'thunder', count: 18, every: 0.6 },
   landmarks: [['the temple', 0, 0], ['the monoliths', -30, -20], ['the crystal field', 28, 24], ['the stair', 30, -30], ['the broken head', -26, 26]],
   build(P, r) {

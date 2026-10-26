@@ -21,6 +21,7 @@ export default {
     particles: 'dust'
   },
   music: 'prison',
+  card: { at: [12, 9, 30], look: [-4, 2, -10] },
   event: { at: 0.45, kind: 'alarm', title: 'LOCKDOWN', text: 'The alarm is up: every survivor is shown to the killer, and the killer to them', sound: 'siren' },
   landmarks: [['Cell Block A', -10, -31], ['the mess hall', 30, -28], ['the yard', 0, 4], ['the guard house', -30, 22], ['the workshop', 28, 24], ['the gate', 0, 42]],
   build(P, r) {

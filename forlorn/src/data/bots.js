@@ -128,6 +128,8 @@ const LINES = {
   rage: ['im leaving', 'this game is trash', 'bye', 'im done', 'i quit', 'ugh'],
   thanksHeal: ['ty for the heal', 'thanks {name}', 'ty', 'tysm {name}'],
   echo: ['i revealed the killer!', 'look where he is', 'killer revealed', 'echo used'],
+  spotted: ['the light found me', 'searchlight on me', 'get inside, the lights', 'stay under a roof guys', 'curfew bots irl', 'bro the light', 'im spotted', 'hide from the lights'],
+  curfew: ['curfew!!', 'hide inside', 'get under a roof', 'the lights are on', 'its curfew run', 'oh no curfew'],
   bond: ['me and {name} are bonded', 'stick with me {name}', 'duo'],
   reply_hi: ['hi', 'hey', 'hello', 'yo', 'hii {name}'],
   reply_help: ['omw', 'where', 'coming', 'cant im being chased', 'no', 'hold on'],
