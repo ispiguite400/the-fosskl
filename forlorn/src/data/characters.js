@@ -107,7 +107,7 @@ export const SURVIVORS = [
     skins: [{ id: 'default', name: 'First Day', price: 0 }, { id: 'awakened', name: 'Awakened', price: 600 }]
   },
   {
-    id: 'jez', name: 'Jez', title: "The General's Son", film: 'The Last Guest', price: 700, color: '#d97a2b',
+    id: 'jez', name: 'Jez', title: "The General's Son", film: 'The Last Guest', price: 700, color: '#2a6fd0',
     hp: 105, speed: 1, stamina: 100,
     bio: "Son of the Bacon General, who turned his back on the Empire to free the Guests. The Bacons still hesitate before hurting him.",
     passive: { name: 'Insider', text: 'Bacon killers deal him 15% less damage.' },
@@ -187,14 +187,29 @@ export const byId = (id) => ALL.find((c) => c.id === id) || MINIONS.find((c) => 
 export const SHIPPED = new Set(['guest1337', 'matt', 'daisy', 'rose', 'captain', 'emily', 'justin', 'richguy', 'charlie', 'jez',
   'terrible', 'bacongeneral', 'baconcolonel', 'eliteguard', 'bloxwatch', 'baconsoldier']);
 export const isReady = (id) => SHIPPED.has(id);
-/** Every model in assets/models/index.json (written by forge/make.mjs) counts as shipped. */
+/**
+ * Every model in assets/models/index.json (written by forge/stamp.mjs) counts as shipped. The
+ * index also holds a hash of each model and portrait, which goes on the end of its address, so a
+ * rebuilt character shows up at once instead of an old copy from the browser's cache.
+ */
+export const STAMP = { models: {}, renders: {} };
 export async function loadShipped() {
-  try { const r = await fetch('assets/models/index.json', { cache: 'no-cache' }); if (r.ok) for (const n of await r.json()) SHIPPED.add(n); } catch { /* keep the built-in list */ }
+  const get = async (url) => { try { const r = await fetch(url, { cache: 'no-cache' }); return r.ok ? await r.json() : null; } catch { return null; } };
+  const [m, p] = await Promise.all([get('assets/models/index.json'), get('assets/renders/index.json')]);
+  if (Array.isArray(m)) for (const n of m) SHIPPED.add(n);
+  else if (m) for (const [n, h] of Object.entries(m)) { SHIPPED.add(n); STAMP.models[n] = h; }
+  if (p && !Array.isArray(p)) STAMP.renders = p;
   return SHIPPED;
 }
+const stamped = (url, h) => (h ? url + '?v=' + h : url);
 /** How strongly a character's eyes (its brightest, most saturated colours) glow. */
 const GLOW = { terrible: 4, bloxwatch: 4, charlie: 1.2 };
 export const characterGlow = (id) => GLOW[id] || 0;
 export function characterModel(id, skin = 'default') {
-  return 'assets/models/' + id + (skin && skin !== 'default' ? '_' + skin : '') + '.glb';
+  const name = id + (skin && skin !== 'default' ? '_' + skin : '');
+  return stamped('assets/models/' + name + '.glb', STAMP.models[name]);
+}
+export function characterPortrait(id, skin = 'default') {
+  const name = id + (skin && skin !== 'default' ? '_' + skin : '');
+  return stamped('assets/renders/' + name + '.png', STAMP.renders[name]);
 }

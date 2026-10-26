@@ -7,6 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
+import { stamp } from './stamp.mjs';
 const HERE = path.dirname(new URL(import.meta.url).pathname), GAME = path.resolve(HERE, '..');
 const require = createRequire(import.meta.url);
 let pw; try { pw = require('playwright'); } catch { pw = require('/opt/node22/lib/node_modules/playwright'); }
@@ -29,3 +30,4 @@ for (const name of models) {
   console.log('rendered', name);
 }
 await browser.close();
+stamp();                                         // new hashes, so the menus fetch the new portraits

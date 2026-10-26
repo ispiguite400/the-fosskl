@@ -1,9 +1,7 @@
 /* Pictures for the menus: character renders (made by forge/renders.mjs) and map cards (made by tools/mapcards.mjs). */
-import { isReady } from '../data/characters.js';
+import { isReady, characterPortrait } from '../data/characters.js';
 
-export function portrait(id, skin = 'default') {
-  return 'assets/renders/' + id + (skin && skin !== 'default' ? '_' + skin : '') + '.png';
-}
+export function portrait(id, skin = 'default') { return characterPortrait(id, skin); }
 export function hasArt(id) { return isReady(id); }
 
 /** A map card's backdrop: its photograph, over the map's own sky colours in case the photo is missing. */
