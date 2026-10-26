@@ -9,8 +9,8 @@
  *   - leaning is the whole body pitching at the hips; the legs are
  *     compensated so they keep their own angle to the ground,
  *   - Spine, Chest, Neck and the Shoulder bones never rotate.
- * The Rig Player rests the arms 8 degrees out from the body; these arms hang
- * 4 degrees out, so every clip rolls them in by the difference. rel z is not
+ * The Rig Player rests the arms 8 degrees out from the body; in the films these
+ * arms hang about 18 degrees out, so every clip rolls them out by the difference. rel z is not
  * mirrored by the player: + rolls the left arm out and the right arm in.
  *
  * "abs" = swing from straight down in the parent's frame, + forward (degrees).
@@ -25,7 +25,7 @@
   const clamp = (v) => Math.max(0, Math.min(1, v));
   const ease = (v) => { v = clamp(v); return v * v * (3 - 2 * v); };
   const add = (c) => { c.loop = c.loop !== false; CL.push(c); };
-  const IN = 8 - 4;                                   // player rest hang minus the hang we want
+  const IN = 8 - 18;                                  // player rest hang minus the hang we want
 
   /*
    * One R6 pose:

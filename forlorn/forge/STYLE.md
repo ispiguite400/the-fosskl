@@ -38,7 +38,19 @@ These come straight from the user's feedback, with a reference image of Guest 13
 - **Guest 666 is called "The Terrible"** in this game.
 - Keep **Blox Watch** and **the Bacons** (Bacon General, Bacon Colonel, Bacon Soldiers, Jez).
 
-## Before showing anything
+## Method: measure, don't eyeball
 
-Check every render against the reference and against this file. Get canon details right the
-first time: skin colour, hair colour and style, facial hair, outfit.
+Guessing proportions from a picture went wrong three times. For every character with a reference:
+
+1. **Measure the reference with code** (PIL): the head's width and bottom, the eyes, brows and
+   mouth, the hair outline, the silhouette row by row (torso widths, arm angle, legs, boots), and
+   colours relative to the white of the head (lighting differs from our renderer). Work in studs
+   (head = 1.2 studs across). Write the numbers into the build script's comments.
+2. Build, ship, then render front on: `node forlorn/forge/look.mjs NAME.glb OUT.png --pitch 0`.
+3. Put it beside the reference: `python3 forlorn/forge/sidebyside.py REF OUT-render.png CMP.png
+   HEAD_BOTTOM_Y FEET_Y` and fix every difference before showing the user.
+4. Check the pieces: `forge/make.mjs` prints `# pieces:`; each of torso, arms, legs and head
+   (+hair) must be its own piece, riding Head / UpperArm / the leg chain / the torso bones.
+
+References live in `forge/references/`. Get canon details right the first time: skin colour,
+hair colour and style, facial hair, outfit.

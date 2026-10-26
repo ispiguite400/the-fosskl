@@ -25,53 +25,53 @@
  */
 const B = {};
 /*
- * Package proportions, in studs:
- *   sh shoulder half-width, wa waist half-width, td torso half-depth,
- *   arm / fa upper arm and forearm half-thickness, leg / shin, hand size, chest (pecs)
+ * Package proportions, in studs. robloxian2 is MEASURED from the user's movie still of Guest
+ * 1337 (head 1.2 studs across = 133 px): torso 2.12 tall, 1.94 across the chest tapering hard to
+ * 1.46 at the waist and 1.76 at the hips; arms 0.68 thick, hanging about 16 degrees out, the
+ * mitten hand the last 18% of the arm; legs 0.70 thick and 2.12 long with a 0.2 stud gap; tall
+ * boots over the bottom half, the foot widening to 0.84.
+ *   ch/wa/hp  half-widths at chest, waist, hips; td torso half-depth
+ *   arm/fa    upper arm / forearm half-thickness; hand mitten half-thickness
+ *   leg/shin  thigh / shin half-width; boot shaft and foot half-widths
  */
 B.PACKAGES = {
-  robloxian2: { sh: 1.1, wa: 0.9, td: 0.53, arm: 0.41, fa: 0.37, leg: 0.44, shin: 0.41, hand: 1, chest: 0 },
-  man:        { sh: 1.18, wa: 0.86, td: 0.56, arm: 0.43, fa: 0.39, leg: 0.45, shin: 0.42, hand: 1.05, chest: 0.06 },
-  superhero:  { sh: 1.28, wa: 0.88, td: 0.58, arm: 0.47, fa: 0.42, leg: 0.46, shin: 0.43, hand: 1.08, chest: 0.1 },
-  slim:       { sh: 1.02, wa: 0.84, td: 0.5, arm: 0.38, fa: 0.34, leg: 0.42, shin: 0.39, hand: 0.95, chest: 0 }
+  robloxian2: { ch: 0.97, wa: 0.73, hp: 0.88, td: 0.5, arm: 0.35, fa: 0.32, hand: 0.215, leg: 0.35, shin: 0.34, shaft: 0.37, foot: 0.42 },
+  man:        { ch: 1.05, wa: 0.76, hp: 0.86, td: 0.54, arm: 0.36, fa: 0.34, hand: 0.225, leg: 0.36, shin: 0.35, shaft: 0.38, foot: 0.43 },
+  superhero:  { ch: 1.14, wa: 0.78, hp: 0.88, td: 0.57, arm: 0.4, fa: 0.37, hand: 0.235, leg: 0.37, shin: 0.36, shaft: 0.39, foot: 0.44 },
+  slim:       { ch: 0.9, wa: 0.68, hp: 0.82, td: 0.47, arm: 0.31, fa: 0.29, hand: 0.2, leg: 0.33, shin: 0.32, shaft: 0.35, foot: 0.4 }
 };
 B.setup = function (o) {
   o = o || {};
-  const st = 0.34 * (o.scale || 1);
+  const st = 0.333 * (o.scale || 1);
   const P = Object.assign({}, B.PACKAGES[o.pkg || 'robloxian2'], o.over || {});
-  const D = { st, P, s: o.scale || 1, legX: 0.5, g: 0.03 };
-  D.y = { legTop: 1.94, torso: [2.0, 4.0], headBottom: 4.05 };
+  const D = { st, P, s: o.scale || 1, legX: 0.46, g: 0.04 };
+  D.y = { legTop: 2.1, torso: [2.14, 4.26], headBottom: 4.3, boot: 1.05 };
   D.head = { c: [0, (D.y.headBottom + 0.59) * st, 0], r: 0.6 * st, hh: 0.59 * st };
   D.headTop = D.head.c[1] + D.head.hh;
   /*
    * The shoulder pivot sits in the gap just inside the arm's end, level with the top of the
-   * shoulders: lowered about it, the arm hangs beside the torso with its top at the shoulder
+   * shoulders: lowered about it, the arm hangs beside the chest with its top at the shoulder
    * line. (Inside the arm it would hand the arm to the Shoulder bone, which ends at the pivot.)
    */
-  D.pivot = [P.sh + 0.52, 4.02];
+  D.pivot = [P.ch + 0.14, 4.27];                                // measured: the arm's inner edge 1.02 studs out at chest height, hanging 18 degrees out
   const px = D.pivot[0];
-  D.arm = { in: px + 0.03, elbow: px + 1.09, wrist: px + 1.73, tip: px + 2.33 };
-  D.joint = { hips: 2.4, spine: 2.8, chest: 3.3, neck: 4.025, hip: 1.86 };
+  const len = 2.48;                                             // shoulder top to fingertip (measured)
+  D.arm = { in: px + 0.03, elbow: px + 0.03 + 0.45 * len, wrist: px + 0.03 + 0.82 * len, tip: px + 0.03 + len };
+  D.joint = { hips: 2.6, spine: 3.0, chest: 3.5, neck: 4.28, hip: 2.02 };
   const m = (v) => v * st;
   // the boxes the clothing templates are drawn on (standing / hanging frame), metres
-  const armTop = D.pivot[1] + (px - D.arm.in), armBot = D.pivot[1] - (D.arm.tip - px);
+  const armTop = D.pivot[1] - (D.arm.in - px), armBot = D.pivot[1] - (D.arm.tip - px);
   D.boxes = {
-    torso: { c: [0, m(3.0), 0], h: [m(P.sh), m(1.0), m(P.td)] },
-    armL: { c: [m(px), m((armTop + armBot) / 2), 0], h: [m(P.arm + 0.05), m((armTop - armBot) / 2), m(P.arm + 0.05)] },
-    legL: { c: [m(D.legX), m(D.y.legTop / 2), 0], h: [m(P.leg + 0.02), m(D.y.legTop / 2), m(P.leg + 0.04)] }
+    torso: { c: [0, m((D.y.torso[0] + D.y.torso[1]) / 2), 0], h: [m(P.ch + 0.03), m((D.y.torso[1] - D.y.torso[0]) / 2), m(P.td)] },
+    armL: { c: [m(px), m((armTop + armBot) / 2), 0], h: [m(P.arm + 0.04), m((armTop - armBot) / 2), m(P.arm + 0.04)] },
+    legL: { c: [m(D.legX), m(D.y.legTop / 2), 0], h: [m(P.foot), m(D.y.legTop / 2), m(P.leg + 0.04)] }
   };
   D.boxes.armR = { c: [-D.boxes.armL.c[0], D.boxes.armL.c[1], 0], h: D.boxes.armL.h };
   D.boxes.legR = { c: [-D.boxes.legL.c[0], D.boxes.legL.c[1], 0], h: D.boxes.legL.h };
-  // where the elbow, wrist, knee, ankle and waist fall down a template, as fractions from the top
-  const armLen = armTop - armBot;
-  D.armSplit = { elbow: (D.arm.elbow - D.arm.in) / armLen, wrist: (D.arm.wrist - D.arm.in) / armLen };
-  D.legSplit = { knee: (D.y.legTop - 1.1) / D.y.legTop, ankle: (D.y.legTop - 0.34) / D.y.legTop };
-  /*
-   * R6 limbs are rigid: SculptFree's binder bends any piece holding two or more joints, so
-   * only the shoulder and hip pivots sit inside an arm or a leg. The elbow, wrist, knee and
-   * ankle bones sit just past the ends of the limb, where they carry nothing.
-   */
-  D.torsoSplit = { waist: (4.0 - 2.36) / 2.0 };
+  // where things fall down a template, as fractions from the top
+  D.armSplit = { elbow: 0.45, wrist: 0.82 };
+  D.legSplit = { knee: (D.y.legTop - 1.12) / D.y.legTop, boot: (D.y.legTop - D.y.boot) / D.y.legTop, ankle: (D.y.legTop - 0.45) / D.y.legTop };
+  D.torsoSplit = { waist: (D.y.torso[1] - 2.52) / (D.y.torso[1] - D.y.torso[0]) };
   B.D = D;
   return D;
 };
@@ -84,35 +84,38 @@ B.setup = function (o) {
  */
 B.body = function (o) {
   o = o || {};
-  const D = B.D, P = D.P, st = D.st, m = (v) => v * st, vox = o.voxel || 0.0026;
-  // the torso: broad rounded shoulders tapering to the waist, the hips a touch wider at the belt
-  T('torso', m(0.22));
-  C.box([0, m(3.6), 0], [m(P.sh), m(0.4), m(P.td)], m(0.26));
-  C.box([0, m(2.9), 0], [m(P.wa + 0.02), m(0.7), m(P.td * 0.95)], m(0.24));
-  C.box([0, m(2.18), 0], [m(P.wa + 0.05), m(0.18), m(P.td * 0.93)], m(0.15));
-  if (P.chest) for (const sd of [-1, 1]) C.ell([m(sd * 0.46), m(3.45), m(P.td - 0.12)], [m(0.44), m(0.32), m(0.14 + P.chest)]);
+  const D = B.D, P = D.P, st = D.st, m = (v) => v * st, vox = o.voxel || 0.0026, t0 = D.y.torso[0], t1 = D.y.torso[1];
+  // the torso, measured: full chest width for the top 0.9 studs, a quick taper to the waist,
+  // straight down the waist, then a flare out to the hips
+  T('torso', m(0.12));
+  C.box([0, m(t1 - 0.45), 0], [m(P.ch), m(0.45), m(P.td)], m(0.2));
+  C.box([0, m(2.95), 0], [m(P.wa), m(0.45), m(P.td * 0.92)], m(0.18));
+  C.box([0, m(t0 + 0.2), 0], [m(P.hp), m(0.2), m(P.td * 0.94)], m(0.14));
+  C.box([0, m(t0 + 0.42), 0], [m((P.wa + P.hp) / 2), m(0.12), m(P.td * 0.93)], m(0.12));
   if (o.torsoExtra) o.torsoExtra(m);
   C.build(vox, 1);
   for (const sd of [-1, 1]) {
-    const ax = (v) => sd * m(v), py = m(D.pivot[1]), hs = P.hand;
-    // the arm: a shoulder cap, the upper arm, the forearm and a mitten hand with a thumb, one piece
+    const ax = (v) => sd * m(v), py = m(D.pivot[1]);
+    // the arm: a rounded shoulder, the upper arm, the forearm and a mitten hand with a thumb, one piece
     const A = C.newObject(sd > 0 ? 'ArmL' : 'ArmR');
     T('arm', m(0.1));
-    C.ell([ax(D.arm.in + 0.3), py + m(0.02), 0], [m(0.3), m(P.arm + 0.06), m(P.arm + 0.05)]);
-    C.box([ax((D.arm.in + D.arm.elbow) / 2), py, 0], [m((D.arm.elbow - D.arm.in) / 2), m(P.arm), m(P.arm)], m(0.18));
-    C.box([ax((D.arm.elbow + D.arm.wrist) / 2), py, 0], [m((D.arm.wrist - D.arm.elbow) / 2 + 0.06), m(P.fa), m(P.fa)], m(0.16));
-    T('arm', m(0.06));
-    C.box([ax((D.arm.wrist + D.arm.tip) / 2), py - m(0.03), 0], [m((D.arm.tip - D.arm.wrist) / 2), m(0.22 * hs), m(0.35 * hs)], m(0.13));
-    C.limb([ax(D.arm.wrist + 0.1), py - m(0.1), m(0.22 * hs)], [ax(D.arm.wrist + 0.26), py - m(0.22 * hs), m(0.49 * hs)], m(0.11 * hs), m(0.09 * hs));
+    C.ell([ax(D.arm.in + 0.32), py, 0], [m(0.32), m(P.arm + 0.06), m(P.arm + 0.05)]);
+    C.box([ax((D.arm.in + D.arm.elbow) / 2 + 0.05), py, 0], [m((D.arm.elbow - D.arm.in) / 2 - 0.05), m(P.arm), m(P.arm)], m(0.16));
+    C.box([ax((D.arm.elbow + D.arm.wrist) / 2), py, 0], [m((D.arm.wrist - D.arm.elbow) / 2 + 0.05), m(P.fa), m(P.fa)], m(0.15));
+    T('arm', m(0.05));
+    C.box([ax((D.arm.wrist + D.arm.tip) / 2), py, 0], [m((D.arm.tip - D.arm.wrist) / 2), m(P.hand), m(P.fa * 0.92)], m(0.12));
+    C.limb([ax(D.arm.wrist + 0.08), py - m(0.06), m(P.fa * 0.7)], [ax(D.arm.wrist + 0.22), py - m(P.hand + 0.02), m(P.fa + 0.12)], m(0.09), m(0.075));
     if (o.armExtra) o.armExtra(sd, ax, py, m);
     C.build(vox, 1, A);
-    // the leg: thigh, shin and a chunky boot, one piece
+    // the leg: thigh, shin, a tall boot whose foot widens, one piece
     const L = C.newObject(sd > 0 ? 'LegL' : 'LegR');
     const lx = sd * m(D.legX);
-    T('leg', m(0.12));
-    C.box([lx, m(1.495), 0], [m(P.leg), m(0.445), m(P.leg)], m(0.17));
-    C.box([lx, m(0.72), 0], [m(P.shin), m(0.43), m(P.shin)], m(0.16));
-    C.box([lx, m(0.17), m(0.12)], [m(P.leg + 0.01), m(0.17), m(P.leg + 0.13)], m(0.14));
+    T('leg', m(0.1));
+    C.box([lx, m((1.15 + D.y.legTop) / 2), 0], [m(P.leg), m((D.y.legTop - 1.15) / 2), m(P.leg)], m(0.15));
+    C.box([lx, m((0.45 + 1.2) / 2), 0], [m(P.shin), m((1.2 - 0.45) / 2), m(P.shin)], m(0.14));
+    T('leg', m(0.08));
+    C.box([lx, m((0.4 + D.y.boot) / 2), 0], [m(P.shaft), m((D.y.boot - 0.4) / 2), m(P.shaft)], m(0.12));
+    C.box([lx, m(0.25), m(0.1)], [m(P.foot), m(0.25), m(P.foot + 0.1)], m(0.14));
     if (o.legExtra) o.legExtra(sd, lx, m);
     C.build(vox, 1, L);
   }
@@ -128,7 +131,7 @@ B.headForm = function (grow) {
 B.locate = function (x, y, z, nx, ny, nz) {
   const D = B.D, st = D.st;
   if (y < (D.y.legTop + D.g / 2) * st) return { part: x < 0 ? 'legR' : 'legL', p: [x, y, z], n: [nx, ny, nz] };
-  if (Math.abs(x) > (D.P.sh + 0.08) * st) {
+  if (Math.abs(x) > (D.P.ch + 0.1) * st) {
     const sd = x < 0 ? -1 : 1, rx = x - sd * D.pivot[0] * st, ry = y - D.pivot[1] * st;
     return { part: sd < 0 ? 'armR' : 'armL', p: [sd * D.pivot[0] * st + sd * ry, D.pivot[1] * st - sd * rx, z], n: [sd * ny, -sd * nx, nz] };
   }
@@ -266,7 +269,7 @@ B.joints = function (attach) {
   };
   for (const sd of [-1, 1]) {
     const n = sd > 0 ? 'L' : 'R', py = D.pivot[1];
-    j['Shoulder.' + n] = P3(sd * 0.4, py);
+    j['Shoulder.' + n] = P3(sd * 0.4, py - 0.6);               // angled up from the chest, clear of the head
     j['UpperArm.' + n] = P3(sd * D.pivot[0], py);
     j['LowerArm.' + n] = P3(sd * (D.arm.tip + 0.04), py);
     j['Hand.' + n] = { head: P3(sd * (D.arm.tip + 0.08), py), tail: P3(sd * (D.arm.tip + 0.32), py) };

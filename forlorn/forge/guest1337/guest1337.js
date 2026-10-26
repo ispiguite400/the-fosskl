@@ -22,27 +22,27 @@
 const D = B.setup({ pkg: 'robloxian2' });
 const SK = SKIN_ID, PRIS = SK === 'prisoner', WIN = SK === 'winter';
 const SKINC = HEX('#f2f2f0');
-const HAIR = HEX('#1f2b8c'), HAIR_HI = HEX('#4253c0'), HAIR_LO = HEX('#0f1650');
+const HAIR = HEX('#26306e'), HAIR_HI = HEX('#3d4aa0'), HAIR_LO = HEX('#121842');
 const dr = B.draw;
 
 /* ---------------- the clothing, drawn like a Roblox shirt and pants ---------------- */
-const UCP = WIN ? ['#d9dbd8', '#b9bdbb', '#eeefec', '#8e9492'] : ['#9d9a84', '#767a67', '#c4c0a9', '#545850'];
-const TAN = WIN ? '#a7adaf' : '#c2a77a', TAN_D = WIN ? '#7b8285' : '#a48a5f', TAN_L = WIN ? '#c5cacc' : '#d6c098', LINE = WIN ? '#3c4245' : '#4f3c27';
-const BOOT = WIN ? '#5b5d5e' : '#4d4f40', GLOVE = '#6d6e70';
+const UCP = WIN ? ['#d9dbd8', '#b9bdbb', '#eeefec', '#8e9492'] : ['#75735f', '#4e5248', '#99947f', '#34372f'];   // calibrated to the still
+const TAN = WIN ? '#a7adaf' : '#9a8563', TAN_D = WIN ? '#7b8285' : '#7c6849', TAN_L = WIN ? '#c5cacc' : '#b6a07b', LINE = WIN ? '#3c4245' : '#2e2012';
+const BOOT = WIN ? '#5b5d5e' : '#6a6855', GLOVE = '#606160';
 let seed = 11;
-const camo = (g, x, y, w, h) => dr.digital(g, x, y, w, h, UCP, 0.0165, seed++);
+const camo = (g, x, y, w, h) => dr.digital(g, x, y, w, h, UCP, 0.0125, seed++);
 const molle = (g, x, y, w, rows, h) => {
   for (let i = 0; i < rows; i++) {
     const yy = y + i * h * 1.65;
     g.fillStyle = TAN_D; g.fillRect(x, yy, w, h);
-    g.strokeStyle = LINE; g.lineWidth = 0.0022; g.strokeRect(x, yy, w, h);
+    g.strokeStyle = LINE; g.lineWidth = 0.0032; g.strokeRect(x, yy, w, h);
     g.beginPath(); for (let xx = x + 0.022; xx < x + w - 0.004; xx += 0.022) { g.moveTo(xx, yy); g.lineTo(xx, yy + h); } g.stroke();
   }
 };
 const pouch = (g, x, y, w, h) => {
-  dr.panel(g, x, y, w, h, TAN, LINE, 0.0038, TAN_L);
+  dr.panel(g, x, y, w, h, TAN, LINE, 0.0055, TAN_L);
   dr.shade(g, x + 0.004, y + h * 0.5, w - 0.008, h * 0.5 - 0.004, 'rgba(0,0,0,0)', 'rgba(60,40,20,0.28)');
-  dr.panel(g, x - 0.002, y, w + 0.004, h * 0.3, TAN_D, LINE, 0.0038);
+  dr.panel(g, x - 0.002, y, w + 0.004, h * 0.3, TAN_D, LINE, 0.0055);
   g.fillStyle = LINE; g.fillRect(x + w / 2 - 0.007, y + h * 0.24, 0.014, 0.012);
 };
 const flag = (g, x, y, w, h) => {
@@ -72,14 +72,15 @@ const leg = (g, part, face, W, H) => {
   }
   if (face === 'front') dr.lines(g, [[W * 0.2, H * 0.36, W * 0.5, H * 0.39, W * 0.8, H * 0.35], [W * 0.25, H * 0.44, W * 0.5, H * 0.46, W * 0.75, H * 0.43]], 'rgba(40,40,30,0.4)', 0.004);
   dr.shade(g, 0, 0, W, H * 0.06, 'rgba(0,0,0,0.3)', 'rgba(0,0,0,0)');
-  // the boot: from just below the knee to the sole
-  const top = H * 0.6;
+  // the boot: the bottom half of the leg, up to just below the knee
+  const top = H * D.legSplit.boot;
   g.fillStyle = BOOT; g.fillRect(0, top, W, H - top);
   dr.shade(g, 0, top, W, H - top, 'rgba(255,255,230,0.12)', 'rgba(10,10,0,0.35)');
   dr.lines(g, [[0, top + 0.004, W * 0.35, top + 0.018, W * 0.65, top - 0.002, W, top + 0.01]], 'rgba(20,20,10,0.7)', 0.006);   // trousers tucked in
   g.strokeStyle = 'rgba(0,0,0,0.6)'; g.lineWidth = 0.004; g.strokeRect(0.002, top, W - 0.004, H - top - 0.002);
   if (face === 'front') {
     const cx = W / 2, a = H * D.legSplit.ankle;
+    dr.lines(g, [[W * 0.08, top + 0.03, W / 2, top + 0.045, W * 0.92, top + 0.03]], 'rgba(0,0,0,0.35)', 0.004);   // the boot's collar
     g.strokeStyle = '#a5946b'; g.lineWidth = 0.005;                  // laces criss-crossing up the shin
     for (let y = top + 0.03; y < a - 0.02; y += 0.026) { g.beginPath(); g.moveTo(cx - 0.04, y); g.lineTo(cx + 0.04, y + 0.026); g.moveTo(cx + 0.04, y); g.lineTo(cx - 0.04, y + 0.026); g.stroke(); }
     g.fillStyle = '#1e1f18';
@@ -89,27 +90,28 @@ const leg = (g, part, face, W, H) => {
   }
   g.fillStyle = '#26241f'; g.fillRect(0, H - 0.026, W, 0.026);                         // the sole
 };
-// an arm, shoulder at the top: camo sleeve to the elbow, the rolled cuff, white forearm, glove
+// an arm, shoulder at the top, banded as in the film still: camo sleeve to 42%, the rolled cuff,
+// white forearm, a black glove cuff and the grey glove from 71% to the fingertips
 const arm = (g, part, face, W, H) => {
-  const e = H * D.armSplit.elbow, w = H * D.armSplit.wrist;
   if (face === 'top') { if (PRIS) { g.fillStyle = '#e0702a'; g.fillRect(0, 0, W, H); } else camo(g, 0, 0, W, H); return; }
-  if (face === 'bottom') { g.fillStyle = PRIS ? '#00000000' : GLOVE; g.fillRect(0, 0, W, H); return; }
+  if (face === 'bottom') { g.fillStyle = PRIS ? 'rgba(0,0,0,0)' : GLOVE; g.fillRect(0, 0, W, H); return; }
   if (PRIS) {
-    g.fillStyle = '#e0702a'; g.fillRect(0, 0, W, w - 0.02);
+    const w = H * 0.8;
+    g.fillStyle = '#e0702a'; g.fillRect(0, 0, W, w);
     dr.shade(g, 0, 0, W, w, 'rgba(255,220,180,0.1)', 'rgba(90,30,0,0.25)');
-    g.fillStyle = '#b4531c'; g.fillRect(0, w - 0.04, W, 0.02);
+    g.fillStyle = '#b4531c'; g.fillRect(0, w - 0.02, W, 0.02);
     return;                                                          // bare white hands below the cuff
   }
-  camo(g, 0, 0, W, e + 0.01);
-  dr.shade(g, 0, e - 0.06, W, 0.06, 'rgba(0,0,0,0)', 'rgba(25,25,20,0.3)');
-  const r0 = e + 0.012, r1 = e + 0.075;                              // the rolled cuff on top of the forearm
-  g.fillStyle = '#ededea'; g.fillRect(0, r0, W, r1 - r0);
-  g.fillStyle = '#151515'; g.fillRect(0, r0 + (r1 - r0) * 0.42, W, (r1 - r0) * 0.22);
-  dr.lines(g, [[0, r0 + 0.002, W, r0 + 0.002], [0, r1, W, r1]], 'rgba(30,30,30,0.8)', 0.004);
-  g.fillStyle = '#151515'; g.fillRect(0, w - 0.03, W, 0.03);                            // the glove's cuff
-  g.fillStyle = GLOVE; g.fillRect(0, w, W, H - w);                                       // the glove
-  dr.shade(g, 0, w, W, H - w, 'rgba(255,255,255,0.12)', 'rgba(0,0,0,0.3)');
-  if (face === 'left' || face === 'right') dr.lines(g, [[W * 0.2, H - 0.05, W * 0.8, H - 0.05]], 'rgba(0,0,0,0.25)', 0.004);
+  const sl = H * 0.42, r1 = H * 0.5, gc = H * 0.66, gl = H * 0.71;
+  camo(g, 0, 0, W, sl + 0.01);
+  dr.shade(g, 0, sl - 0.05, W, 0.05, 'rgba(0,0,0,0)', 'rgba(25,25,20,0.3)');
+  g.fillStyle = '#e4e4e0'; g.fillRect(0, sl, W, r1 - sl);                                // the rolled cuff
+  g.fillStyle = '#9a9b97'; g.fillRect(0, sl + (r1 - sl) * 0.55, W, (r1 - sl) * 0.45);
+  g.fillStyle = '#141414'; g.fillRect(0, sl, W, 0.008); g.fillRect(0, sl + (r1 - sl) * 0.42, W, 0.007); g.fillRect(0, r1 - 0.006, W, 0.006);
+  g.fillStyle = '#2a2a2a'; g.fillRect(0, gc, W, gl - gc);                                // the glove's cuff
+  g.fillStyle = GLOVE; g.fillRect(0, gl, W, H - gl);                                       // the grey glove
+  dr.shade(g, 0, gl, W, H - gl, 'rgba(255,255,255,0.1)', 'rgba(0,0,0,0.25)');
+  dr.lines(g, [[0, gl + 0.004, W, gl + 0.004]], 'rgba(0,0,0,0.5)', 0.004);
 };
 const torso = (g, face, W, H) => {
   const wy = H * D.torsoSplit.waist;
@@ -129,8 +131,8 @@ const torso = (g, face, W, H) => {
   }
   camo(g, 0, 0, W, H);
   if (face === 'front' || face === 'back') {
-    const L = W * 0.16, R = W * 0.84;
-    // the carrier, its shoulder straps running up over the shoulders
+    const L = W * 0.05, R = W * 0.95;
+    // the carrier covers nearly the whole front, its shoulder straps running up over the shoulders
     g.fillStyle = TAN; g.fillRect(L, H * 0.12, R - L, H - H * 0.12);
     g.fillRect(W * 0.2, 0, W * 0.15, H * 0.14); g.fillRect(W * 0.65, 0, W * 0.15, H * 0.14);
     g.strokeStyle = LINE; g.lineWidth = 0.0045;
@@ -138,15 +140,18 @@ const torso = (g, face, W, H) => {
     g.strokeRect(W * 0.2, 0, W * 0.15, H * 0.13); g.strokeRect(W * 0.65, 0, W * 0.15, H * 0.13);
     if (face === 'front') {
       g.fillStyle = '#f0f0ee'; g.beginPath(); g.moveTo(W * 0.36, 0); g.quadraticCurveTo(W / 2, H * 0.13, W * 0.64, 0); g.fill();   // the neck
-      dr.panel(g, W * 0.33, H * 0.14, W * 0.34, H * 0.62, TAN, LINE, 0.004, TAN_L);   // the plate
-      flag(g, W * 0.38, H * 0.17, W * 0.24, H * 0.13);
-      dr.panel(g, W * 0.39, H * 0.32, W * 0.22, H * 0.065, TAN_D, LINE, 0.0035);
-      dr.text(g, 'USM', W * 0.5, H * 0.353, 0.032, '#2b2015');
-      molle(g, W * 0.345, H * 0.42, W * 0.31, 4, 0.015);
-      molle(g, L + 0.01, H * 0.22, W * 0.15, 7, 0.015);
-      molle(g, R - W * 0.15 - 0.01, H * 0.22, W * 0.15, 7, 0.015);
-      for (const px of [0.36, 0.5, 0.64]) pouch(g, W * px - W * 0.065, wy - H * 0.05, W * 0.13, H * 0.23);   // magazine pouches over the belt
-      pouch(g, L + 0.006, wy - H * 0.02, W * 0.13, H * 0.2); pouch(g, R - W * 0.13 - 0.006, wy - H * 0.02, W * 0.13, H * 0.2);
+      // laid out as on the film still: a centre plate between two bold straps, the flag patch high
+      // and wide, the name tape, MOLLE bands right across, a row of big flapped pouches at the bottom
+      molle(g, L + 0.01, H * 0.17, R - L - 0.02, 12, 0.017);                                   // MOLLE across the whole carrier
+      dr.panel(g, W * 0.31, H * 0.04, W * 0.38, H * 0.68, TAN, LINE, 0.007, TAN_L);            // the centre plate
+      for (const sx of [0.27, 0.69]) dr.panel(g, W * sx, H * 0.0, W * 0.045, H * 0.74, TAN_D, LINE, 0.006);   // the straps
+      flag(g, W * 0.36, H * 0.07, W * 0.28, H * 0.16);
+      dr.panel(g, W * 0.39, H * 0.26, W * 0.22, H * 0.075, TAN_D, LINE, 0.005);
+      dr.text(g, 'USM', W * 0.5, H * 0.299, 0.036, '#1e1309');
+      molle(g, W * 0.34, H * 0.38, W * 0.32, 6, 0.017);
+      for (const px of [0.375, 0.5, 0.625]) pouch(g, W * px - W * 0.06, H * 0.71, W * 0.12, H * 0.28);   // magazine pouches
+      pouch(g, L + 0.008, H * 0.73, W * 0.17, H * 0.26); pouch(g, R - W * 0.17 - 0.008, H * 0.73, W * 0.17, H * 0.26);
+      dr.shade(g, L, H * 0.05, R - L, H * 0.95, 'rgba(255,230,190,0.06)', 'rgba(40,25,10,0.24)');
     } else {
       dr.panel(g, W * 0.24, H * 0.16, W * 0.52, H * 0.66, TAN, LINE, 0.004, TAN_L);
       molle(g, W * 0.26, H * 0.22, W * 0.48, 9, 0.015);
@@ -168,17 +173,22 @@ B.clothes(function (g, part, face, W, H) {
 
 /* ---------------- the face: the movie's decal ---------------- */
 B.decal(function (g) {
-  // measured from the movie still (forge/STYLE.md): one stud = 427 px, the head's bottom at y 508
-  g.fillStyle = '#111'; g.strokeStyle = '#111';
-  // short straight brows right above each eye, slanting down toward the nose
-  g.lineWidth = 9;
-  g.beginPath(); g.moveTo(165, 185); g.lineTo(211, 197); g.stroke();
-  g.beginPath(); g.moveTo(347, 184); g.quadraticCurveTo(326, 186, 301, 197); g.stroke();
-  // big upright oval eyes at the middle of the head, 0.32 studs apart
-  for (const sd of [-1, 1]) { g.beginPath(); g.ellipse(256 + sd * 68, 248, 18, 32, 0, 0, PI * 2); g.fill(); }
-  // a wide flat mouth, low on the head
-  g.lineWidth = 7;
-  g.beginPath(); g.moveTo(206, 406); g.lineTo(296, 405); g.quadraticCurveTo(303, 406, 306, 411); g.stroke();
+  /*
+   * Measured from the user's movie still (head 1.2 studs across; here one stud = 427 px and the
+   * head's centre is (256, 256)): eyes 0.15 x 0.25 studs, centres 0.35 studs apart and 0.11 above
+   * the centre; brows sitting right on the eyes, as wide as them, slanting down to the nose; the
+   * mouth 0.42 studs wide, 0.28 below the centre, rising a little to his left.
+   */
+  g.fillStyle = '#121212'; g.strokeStyle = '#121212';
+  for (const sd of [-1, 1]) {
+    const cx = 256 + sd * 74;
+    g.beginPath(); g.ellipse(cx, 211, 32, 53, 0, 0, PI * 2); g.fill();                       // the eye
+    g.lineWidth = 12; g.lineCap = 'round';                                                    // the brow, on the eye
+    g.beginPath(); g.moveTo(cx + sd * 30, 146); g.lineTo(cx - sd * 30, 155); g.stroke();
+  }
+  g.lineWidth = 12;
+  g.beginPath(); g.moveTo(172, 383); g.lineTo(342, 373); g.stroke();                          // the mouth
+  g.beginPath(); g.moveTo(172, 383); g.lineTo(168, 389); g.stroke();                          // its little hook
 });
 
 C.autoPaint = function (tag, x, y, z, nx, ny, nz) {
@@ -186,8 +196,10 @@ C.autoPaint = function (tag, x, y, z, nx, ny, nz) {
     case 'torso': case 'arm': case 'leg': return B.clothColor(x, y, z, nx, ny, nz, SKINC);
     case 'face': return B.faceColor(x, y, z, SKINC);
     case 'hair': {
-      const up = Math.max(0, ny * 0.75 + nz * 0.3);
-      return mix(mix(HAIR_LO, HAIR, Math.min(1, 0.35 + up)), HAIR_HI, Math.max(0, up - 0.6) * 1.6);
+      // glossy: dark underneath, a bright sheen where the hair faces up and toward the light
+      const up = Math.max(0, ny * 0.7 + nz * 0.25 - nx * 0.2);
+      const streak = 0.5 + 0.5 * Math.sin((x * 1.5 + y * 0.8 - z) * 90);
+      return mix(mix(HAIR_LO, HAIR, Math.min(1, 0.3 + up)), HAIR_HI, Math.max(0, up - 0.45) * 1.8 * (0.7 + 0.3 * streak));
     }
     default: return [1, 0, 1];
   }
@@ -202,29 +214,48 @@ B.body();
   C.build(0.0018, 1, H);
 }
 {
-  // the movie's hair: sleek and close on top, one pointed quiff rising off the front over his
-  // right side and leaning out, the sides brushed down to about eye level
+  /*
+   * The hair, measured from the still: the hairline 0.37 studs above the head's centre with a small
+   * V of fringe to 0.3; side locks down the sides of the head to 0.15 below the centre; on his right
+   * a big quiff rising about 0.45 studs over the top, its outer edge near vertical at 0.4 studs
+   * from the middle, its inner edge sweeping down across the top to his left side; a small lock
+   * flaring out over his right ear.
+   */
   const HR = C.newObject('Hair');
-  const H = D.head, cy = H.c[1], r = H.r;
+  const H = D.head, cy = H.c[1], r = H.r, st = D.st, top = cy + H.hh;
   T('hair', 0.006);
-  C.cyl([0, cy + 0.008, -0.004], r + 0.008, H.hh - 0.002, r * 0.48);                  // a thin cap hugging the skull
-  C.box([0, cy - 0.26, 0], [0.4, 0.16, 0.4], 0, null, { mode: 'subtract' });           // down to the middle of the back of the head
-  C.box([0, cy - 0.095, 0.25], [0.4, 0.17, 0.17], 0.012, null, { mode: 'subtract' });  // the hairline, just above the brows
-  for (const sd of [-1, 1]) C.box([sd * 0.3, cy - 0.165, 0.07], [0.12, 0.15, 0.15], 0.012, null, { mode: 'subtract' });   // sides down to eye level
-  T('hair', 0.016);
-  const tip = [-0.135, cy + 0.32, 0.1];
-  for (const [x, ra] of [[-0.14, 0.035], [-0.09, 0.042], [-0.03, 0.045], [0.03, 0.04]]) {
-    const base = [x, cy + 0.11, 0.17], mid = [x * 0.7 - 0.05, cy + 0.22, 0.14];
-    C.limb(base, mid, ra * 0.75, ra);
-    C.limb(mid, tip, ra, 0.006);
+  C.cyl([0, cy + 0.006, -0.004], r + 0.008, H.hh + 0.002, r * 0.46);                  // a thin cap hugging the skull
+  C.box([0, cy - 0.07 * st - 0.2, 0], [0.4, 0.2, 0.4], 0, null, { mode: 'subtract' }); // the back stops at the nape
+  // the face: clear below the hairline across the front; the sides stay as thin locks to below the eyes
+  C.box([0, cy + 0.37 * st - 0.2, 0.25], [r * 0.86, 0.2, 0.18], 0.01, null, { mode: 'subtract' });
+  for (const sd of [-1, 1]) C.box([sd * 0.3, cy - 0.15 * st - 0.2, 0], [0.11, 0.2, 0.3], 0.01, null, { mode: 'subtract' });
+  T('hair', 0.012);
+  // the V of fringe hanging over the middle of the forehead, down to 0.3 studs above the centre
+  C.limb([-0.06 * st, cy + 0.4 * st, r * 0.9], [0.005, cy + 0.3 * st, r * 0.97], 0.016, 0.006);
+  C.limb([0.08 * st, cy + 0.4 * st, r * 0.9], [0.005, cy + 0.3 * st, r * 0.97], 0.016, 0.006);
+  /*
+   * The pompadour, measured: height of the hair above the top of the head across the face,
+   * from his right (-x) to his left: a near-vertical outer edge at -0.43 studs rising to the
+   * peak (0.45), 0.34 at the middle, 0.25 at +0.25, 0.13 at +0.4, nothing past +0.6.
+   * Each lock rises off the hairline and sweeps back over the crown at that height.
+   */
+  const lift = [[-0.46, 0.28], [-0.42, 0.4], [-0.3, 0.38], [-0.15, 0.35], [0, 0.31], [0.15, 0.25], [0.28, 0.18], [0.4, 0.1], [0.52, 0.03]];
+  T('hair', 0.035);
+  for (const [xs, hgt] of lift) {
+    const x = xs * st, h = hgt * st, ra = 0.05;
+    const front = [x * 0.95, top - 0.03, Math.sqrt(Math.max(0, r * r - x * x)) * 0.85];
+    const crown = [x * 0.9 - 0.02 * st, top + h - ra * 0.6, 0.02];
+    const back = [x * 0.85, top + h * 0.35 - ra * 0.5, -r * 0.8];
+    C.limb(front, crown, ra * 0.7, ra);
+    C.limb(crown, back, ra, ra * 0.8);
   }
-  // the rest of the front swept back low over the crown toward his left
-  C.limb([0.04, cy + 0.12, 0.16], [0.17, cy + 0.17, 0.02], 0.035, 0.02);
-  C.limb([0.0, cy + 0.17, 0.08], [0.15, cy + 0.2, -0.06], 0.035, 0.015);
-  T('hair', 0.008);
-  C.pleat([-0.03, cy + 0.11, 0.17], tip, 0.35, { r: 0.005, h: 0.0025, t0: 0.1, t1: 0.85, n: 9, tag: 'hair', front: [0.2, 0.3, 1], reach: 0.1 });
-  C.pleat([-0.03, cy + 0.11, 0.17], tip, -0.45, { r: 0.005, h: 0.0025, t0: 0.1, t1: 0.85, n: 9, tag: 'hair', front: [0.2, 0.3, 1], reach: 0.1 });
-  C.pleat([0.04, cy + 0.12, 0.16], [0.17, cy + 0.17, 0.02], 0, { r: 0.004, h: 0.002, t0: 0.15, t1: 0.85, n: 7, tag: 'hair', front: [0, 1, 0.3], reach: 0.1 });
+  // the peak: a distinct point standing up over his right side, above everything else
+  T('hair', 0.02);
+  C.limb([-0.22 * st, top + 0.25 * st, 0.08], [-0.36 * st, top + 0.48 * st, 0.05], 0.055, 0.03);
+  C.limb([-0.36 * st, top + 0.48 * st, 0.05], [-0.42 * st, top + 0.62 * st, 0.02], 0.03, 0.006);
+  C.limb([-0.3 * st, top + 0.2 * st, -0.06], [-0.4 * st, top + 0.5 * st, -0.02], 0.045, 0.01);
+  // the lock flaring out over his right ear
+  C.limb([-0.5 * st, top - 0.03, 0.0], [-0.72 * st, top + 0.14 * st, 0.02], 0.025, 0.006);
   C.build(0.002, 1, HR);
 }
 
