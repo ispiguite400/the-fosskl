@@ -37,6 +37,7 @@ h1, h2, h3, .hd { font-family: var(--head); font-weight: 400; letter-spacing: 0.
 .screen.see-through > * { pointer-events: auto; }
 .fade-in { animation: fadeIn 0.35s ease both; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+/* centred boxes that rise use the separate `translate` property, which this transform leaves alone */
 @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
 @keyframes shake { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(-3px, 2px); } 50% { transform: translate(3px, -2px); } 75% { transform: translate(-2px, -1px); } }
@@ -64,7 +65,7 @@ h1, h2, h3, .hd { font-family: var(--head); font-weight: 400; letter-spacing: 0.
 .lobby-top .inter { font-family: var(--head); font-size: 1.1rem; letter-spacing: 0.3em; color: var(--dim); }
 .lobby-top .count { font-family: var(--head); font-size: 3rem; line-height: 1; }
 .lobby-top .sub { font-size: 0.8rem; color: var(--dim); }
-.lobby-side { position: absolute; left: calc(1rem + var(--safe-l)); top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 0.5rem; }
+.lobby-side { position: absolute; left: calc(1rem + var(--safe-l)); top: calc(6rem + var(--safe-t)); display: flex; flex-direction: column; gap: 0.5rem; }
 .lobby-side .btn { justify-content: flex-start; min-width: 11.5rem; }
 .lobby-me { position: absolute; right: calc(1rem + var(--safe-r)); top: calc(0.8rem + var(--safe-t)); text-align: right; background: var(--panel); padding: 0.6rem 0.9rem; border: 1px solid var(--line); }
 .lobby-me .nm { font-weight: 700; }
@@ -81,7 +82,7 @@ h1, h2, h3, .hd { font-family: var(--head); font-weight: 400; letter-spacing: 0.
 .lobby-players h4 { font-family: var(--head); font-weight: 400; letter-spacing: 0.15em; padding: 0.45rem 0.7rem; color: var(--dim); font-size: 0.95rem; }
 
 /* map vote */
-.vote { position: absolute; bottom: calc(5.5rem + var(--safe-b)); left: 50%; transform: translateX(-50%); display: flex; gap: 0.7rem; animation: rise 0.4s ease both; }
+.vote { position: absolute; bottom: calc(5.5rem + var(--safe-b)); left: 50%; translate: -50% 0; display: flex; gap: 0.7rem; animation: rise 0.4s ease both; }
 .vote .card { width: clamp(8.5rem, 18vw, 13rem); background: var(--panel2); border: 1px solid var(--line); padding: 0; text-align: left; overflow: hidden; pointer-events: auto; clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
 .vote .card .art { height: clamp(4rem, 9vw, 6.5rem); background-size: cover; background-position: center; position: relative; }
 .vote .card .nm { font-family: var(--head); font-size: 1.25rem; letter-spacing: 0.06em; padding: 0.35rem 0.6rem 0; }
@@ -229,6 +230,11 @@ h1, h2, h3, .hd { font-family: var(--head); font-weight: 400; letter-spacing: 0.
 .chat .log .sys.leave { color: #d18f8f; }
 .chat input { width: 100%; margin-top: 0.3rem; background: rgba(0,0,0,0.6); border: 1px solid var(--line); color: var(--text); padding: 0.45rem 0.6rem; font: inherit; pointer-events: auto; user-select: text; -webkit-user-select: text; }
 .chat-btn { position: absolute; left: calc(0.8rem + var(--safe-l)); bottom: calc(6.4rem + var(--safe-b)); font-size: 0.75rem; padding: 0.35rem 0.6rem; background: rgba(0,0,0,0.55); border: 1px solid var(--line); }
+/* in the lobby there is no ability bar, so the chat sits low and narrow, clear of the menu and the vote */
+@media (min-width: 761px) and (min-height: 501px) {
+  #ui:has(#lobby) .chat { bottom: calc(3.2rem + var(--safe-b)); width: min(22rem, 24vw); }
+  #ui:has(#lobby) .chat-btn { bottom: calc(0.9rem + var(--safe-b)); }
+}
 .quick { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.3rem; pointer-events: auto; }
 .quick button { font-size: 0.72rem; padding: 0.3rem 0.5rem; background: rgba(0,0,0,0.6); border: 1px solid var(--line); }
 
@@ -247,7 +253,7 @@ h1, h2, h3, .hd { font-family: var(--head); font-weight: 400; letter-spacing: 0.
 /* ---------- overlays: puzzle, VS card, results ---------- */
 #overlay > * { pointer-events: auto; }
 #overlay > .vs, #overlay > .toast, #overlay > .letterbox { pointer-events: none; }
-.puzzle { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--panel2); border: 1px solid var(--line); padding: 1rem 1.2rem 1.1rem; width: min(26rem, 92vw); animation: rise 0.2s ease both; }
+.puzzle { position: absolute; left: 50%; top: 50%; translate: -50% -50%; background: var(--panel2); border: 1px solid var(--line); padding: 1rem 1.2rem 1.1rem; width: min(26rem, 92vw); animation: rise 0.2s ease both; }
 .puzzle h4 { font-family: var(--head); font-weight: 400; letter-spacing: 0.15em; font-size: 1.3rem; display: flex; justify-content: space-between; }
 .puzzle h4 small { font-family: var(--body); font-size: 0.75rem; color: var(--dim); letter-spacing: 0.05em; }
 .puzzle .board { position: relative; display: flex; justify-content: space-between; margin-top: 0.7rem; height: 14rem; }
@@ -310,7 +316,7 @@ h1, h2, h3, .hd { font-family: var(--head); font-weight: 400; letter-spacing: 0.
 .pause { background: rgba(4,4,6,0.75); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); align-items: center; justify-content: center; gap: 0.6rem; }
 .pause h2 { font-size: 3rem; letter-spacing: 0.15em; margin-bottom: 0.6rem; }
 .pause .btn { min-width: 14rem; }
-.toast { position: absolute; left: 50%; top: calc(4.5rem + var(--safe-t)); transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 0.5rem 1rem; font-size: 0.85rem; animation: rise 0.25s ease both; pointer-events: none; z-index: 5; }
+.toast { position: absolute; left: 50%; top: calc(4.5rem + var(--safe-t)); translate: -50% 0; background: var(--panel2); border: 1px solid var(--line); padding: 0.5rem 1rem; font-size: 0.85rem; animation: rise 0.25s ease both; pointer-events: none; z-index: 5; }
 
 /* ---------- touch controls ---------- */
 #touch { pointer-events: none; }

@@ -168,6 +168,7 @@ class Game {
     k.view && k.view.once('roar');
     this.camRig.play({ from: new THREE.Vector3(k.x + fx * far, 3.2, k.z + fz * far), to: new THREE.Vector3(k.x + fx * near, 1.7, k.z + fz * near), look: head, dur: 3.2, onDone: () => {
       card.remove();
+      if (M.phase !== 'intro') return;          // the round already ended (the player left during the intro)
       M.phase = 'play';
       this.hud.center(p.role === 'killer' ? 'HUNT THEM DOWN' : 'SURVIVE', p.role === 'killer' ? 'Kill every survivor before the timer runs out' : 'Repair generators to shorten the night', 2.6);
       audio.sfx('go', { vol: 0.6 });

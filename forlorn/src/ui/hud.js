@@ -102,10 +102,10 @@ export class Hud {
   center(big, small, t = 2.5) {
     if (!this.centerEl) return;
     this.centerEl.innerHTML = '<div class="big">' + esc(big) + '</div>' + (small ? '<div class="small">' + esc(small) + '</div>' : '');
-    clearTimeout(this._ct); this._ct = setTimeout(() => { this.centerEl.innerHTML = ''; }, t * 1000);
+    clearTimeout(this._ct); this._ct = setTimeout(() => { if (this.centerEl) this.centerEl.innerHTML = ''; }, t * 1000);
   }
   hurtFlash() { if (!this.vign) return; this.vign.style.boxShadow = 'inset 0 0 140px rgba(232,50,60,0.75)'; setTimeout(() => { if (this.vign) this.vign.style.boxShadow = ''; }, 250); }
-  clear() { this.root.innerHTML = ''; this.m = null; this.feed = null; this.centerEl = null; this.vign = null; }
+  clear() { clearTimeout(this._ct); this.root.innerHTML = ''; this.m = null; this.feed = null; this.centerEl = null; this.vign = null; }
 
   update(dt, player) {
     const m = this.m; if (!m) return;
