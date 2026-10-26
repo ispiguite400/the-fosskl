@@ -40,6 +40,12 @@ These come straight from the user's feedback, with a reference image of Guest 13
   about 0.24 studs wide, LOW on the head (0.24 studs above the bottom of the head).
 - **Guest 666 is called "The Terrible"** in this game.
 - Keep **Blox Watch** and **the Bacons** (Bacon General, Bacon Colonel, Bacon Soldiers, Jez).
+- **The Bacons have WHITE skin and the Bacon hair** (the Roblox Pal Hair), and it must show: the
+  user: *"Bacon have white skin and bacon for their hair like what they look like."* Build it with
+  `A.hair('bacon')` (wavy rasher locks with a light streak, parted on the right, the fringe swooping
+  across the forehead). No helmet or fur hat that hides it; the General's cap sits on top of it
+  (`underHat: true` on the hair, `lift`/`wide` on the cap).
+- **Jez's under-shirt is blue** (the tee under his leather jacket).
 
 ## Method: measure, don't eyeball
 
@@ -75,9 +81,9 @@ Guy, the Bacon General and the Bacon Colonel, `superhero` for the Elite Guard.
 | Justin | brown | green hoodie, charcoal jeans | the hood up |
 | Rich Guy | light | gold suit, black shirt, gold tie | slicked hair, gold shades, gold chain |
 | Charlie | WHITE (Guest's daughter) | white tee, open denim jacket | long navy hair, glowing cyan Astral eyes |
-| Jez | light | black leather jacket over an orange motorcycle tee | Bacon hair |
-| Bacon General | light | Empire-blue tunic, red sash, gold epaulettes, black boots | peaked cap, pistol |
-| Bacon Colonel | light | grey greatcoat with fur, dark uniform | ushanka, eyepatch (left), scar |
+| Jez | WHITE (a Bacon) | black leather jacket over a blue motorcycle tee | Bacon hair |
+| Bacon General | WHITE | Empire-blue tunic, red sash, gold epaulettes, black boots | Bacon hair, peaked cap on top, pistol |
+| Bacon Colonel | WHITE | grey greatcoat with fur, dark uniform | Bacon hair, eyepatch (left), scar |
 | Elite Guard | light | black armour, red sash | black bandana, scar (right eye), sword |
 | Blox Watch | pitch black | black hoodie with gold lightning | hood up, glowing yellow eyes |
-| Bacon Soldier | light | Empire-blue tunic, black trousers | blue helmet |
+| Bacon Soldier | WHITE | Empire-blue tunic, black trousers | Bacon hair |

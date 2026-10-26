@@ -1,7 +1,7 @@
 /*
  * BACON GENERAL — killer. General Baconson, ruler of the Bacon Empire (The Last Guest).
- * Look:         Robloxian 2.0 "Man"; light skin; brown Bacon hair cropped under an officer's
- *               peaked cap (Empire blue, black band, gold badge); the Empire's blue tunic with a
+ * Look:         Robloxian 2.0 "Man"; white skin; the Bacon hair (Pal Hair) with an officer's
+ *               peaked cap sitting on it (Empire blue, black band, gold badge); the Empire's blue tunic with a
  *               black collar, gold buttons and epaulettes and a red sash; black belt; black
  *               trousers with a blue stripe; tall black boots; a pistol in his right hand. A sneer.
  * Skins:        default · dress (parade whites with gold)
@@ -10,7 +10,7 @@ const DR = SKIN_ID === 'dress';
 const BLUE = DR ? '#eef0f2' : '#2c4a8a', TROU = DR ? '#e4e6e8' : '#141416';
 CAST({
   body: { voxel: 0.0031 },                      // a coarser grid keeps the sculpt small enough to ship
-  pkg: 'man', skin: '#f0d0b0',
+  pkg: 'man', skin: '#f2f3f3',
   clothes: {
     torso: (g, face, W, H) => {
       Wr.torso(g, face, W, H, { kind: 'tee', color: BLUE, collar: 'none', buttons: 5, buttonColor: '#e8c050', belt: '#101010', pants: TROU, tuck: true });
@@ -27,8 +27,8 @@ CAST({
   },
   face: { eyes: 'oval', eyeW: 27, eyeH: 42, brows: 'angry', browColor: '#4a2a14', mouth: 'smirk', mouthW: 120 },
   head() {
-    A.hair('short', { color: '#7a4a28' });
-    A.peaked({ color: BLUE, band: '#141416', badge: '#e8c050' });
+    A.hair('bacon', { color: '#6a4426', hi: '#b07a44', underHat: true });
+    A.peaked({ color: BLUE, band: '#141416', badge: '#e8c050', lift: 0.038, wide: 0.04 });
     return A.pistol({ color: '#1a1a1c' });
   }
 });

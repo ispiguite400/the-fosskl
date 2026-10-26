@@ -1,7 +1,7 @@
 /*
  * BACON COLONEL — killer. The one-eyed Colonel who took the Empire after the General (The Last Guest).
- * Look:         Robloxian 2.0 "Man"; light skin; a black eyepatch over his left eye and a scar;
- *               a grey fur hat with the Empire's badge; a long grey greatcoat with a fur collar,
+ * Look:         Robloxian 2.0 "Man"; white skin; the Bacon hair (Pal Hair), bare-headed so it
+ *               shows; a black eyepatch over his left eye and a scar; a long grey greatcoat with a fur collar,
  *               open over the dark blue uniform; black gloves; black trousers and boots. Grim.
  * Skins:        default · winter (a white winter coat and hat)
  */
@@ -9,7 +9,7 @@ const WIN = SKIN_ID === 'winter';
 const COAT = WIN ? '#dcdcd8' : '#5e5a56', FUR = WIN ? '#f2f2ee' : '#8a857e';
 CAST({
   body: { voxel: 0.0031 },                      // a coarser grid keeps the sculpt small enough to ship
-  pkg: 'man', skin: '#ecc8a8',
+  pkg: 'man', skin: '#f2f3f3',
   clothes: {
     torso: (g, face, W, H) => {
       Wr.torso(g, face, W, H, { kind: 'coat', color: COAT, color2: '#22304e', buttons: 4, buttonColor: '#c8a040', belt: '#121212', pants: COAT });
@@ -28,8 +28,7 @@ CAST({
   },
   face: { eyes: 'oval', eyeW: 26, eyeH: 40, brows: 'angry', browColor: '#3a2a1a', mouth: 'frown', mouthW: 110, scar: 'left', scarColor: '#9a4a40' },
   head() {
-    A.hair('short', { color: '#6a4426' });
-    A.ushanka({ color: FUR, crown: WIN ? '#c8c8c4' : '#3a3a3c', badge: '#c8a040' });
+    A.hair('bacon', { color: '#5e3c22', hi: '#a8743e' });
     A.eyepatch({ side: 'L' });
   }
 });
