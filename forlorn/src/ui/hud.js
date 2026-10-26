@@ -8,7 +8,8 @@ import { input } from '../core/input.js';
 import { bus } from '../core/events.js';
 import { ABILITIES, ITEMS } from '../game/abilities.js';
 import { portrait } from './art.js';
-import { icon } from './icons.js';
+import { icon, abilityIcon } from './icons.js';
+import { settings } from '../core/save.js';
 import { PARTS } from '../game/props.js';
 
 const STATUS = {
@@ -48,23 +49,23 @@ export class Hud {
     top.append(gensSide, clock, aliveSide);
     this.clock = clock; this.gensLeft = gensSide.querySelector('.v'); this.aliveEl = aliveSide.querySelector('.v');
     r.appendChild(top);
-    this.team = el('div', 'h-team'); r.appendChild(this.team);
+    this.team = el('div', 'h-team ' + (settings.statusLayout || 'side') + (settings.survivorUi === false ? ' hidden' : '')); r.appendChild(this.team);
     this.rows = new Map();
     const list = [...match.survivors];
-    list.forEach((a, i) => {
+    list.forEach((a) => {
       const row = el('div', 'tm' + (a === me ? ' me' : ''));
-      row.style.animationDelay = (0.3 + i * 0.05) + 's';
       const pic = el('div', 'pic', '<i class="st"></i>'); pic.style.backgroundImage = 'url(' + portrait(a.charId, a.skin) + ')';
       const who = el('div', 'who', '<div class="nm">' + esc(a.name) + '<span class="bond"></span></div><div class="ch">' + esc(a.def.name) + '</div><div class="hpb"><i></i></div>');
-      row.append(pic, who);
+      const hpn = el('div', 'hpn', '');
+      row.append(pic, who, hpn);
+      row.title = a.name;
       this.team.appendChild(row);
-      this.rows.set(a, { row, hp: who.querySelector('.hpb i'), bond: who.querySelector('.bond'), st: pic.querySelector('.st'), stName: '' });
+      this.rows.set(a, { row, hp: who.querySelector('.hpb i'), bond: who.querySelector('.bond'), st: pic.querySelector('.st'), stName: '', hpn, hpTxt: '' });
     });
     // the killer, under the survivors, in red
     const K = match.killer;
     if (K) {
       const row = el('div', 'tm killer');
-      row.style.animationDelay = (0.3 + list.length * 0.05) + 's';
       const pic = el('div', 'pic', '<i class="st">' + icon('stun') + '</i>'); pic.style.backgroundImage = 'url(' + portrait(K.charId, K.skin) + ')';
       row.append(pic, el('div', 'who', '<div class="ktag">' + (K === me ? 'YOU ARE THE KILLER' : 'THE KILLER') + '</div><div class="nm">' + esc(K.name) + '</div><div class="ch">' + esc(K.def.name) + '</div>'));
       this.team.appendChild(row);
@@ -85,14 +86,15 @@ export class Hud {
       this.hp = el('div', 'h-bar', '<span class="txt">HEALTH</span><i class="lag"></i><i class="cur"></i><span class="num"></span>');
       bars.appendChild(this.hp);
     }
-    this.st = el('div', 'h-bar st', '<i></i>'); bars.appendChild(this.st);
+    this.st = el('div', 'h-bar st', '<i></i><span class="num"></span>'); bars.appendChild(this.st);
+    this.st.classList.toggle('nonum', settings.staminaCounter === false);
     this.abils = el('div', 'h-abils');
     this.abEls = [];
     if (me) {
       const defs = me.def.abilities.slice();
       const actions = ['ability1', 'ability2', 'ability3'];
-      if (me.role === 'killer') this.abEls.push(this._ab({ name: me.def.m1.name, icon: '🗡', action: 'attack', m1: true, cd: me.def.m1.cd }));
-      defs.forEach((d, i) => this.abEls.push(this._ab({ name: d.name, icon: (ABILITIES[d.id] && ABILITIES[d.id].icon) || '✦', action: actions[i], id: d.id, cd: d.cd })));
+      if (me.role === 'killer') this.abEls.push(this._ab({ name: me.def.m1.name, icon: abilityIcon(/claw/i.test(me.def.m1.name) ? 'claw' : 'm1', '🗡'), action: 'attack', m1: true, cd: me.def.m1.cd }));
+      defs.forEach((d, i) => this.abEls.push(this._ab({ name: d.name, icon: abilityIcon(d.id, (ABILITIES[d.id] && ABILITIES[d.id].icon) || '✦'), action: actions[i], id: d.id, cd: d.cd })));
       if (me.role === 'survivor') this.abEls.push(this._ab({ name: 'Item', icon: '', action: 'ability3', item: true }));
     }
     bottom.append(this.status, bars);
@@ -134,8 +136,12 @@ export class Hud {
     if (me) {
       if (this.hp) { const f = Math.max(0, me.hp / me.maxHp) * 100; this.hp.querySelector('.cur').style.width = f + '%'; this.hp.querySelector('.lag').style.width = f + '%'; }
       if (this.bl) { this.bl.querySelector('i').style.width = m.bloodlust + '%'; this.bl.classList.toggle('full', me.fx.has('frenzy')); }
-      this.st.querySelector('i').style.width = (me.stamina / me.maxStamina * 100) + '%';
-      this.st.classList.toggle('out', !!me.exhausted);
+      const sf = me.stamina / me.maxStamina;
+      this.st.querySelector('i').style.width = (sf * 100) + '%';
+      // as in Forsaken: green, yellow past half, a washed-out grey-yellow when it runs dry
+      this.st.classList.toggle('mid', sf < 0.5 && sf >= 0.15 && !me.exhausted);
+      this.st.classList.toggle('out', sf < 0.15 || !!me.exhausted);
+      this.st.querySelector('.num').textContent = Math.floor(me.stamina);
     }
     if (this.t > 0) return;
     this.t = 0.1;
@@ -160,6 +166,8 @@ export class Hud {
       r.row.classList.toggle('repair', st === 'repair');
       if (st !== r.stName) { r.stName = st; r.st.innerHTML = st ? icon({ dead: 'skull', left: 'door', chased: 'eye', repair: 'wrench' }[st]) : ''; }
       r.hp.style.width = (a.alive ? f * 100 : 0) + '%';
+      const txt = !a.alive || a.left ? '' : settings.healthDisplay === 'percent' ? Math.round(f * 100) + '%' : String(Math.max(1, Math.ceil(a.hp)));
+      if (txt !== r.hpTxt) { r.hpTxt = txt; r.hpn.textContent = txt; }
       r.bond.textContent = me && me !== a && (me.bond[a.uid] || 0) >= 1 ? ' ♥' : '';
     }
     if (this.killerRow && K) this.killerRow.classList.toggle('stunned', K.alive && K.fx.has('stun'));
@@ -180,7 +188,7 @@ export class Hud {
         o.key.classList.toggle('pad', dev === 'pad');
         let cd = 0;
         if (o.m1) cd = me.attackCd;
-        else if (o.item) { o.ic.textContent = me.item ? ITEMS[me.item].icon : '·'; o.nm.textContent = me.item ? ITEMS[me.item].name : 'No item'; o.el.style.opacity = me.item ? 1 : 0.5; }
+        else if (o.item) { if (o._item !== me.item) { o._item = me.item; o.ic.innerHTML = me.item ? abilityIcon(me.item, ITEMS[me.item].icon) : '·'; o.nm.textContent = me.item ? ITEMS[me.item].name : 'No item'; } o.el.style.opacity = me.item ? 1 : 0.5; }
         else cd = me.cd[o.id] || 0;
         o.cdEl.classList.toggle('hidden', !(cd > 0));
         if (cd > 0) { o.cdEl.textContent = cd >= 10 ? Math.ceil(cd) : cd.toFixed(1); o.cdEl.style.setProperty('--p', Math.round(Math.min(1, cd / (o.cd || cd)) * 100) + '%'); }

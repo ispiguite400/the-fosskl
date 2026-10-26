@@ -74,7 +74,10 @@ and stuns.
 - **Generators** are solved with a wire puzzle. A wrong wire sparks, and the killer hears it.
 - **Last Man Standing**: a VS card, and a song chosen for the matchup (the films' own pairings get
   their own songs). The round lasts exactly as long as the song.
-- **Shop and progression**: money and XP every round, characters and skins to buy, levels.
+- **Shop and progression**: money and XP every round, levels. The shop has Survivors, Killers,
+  Skins and **Killer Chance**: as in Forsaken, you can buy malice (+15 or +30) to move up the
+  line, and the lobby tells you where you stand ("You are the next killer"). Buying a character
+  equips it; click one you own to equip it.
 
 ### What FORLORN adds to the formula
 
@@ -93,7 +96,12 @@ killer and cold cyan for survivors, type that looks stamped and scuffed, film gr
 In a round: generators left, the clock and survivors alive across the top; every survivor down the
 left with their health and what they're doing (chased, repairing, dead, gone), and the killer
 under them; a heart that beats faster as the killer gets closer, with red creeping in at the edges;
-abilities with sweeping cooldowns. Map cards are photographs of the maps (`tools/mapcards.mjs`).
+abilities drawn as white line icons with sweeping cooldowns, and outlined text the way Roblox games
+draw it. Map cards are photographs of the maps (`tools/mapcards.mjs`).
+
+Settings → Survivor UI follows Forsaken's own options: the survivor list on or off; its layout
+(Side, Stacked or Icons); teammates' health as Health or Percentage; and a stamina counter. The
+stamina bar goes green, then yellow past half, then a washed-out grey-yellow when it runs dry.
 
 ## Music, and Soundtrap
 

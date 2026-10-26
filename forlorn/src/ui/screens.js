@@ -9,7 +9,7 @@ import { input } from '../core/input.js';
 import { audio } from '../audio/audio.js';
 import { music } from '../audio/music.js';
 import { portrait, mapArt } from './art.js';
-import { icon } from './icons.js';
+import { icon, abilityIcon } from './icons.js';
 import { MenuNav } from './nav.js';
 import { ABILITIES } from '../game/abilities.js';
 import { IS_TOUCH } from '../core/device.js';
@@ -96,13 +96,14 @@ export class UI {
     const g = this.game, L = g.lobby;
     const s = el('div', 'screen see-through'); s.id = 'lobby';
     s.innerHTML = '<div class="lobby-top"><div class="inter">INTERMISSION</div><div class="count">0:30</div><div class="sub"></div></div>' +
-      '<div class="lobby-me"><div class="row1"><div class="nm"></div><div class="lvl"></div></div><div class="money"></div><div class="xpbar"><i></i></div><div class="mal"><span>Malice</span><b></b></div><div class="malbar"><i></i></div></div>' +
+      '<div class="lobby-me"><div class="row1"><div class="nm"></div><div class="lvl"></div></div><div class="money"></div><div class="xpbar"><i></i></div><div class="mal"><span>Malice</span><b></b></div><div class="malbar"><i></i></div><div class="queue"></div></div>' +
       '<div class="lobby-players"><h4 class="label">SERVER</h4><div class="rows"></div></div>' +
       '<div class="lobby-side"></div><div class="vote hidden"></div>';
     const side = s.querySelector('.lobby-side');
     const btn = (label, ic, fn, cls = '') => { const b = el('button', 'btn ' + cls, (ic ? icon(ic) : '') + '<span>' + label + '</span>'); b.onclick = () => { audio.sfx('ui'); fn(); }; side.appendChild(b); return b; };
     btn('Characters', 'people', () => this.push('characters'));
     btn('Shop', 'bag', () => this.push('shop'));
+    btn('Killer Chance', 'skull', () => this.push('shop', 'malice'));
     btn('Settings', 'gear', () => this.push('settings'));
     btn('How to play', 'book', () => this.push('howto'));
     const optText = () => (settings.killerOptOut ? 'Killer: off' : 'Killer: on');
@@ -145,6 +146,9 @@ export class UI {
       s.querySelector('.lobby-me .mal b').textContent = settings.killerOptOut ? 'killer off' : profile.malice;
       s.querySelector('.lobby-me .malbar i').style.width = (settings.killerOptOut ? 0 : profile.malice / top * 100) + '%';
       const next = members.find((m) => !(m.isMe && settings.killerOptOut));
+      const q = g.server.killerQueue(), qe = s.querySelector('.lobby-me .queue');
+      qe.textContent = settings.killerOptOut ? 'Killer off' : q.pos === 1 && !q.gap ? 'You are the next killer' : q.pos === 1 ? 'Tied for killer' : '#' + q.pos + ' in line for killer';
+      qe.classList.toggle('first', !settings.killerOptOut && q.pos === 1 && !q.gap);
       s.querySelector('.lobby-players .rows').innerHTML = members.map((m) => '<div class="row' + (m.isMe ? ' me' : '') + (m === next ? ' next' : '') + '"><span class="n">' + esc(m.name) + '</span><span class="mb"><i style="width:' + Math.round(m.malice / top * 100) + '%"></i></span><span class="m">' + m.malice + '</span></div>').join('');
       if (L.timeLeft < 13 && !this._voteBuilt) this.buildVote();
       if (this._voteBuilt) {
@@ -188,8 +192,8 @@ export class UI {
       ? bar('Health', c.hp, (c.hp - 60) / 80, 's') + bar('Speed', Math.round(c.speed * 100) + '%', (c.speed - 0.85) / 0.25, 's') + bar('Stamina', c.stamina, (c.stamina - 80) / 50, 's')
       : bar('Attack', esc(c.m1.name) + ' · ' + c.m1.dmg, c.m1.dmg / 40) + bar('Speed', Math.round(c.speed * 100) + '%', (c.speed - 0.85) / 0.25) + bar('Swing', c.m1.cd + 's', 1.6 - c.m1.cd);
     const abil = (c.passive ? '<div class="abil p"><div class="k">' + icon('star') + '</div><div><b>' + esc(c.passive.name) + ' <span>passive</span></b><span>' + esc(c.passive.text) + '</span></div></div>' : '') +
-      (tab === 'killer' ? '<div class="abil"><div class="k">M1</div><div><b>' + esc(c.m1.name) + '</b><span>' + c.m1.dmg + ' damage, every ' + c.m1.cd + 's.</span></div></div>' : '') +
-      c.abilities.map((a) => '<div class="abil"><div class="k">' + ((ABILITIES[a.id] && ABILITIES[a.id].icon) || a.key) + '</div><div><b>' + esc(a.name) + ' <span>' + a.key + ' · ' + a.cd + 's</span></b><span>' + esc(a.text) + '</span></div></div>').join('');
+      (tab === 'killer' ? '<div class="abil"><div class="k">' + abilityIcon(/claw/i.test(c.m1.name) ? 'claw' : 'm1', 'M1') + '</div><div><b>' + esc(c.m1.name) + '</b><span>' + c.m1.dmg + ' damage, every ' + c.m1.cd + 's.</span></div></div>' : '') +
+      c.abilities.map((a) => '<div class="abil"><div class="k">' + abilityIcon(a.id, (ABILITIES[a.id] && ABILITIES[a.id].icon) || a.key) + '</div><div><b>' + esc(a.name) + ' <span>' + a.key + ' · ' + a.cd + 's</span></b><span>' + esc(a.text) + '</span></div></div>').join('');
     box.innerHTML = '<div class="art"><div class="glow" style="background:' + c.color + '"></div><div class="role">' + (tab === 'survivor' ? 'SURVIVOR' : 'KILLER') + '</div><img alt="" src="' + portrait(c.id, skin) + '" onerror="this.style.visibility=\'hidden\'"></div><div class="info"><div class="film">' + esc(c.film) + '</div><h3>' + esc(c.name) + '</h3><div class="ttl">' + esc(c.title) + '</div><div class="bio">' + esc(c.bio) + '</div><div class="stats">' + stats + '</div>' + abil + '<div class="label" style="margin-top:.5rem">SKINS</div><div class="skins"></div><div class="act"></div></div>';
     const sk = box.querySelector('.skins');
     for (const k of c.skins) {
@@ -227,33 +231,68 @@ export class UI {
   }
 
   /* ---------------- shop ---------------- */
-  shop(tab = this._shopTab || 'characters') {
+  shop(tab = this._shopTab || 'survivors') {
+    if (tab === 'characters') tab = 'survivors';
     this._shopTab = tab;
+    const TABS = [['survivors', 'person', 'Survivors'], ['killers', 'knife', 'Killers'], ['skins', 'star', 'Skins'], ['malice', 'skull', 'Killer Chance']];
     const s = el('div', 'screen panel-screen fade-in');
-    s.innerHTML = this._head('SHOP', 'SPEND WHAT YOU SURVIVED FOR', '<div class="tabs"><button class="btn" data-tab="characters">' + icon('people') + 'Characters</button><button class="btn" data-tab="skins">' + icon('star') + 'Skins</button></div>') + '<div class="cs" style="grid-template-columns:1fr"><div class="grid"></div></div>';
+    s.innerHTML = this._head('SHOP', 'SPEND WHAT YOU SURVIVED FOR', '<div class="tabs">' + TABS.map(([id, ic, l]) => '<button class="btn" data-tab="' + id + '">' + icon(ic) + l + '</button>').join('') + '</div>') + '<div class="cs" style="grid-template-columns:1fr"><div class="grid"></div></div>';
     s.querySelector('[data-back]').onclick = () => this.back();
-    s.querySelectorAll('[data-tab]').forEach((b) => { b.classList.toggle('on', b.dataset.tab === tab); b.onclick = () => this.shop(b.dataset.tab); });
-    this.onTab = () => this.shop(tab === 'characters' ? 'skins' : 'characters');
+    s.querySelectorAll('[data-tab]').forEach((b) => { b.classList.toggle('on', b.dataset.tab === tab); b.onclick = () => { audio.sfx('ui'); this.shop(b.dataset.tab); }; });
+    this.onTab = (dir = 1) => { const i = TABS.findIndex((t) => t[0] === tab); this.shop(TABS[(i + (dir < 0 ? TABS.length - 1 : 1)) % TABS.length][0]); };
     const grid = s.querySelector('.grid');
+    if (tab === 'malice') { this._maliceShop(grid); this._set('shop', s); return; }
     const items = [];
-    for (const c of [...SURVIVORS, ...KILLERS]) {
-      if (tab === 'characters') { if (c.price > 0) items.push({ c, skin: 'default', name: c.name, sub: c.film, price: c.price, ready: isReady(c.id), have: owns(c.id) }); }
+    for (const c of tab === 'survivors' ? SURVIVORS : tab === 'killers' ? KILLERS : [...SURVIVORS, ...KILLERS]) {
+      if (tab !== 'skins') items.push({ c, skin: 'default', name: c.name, sub: c.film, price: c.price, ready: isReady(c.id), have: owns(c.id) || c.price === 0, role: tab === 'killers' ? 'killer' : 'survivor' });
       else for (const k of c.skins) if (k.id !== 'default') items.push({ c, skin: k.id, name: k.name, sub: c.name, price: k.price, ready: isReady(c.id + '_' + k.id), have: owns(c.id, k.id) });
     }
     items.sort((a, b) => (b.ready - a.ready) || (a.have - b.have) || a.price - b.price);
     for (const it of items) {
-      const card = el('button', 'ccard' + (!it.ready ? ' forge' : it.have ? '' : ' locked'));
+      const eq = it.role && profile.equipped[it.role] === it.c.id;
+      const card = el('button', 'ccard' + (!it.ready ? ' forge' : it.have ? '' : ' locked') + (eq ? ' sel' : ''));
       card.style.setProperty('--tint', it.c.color + '55');
-      card.innerHTML = '<span class="bar" style="background:' + it.c.color + '"></span><img alt="" src="' + portrait(it.c.id, it.skin) + '" onerror="this.style.visibility=\'hidden\'"><span class="shade"></span>' + (!it.ready ? '<span class="soon">IN THE FORGE</span>' : '') + '<span class="nm"><small>' + esc(it.sub) + '</small>' + esc(it.name) + '</span><span class="pr' + (it.have ? ' own' : '') + '">' + (it.have ? 'OWNED' : '$' + it.price) + '</span>';
+      const tag = eq ? '<span class="pr eq">EQUIPPED</span>' : it.have ? '<span class="pr own">' + (it.role ? 'EQUIP' : 'OWNED') + '</span>' : '<span class="pr">$' + it.price + '</span>';
+      card.innerHTML = '<span class="bar" style="background:' + it.c.color + '"></span><img alt="" src="' + portrait(it.c.id, it.skin) + '" onerror="this.style.visibility=\'hidden\'"><span class="shade"></span>' + (!it.ready ? '<span class="soon">IN THE FORGE</span>' : '') + '<span class="nm"><small>' + esc(it.sub) + '</small>' + esc(it.name) + '</span>' + tag;
       card.onclick = () => {
-        if (!it.ready || it.have) return audio.sfx('deny');
+        if (!it.ready) return audio.sfx('deny');
+        const equip = () => { profile.equipped[it.role] = it.c.id; saveProfile(); if (it.role === 'survivor' && this.game.lobby) this.game.lobby.refreshMe(); };
+        if (it.have) {
+          if (!it.role || eq) return audio.sfx('deny');
+          equip(); audio.sfx('ui'); this.game.hud.toast('Equipped ' + it.name + (it.role === 'killer' ? ': you play them when you are the killer' : '')); return this.shop(tab);
+        }
         if (it.skin !== 'default' && !(owns(it.c.id) || it.c.price === 0)) { this.game.hud.toast('Buy ' + it.c.name + ' first'); return audio.sfx('deny'); }
-        if (profile.money < it.price) { this.game.hud.toast('Not enough money'); return audio.sfx('deny'); }
-        profile.money -= it.price; grant(it.c.id, it.skin); audio.sfx('buy'); this.game.hud.toast('Bought ' + it.name + (it.skin !== 'default' ? ' ' + it.c.name : '')); this.shop(tab);
+        if (profile.money < it.price) { this.game.hud.toast('Not enough money: $' + (it.price - profile.money) + ' more'); return audio.sfx('deny'); }
+        profile.money -= it.price; grant(it.c.id, it.skin); audio.sfx('buy');
+        if (it.role) equip(); else { profile.equipped.skins[it.c.id] = it.skin; saveProfile(); }
+        this.game.hud.toast('Bought and equipped ' + it.name + (it.skin !== 'default' ? ' (' + it.c.name + ')' : ''));
+        this.shop(tab);
       };
       grid.appendChild(card);
     }
     this._set('shop', s);
+  }
+  /** Killer Chance: buy malice, as in Forsaken. The highest malice in the server is the next killer. */
+  _maliceShop(grid) {
+    grid.style.display = 'block';
+    const q = this.game.server.killerQueue();
+    const where = settings.killerOptOut ? 'Killer is switched off: turn it on in the lobby to be picked.' : q.pos === 1 && !q.gap ? 'You are the next killer.' : q.pos === 1 ? 'You are tied for killer: ' + q.gap + ' more malice and it is yours.' : 'You are number ' + q.pos + ' in line to be the killer' + (q.gap > 0 ? ': ' + q.gap + ' more malice to be first.' : '.');
+    const box = el('div', 'malice-shop', '<div class="mal-now"><div class="label">YOUR MALICE</div><b>' + profile.malice + '</b><span>' + esc(where) + '</span><small>Every round you are not the killer, your malice goes up. The highest malice in the server plays the killer next round, then drops back to zero.</small></div><div class="mal-packs"></div>');
+    const packs = box.querySelector('.mal-packs');
+    for (const [n, price] of [[15, 150], [30, 250]]) {
+      const b = el('button', 'mal-pack', '<span class="ic">' + icon('knife') + '</span><b>+' + n + '</b><span>MALICE</span><em>$' + price + '</em>');
+      b.dataset.nav = '1';
+      b.onclick = () => {
+        if (profile.money < price) { this.game.hud.toast('Not enough money: $' + (price - profile.money) + ' more'); return audio.sfx('deny'); }
+        profile.money -= price; profile.malice += n; this.game.server.me.malice = profile.malice; saveProfile(); audio.sfx('buy');
+        if (settings.killerOptOut) { settings.killerOptOut = false; saveSettings(); }
+        const q2 = this.game.server.killerQueue();
+        this.game.hud.toast('+' + n + ' malice' + (q2.pos === 1 && !q2.gap ? ': you are the next killer' : ''));
+        this.shop('malice');
+      };
+      packs.appendChild(b);
+    }
+    grid.appendChild(box);
   }
 
   /* ---------------- settings ---------------- */
@@ -283,6 +322,11 @@ export class UI {
     sec('CONTROLS');
     row('Look sensitivity', 'Mouse, stick and touch', num('sensitivity', 0.2, 3, 0.1, (v) => v.toFixed(1)));
     row('Invert look', '', choice('invertY', [[false, 'Off'], [true, 'On']]));
+    sec('SURVIVOR UI');
+    row('Survivor UI', 'The survivor list down the left of the screen', choice('survivorUi', [[true, 'On'], [false, 'Off']]));
+    row('Status display', 'How the survivor list is laid out', choice('statusLayout', [['side', 'Side'], ['stacked', 'Stacked'], ['icons', 'Icons']]));
+    row('Health display type', 'Show teammates\' health as health or as a percentage', choice('healthDisplay', [['health', 'Health'], ['percent', 'Percentage']]));
+    row('Stamina counter', 'A number on your stamina bar', choice('staminaCounter', [[true, 'On'], [false, 'Off']]));
     sec('AUDIO');
     row('Master volume', '', num('master', 0, 1, 0.1, (v) => Math.round(v * 100) + '%', () => audio.applyVolumes()));
     row('Music', 'Soundtrap exports in assets/music/ replace the built-in songs', num('music', 0, 1, 0.1, (v) => Math.round(v * 100) + '%', () => audio.applyVolumes()));

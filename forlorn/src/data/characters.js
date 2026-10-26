@@ -143,7 +143,7 @@ export const KILLERS = [
     skins: [{ id: 'default', name: 'Bacon General', price: 0 }, { id: 'dress', name: 'Parade Dress', price: 600 }]
   },
   {
-    id: 'baconcolonel', name: 'Bacon Colonel', title: 'The Iron Fist', film: 'The Last Guest', price: 900, color: '#8f8f8f',
+    id: 'baconcolonel', name: 'Bacon Colonel', title: 'The Iron Fist', film: 'The Last Guest', price: 600, color: '#8f8f8f',
     speed: 1, stamina: 120, m1: { name: 'Rifle Butt', dmg: 25, cd: 1.5, range: 2.5 },
     bio: 'The one-eyed Colonel who took over the Empire after the General fell. Patient, cruel, and very good with traps.',
     abilities: [
@@ -154,7 +154,7 @@ export const KILLERS = [
     skins: [{ id: 'default', name: 'Fur Coat', price: 0 }, { id: 'winter', name: 'Winter Campaign', price: 600 }]
   },
   {
-    id: 'eliteguard', name: 'Elite Guard', title: 'Blade of the Empire', film: 'The Last Guest', price: 1100, color: '#a01c1c',
+    id: 'eliteguard', name: 'Elite Guard', title: 'Blade of the Empire', film: 'The Last Guest', price: 800, color: '#a01c1c',
     speed: 1.02, stamina: 120, m1: { name: 'Sword', dmg: 30, cd: 1.7, range: 2.9 },
     bio: 'The Empire\'s best, in black armour and a black bandana, with a sword and a red scar. He has never lost a duel.',
     abilities: [
@@ -165,7 +165,7 @@ export const KILLERS = [
     skins: [{ id: 'default', name: 'Black Armour', price: 0 }, { id: 'crimson', name: 'Crimson Guard', price: 700 }]
   },
   {
-    id: 'bloxwatch', name: 'Blox Watch', title: 'The First Guest', film: 'Blox Watch', price: 1300, color: '#ffd21f',
+    id: 'bloxwatch', name: 'Blox Watch', title: 'The First Guest', film: 'Blox Watch', price: 1000, color: '#ffd21f',
     speed: 1, stamina: 125, m1: { name: 'Shock', dmg: 25, cd: 1.5, range: 2.7 },
     bio: 'The most powerful Astral, believed to be the very first Guest. Pitch black, yellow-eyed, with lightning in his hands.',
     abilities: [

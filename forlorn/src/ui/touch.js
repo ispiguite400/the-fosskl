@@ -2,10 +2,11 @@
  * Touch controls for phones and tablets: a floating stick on the left, drag to look on the right,
  * and buttons for everything else. They feed the same actions as keys and the controller.
  */
+import { abilityIcon } from './icons.js';
 import { el } from '../core/util.js';
 import { input } from '../core/input.js';
 import { IS_TOUCH } from '../core/device.js';
-import { ABILITIES } from '../game/abilities.js';
+import { ABILITIES, ITEMS } from '../game/abilities.js';
 
 export class Touch {
   constructor(game, root) {
@@ -73,10 +74,10 @@ export class Touch {
     const d = actor.def, acts = ['ability1', 'ability2', 'ability3'];
     if (actor.role === 'killer') {
       this._btn(this.btns, 'HIT', 'attack', 0.2, 5.4, true);
-      d.abilities.forEach((a, i) => { const b = this._btn(this.btns, (ABILITIES[a.id] && ABILITIES[a.id].icon || '') + '<br>' + a.name.split(' ')[0], acts[i], [5.8, 9.6, 9.6][i], [4.6, 0.6, 4.6][i], false, false); b.dataset.ab = a.id; this.abBtns.push(b); });
+      d.abilities.forEach((a, i) => { const b = this._btn(this.btns, abilityIcon(a.id, ABILITIES[a.id] && ABILITIES[a.id].icon || '') + '<br>' + a.name.split(' ')[0], acts[i], [5.8, 9.6, 9.6][i], [4.6, 0.6, 4.6][i], false, false); b.dataset.ab = a.id; this.abBtns.push(b); });
     } else {
       this._btn(this.btns, 'USE', 'interact', 0.4, 5.6, false, false);
-      d.abilities.forEach((a, i) => { const b = this._btn(this.btns, (ABILITIES[a.id] && ABILITIES[a.id].icon || '') + '<br>' + a.name.split(' ')[0], acts[i], [5.8, 9.6][i], [4.6, 0.6][i], false, false); b.dataset.ab = a.id; this.abBtns.push(b); });
+      d.abilities.forEach((a, i) => { const b = this._btn(this.btns, abilityIcon(a.id, ABILITIES[a.id] && ABILITIES[a.id].icon || '') + '<br>' + a.name.split(' ')[0], acts[i], [5.8, 9.6][i], [4.6, 0.6][i], false, false); b.dataset.ab = a.id; this.abBtns.push(b); });
       this.itemBtn = this._btn(this.btns, 'ITEM', 'ability3', 9.6, 4.6, false, false);
     }
   }
@@ -89,6 +90,6 @@ export class Touch {
       let c = b.querySelector('.cd');
       if (cd > 0) { if (!c) { c = el('div', 'cd'); b.appendChild(c); } c.textContent = Math.ceil(cd); } else if (c) c.remove();
     }
-    if (this.itemBtn) this.itemBtn.style.opacity = actor.item ? 1 : 0.4;
+    if (this.itemBtn) { this.itemBtn.style.opacity = actor.item ? 1 : 0.4; if (this._item !== actor.item) { this._item = actor.item; this.itemBtn.innerHTML = actor.item ? abilityIcon(actor.item) + '<br>' + ITEMS[actor.item].name.split(' ')[0] : 'ITEM'; } }
   }
 }

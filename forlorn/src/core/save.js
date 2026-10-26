@@ -17,7 +17,8 @@ const DEFAULT_PROFILE = {
 };
 const DEFAULT_SETTINGS = {
   quality: defaultQuality(), renderScale: 1, sensitivity: 1, invertY: false, fov: 70,
-  master: 0.8, music: 0.7, sfx: 0.9, chatBubbles: true, botChat: true, shake: true, killerOptOut: false
+  master: 0.8, music: 0.7, sfx: 0.9, chatBubbles: true, botChat: true, shake: true, killerOptOut: false,
+  survivorUi: true, statusLayout: 'side', healthDisplay: 'health', staminaCounter: true
 };
 
 const read = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v && typeof v === 'object' ? v : null; } catch { return null; } };

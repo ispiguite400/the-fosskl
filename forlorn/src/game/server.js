@@ -62,6 +62,13 @@ export class Server {
     const best = pool.filter((m) => m.malice === top);
     return R.pick(best);
   }
+  /** Where the player stands in line to be the killer: { pos, gap } (gap: malice short of first). */
+  killerQueue() {
+    this.me.malice = profile.malice;
+    const others = this.members.filter((m) => !m.isMe), top = Math.max(0, ...others.map((m) => m.malice));
+    const pos = 1 + others.filter((m) => m.malice > this.me.malice).length;
+    return { pos, gap: this.me.malice > top ? 0 : top - this.me.malice + 1 };
+  }
   survivorFor(m) {
     if (m.isMe) return { charId: profile.equipped.survivor, skin: equippedSkin(profile.equipped.survivor) };
     const id = isReady(m.main) ? m.main : (SURVIVORS.find((s) => isReady(s.id)) || SURVIVORS[0]).id;

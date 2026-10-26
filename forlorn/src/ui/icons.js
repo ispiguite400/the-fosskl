@@ -32,3 +32,57 @@ export function icon(name, cls = '') {
   const d = P[name]; if (!d) return '';
   return '<svg class="ico ' + cls + '" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="' + d + '"/></svg>';
 }
+
+/* Ability and item icons: white line drawings on dark tiles, the way asym games draw them. */
+const A = {
+  shield: '<path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.3 7.5 9.5 4.3-1.2 7.5-4.9 7.5-9.5V6z"/>',
+  shieldbash: '<path d="M14 4 8 6.5v4.5c0 3.8 2.6 6.9 6 7.9 3.4-1 6-4.1 6-7.9V6.5z"/><path d="M2 9h3.5M2 13h3.5M3 17h2.5"/>',
+  grenade: '<circle cx="11" cy="14.5" r="6"/><path d="M9 8.6V6h4v2.6M13 6.5c1.8-1.8 4.2-1.8 5.6 0"/><circle cx="19.5" cy="8" r="1.5"/>',
+  crate: '<path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/>',
+  medkit: '<rect x="3" y="6.5" width="18" height="13.5" rx="2"/><path d="M9 6.5V4h6v2.5M12 10v6.5M8.8 13.2h6.4"/>',
+  megaphone: '<path d="M3 10v4h3l8 5V5L6 10z"/><path d="M17.5 9a4 4 0 0 1 0 6M20 6.5a8 8 0 0 1 0 11"/>',
+  breakout: '<path d="M4 3v18M8 3v6.5M8 14.5V21M12 3v18"/><path d="M15 12h6.5M18.5 9l3 3-3 3"/>',
+  cloud: '<path d="M7 18a4 4 0 0 1-.5-8 5.5 5.5 0 0 1 10.6-1.4A4.5 4.5 0 1 1 17.5 18z"/>',
+  chevrons: '<path d="M5 10l7-5 7 5M5 15l7-5 7 5M5 20l7-5 7 5"/>',
+  pistol: '<path d="M3 7h16v4h-7l-1.5 2.5H9L7.5 19h-4L5 11H3z"/><path d="M12 11v2.5"/>',
+  shotgun: '<path d="M2 9h18l2 1.5V12H11l-2 2.5H7L5.5 19H2l1.5-6.5H2z"/>',
+  eyeoff: '<path d="M3 3l18 18"/><path d="M10.6 5.1A9.6 9.6 0 0 1 12 5c5 0 8.5 4 9.5 7a13 13 0 0 1-2.4 3.6M6.4 6.4C4.3 7.8 3 9.9 2.5 12c1 3 4.5 7 9.5 7a9.6 9.6 0 0 0 4.7-1.2"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+  eye: '<path d="M2.5 12C3.5 9 7 5 12 5s8.5 4 9.5 7c-1 3-4.5 7-9.5 7s-8.5-4-9.5-7z"/><circle cx="12" cy="12" r="3"/>',
+  bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+  dash: '<path d="M13 2 4 14h7l-1 8 9-12h-7z"/><path d="M2 6h3M1 10h2"/>',
+  flashlight: '<rect x="2.5" y="9" width="10" height="6" rx="1"/><path d="M12.5 9l5-3v12l-5-3"/><path d="M20 8.5l2.2-1.2M20 15.5l2.2 1.2M20.2 12h2.3"/>',
+  cash: '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M6 9.5v.01M18 14.5v.01"/>',
+  medal: '<circle cx="12" cy="15" r="6"/><path d="M8.5 3 11 9.2M15.5 3 13 9.2"/><path d="M12 12.4l.9 1.8 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3z"/>',
+  hand: '<path d="M7 11V5.5a1.5 1.5 0 0 1 3 0V10M10 9.5v-6a1.5 1.5 0 0 1 3 0V10M13 9.5V5a1.5 1.5 0 0 1 3 0v6M16 9a1.5 1.5 0 0 1 3 0v5a7 7 0 0 1-7 7h-1a7 7 0 0 1-5.5-2.7L3 14.5a1.6 1.6 0 0 1 2.5-2L7 14"/>',
+  hexshield: '<path d="M12 2.5 20.5 7.5v9L12 21.5 3.5 16.5v-9z"/><path d="M12 7l4.5 2.5v5L12 17l-4.5-2.5v-5z"/>',
+  mask: '<path d="M3 6c3 1 6 1 9 0s6-1 9 0v5c0 5-4 8-9 8s-9-3-9-8z"/><path d="M7 11c1-1 2.5-1 3.5 0M13.5 11c1-1 2.5-1 3.5 0M9 15.5c2 1 4 1 6 0"/>',
+  trap: '<path d="M3 16h18M8 20h8"/><path d="M4 16l2-6 2 6 2-6 2 6 2-6 2 6 2-6 2 6"/>',
+  flame: '<path d="M12 2.5c1 3.5 5.5 5.5 5.5 10.5a5.5 5.5 0 0 1-11 0c0-2.4 1.2-4 2.5-5 .3 1.7 1 2.6 2 3 0-3 0-5.5 1-8.5z"/>',
+  lift: '<path d="M12 20V5.5M7 10.5l5-5 5 5"/><path d="M4 21h4M16 21h4"/>',
+  moon: '<path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5z"/>',
+  radio: '<rect x="4" y="8" width="16" height="13" rx="2"/><path d="M8 8l9-5M8 13h8M8 17h3"/><circle cx="15.5" cy="16.5" r="1.5"/>',
+  question: '<path d="M4 4h16v12H9l-5 4z"/><path d="M10 8.5a2 2 0 1 1 2.8 1.8c-.5.3-.8.7-.8 1.2M12 13.5v.01"/>',
+  slashes: '<path d="M5 19 19 5M9.5 21 21 9.5M3 14.5 14.5 3"/>',
+  swords: '<path d="M4 4l10 10M20 4 10 14"/><path d="M7 15l2 2M17 15l-2 2M6.5 19.5 4.5 21.5M17.5 19.5l2 2"/>',
+  skull: '<path d="M12 3a7 7 0 0 0-7 7c0 2.4 1.2 4 3 5v3.5h8V15c1.8-1 3-2.6 3-5a7 7 0 0 0-7-7z"/><circle cx="9.5" cy="10.5" r="1.4"/><circle cx="14.5" cy="10.5" r="1.4"/><path d="M10.5 18.5V21M13.5 18.5V21"/>',
+  spiral: '<path d="M12 12a1.5 1.5 0 0 1 1.5 1.5 3 3 0 0 1-3 3A4.5 4.5 0 0 1 6 12a6 6 0 0 1 6-6 7.5 7.5 0 0 1 7.5 7.5"/>',
+  portal: '<ellipse cx="12" cy="12" rx="6" ry="9"/><ellipse cx="12" cy="12" rx="2.5" ry="5"/>',
+  bottle: '<path d="M10 2h4v3l1.5 3v12a2 2 0 0 1-2 2h-3a2 2 0 0 1-2-2V8L10 5z"/><path d="M8.5 12.5h7"/>',
+  knife: '<path d="M14 3.5c3.6 0 6.5 2.9 6.5 6.5L12 18.5 5.5 12z"/><path d="M8.5 15.5 3.5 20.5"/>',
+  claw: '<path d="M6 21c2-6 2-12-1-17M11 21c1.5-6 1.5-12-1.5-17M16 21c1-6 1-11-2-16"/>',
+  ghost: '<path d="M5 21V10a7 7 0 0 1 14 0v11l-2.3-2-2.4 2-2.3-2-2.3 2-2.4-2z"/><path d="M9.5 10v.01M14.5 10v.01"/>'
+};
+/** Which drawing each ability, item and attack uses. */
+const AB = {
+  block: 'shield', grenade: 'grenade', shieldbash: 'shieldbash', supply: 'crate', firstaid: 'medkit', rally: 'megaphone', breakout: 'breakout',
+  smoke: 'cloud', warcry: 'chevrons', sidearm: 'pistol', hide: 'eyeoff', sixthsense: 'eye', burst: 'dash', flashlight: 'flashlight', makeitrain: 'cash',
+  gold: 'medal', push: 'hand', shield: 'hexshield', disguise: 'mask', snare: 'trap', hellfire: 'flame', levitate: 'lift', vanish: 'moon', pistol: 'pistol',
+  reinforce: 'radio', kgrenade: 'grenade', shotgun: 'shotgun', beartrap: 'trap', interrogate: 'question', dashslash: 'slashes', parry: 'swords',
+  execute: 'skull', lightning: 'bolt', possess: 'spiral', limbo: 'portal', medkit: 'medkit', cola: 'bottle', m1: 'knife', echo: 'ghost'
+};
+/** An ability's icon as inline SVG (falls back to the given text, e.g. its emoji). */
+export function abilityIcon(id, fallback = '') {
+  const d = A[AB[id] || id];
+  if (!d) return fallback;
+  return '<svg class="aico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
+}
