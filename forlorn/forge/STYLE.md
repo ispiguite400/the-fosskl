@@ -8,11 +8,14 @@ These come straight from the user's feedback, with a reference image of Guest 13
 - **Match how each character looked in the ObliviousHD films, never the Forsaken game.** The user:
   *"pls make everyone match how they looked in the movies not forsaken."*
 - **The body is R6 wearing the films' package shapes (Robloxian 2.0): NOT plain blocks and NOT R15.**
-  The user: *"he don't have a blocky body, look at the movie version of him"* and *"not r15 tho."*
+  The user: *"he don't have a blocky body, look at the movie version of him"*, *"not r15 tho"* and
+  *"Robloxian 2.0 body for him."*
   Six rigid parts, no elbows or knees: the classic cylinder head; ONE torso piece, broad rounded
   shoulders tapering to the waist; ONE piece per arm (shoulder cap, arm, forearm, a mitten hand with
   a thumb); ONE piece per leg (thigh, shin, a chunky boot/foot). Soft, rounded shapes. Characters the
-  films give another package (Man, Superhero) use that package's proportions.
+  films give another package (Man, Superhero) use that package's proportions. Robloxian 2.0 is
+  the slim, smooth package: round shoulders that sit over the torso's corners, a shoulder line
+  sloping from the neck, smooth limbs, straight trouser legs, mitten hands with a thumb nub.
   **Never sculpt clothing onto the body**: no vests, belts, pouches or cuffs that change its shape.
 - **Clothing is texture**, drawn like a Roblox Shirt and Pants template: flat colour, drawn outlines,
   drawn shading lines and highlights, patterns (UCP digital camo), drawn pouches, straps, laces,

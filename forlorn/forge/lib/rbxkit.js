@@ -53,10 +53,10 @@ B.setup = function (o) {
    * shoulders: lowered about it, the arm hangs beside the chest with its top at the shoulder
    * line. (Inside the arm it would hand the arm to the Shoulder bone, which ends at the pivot.)
    */
-  D.pivot = [P.ch + 0.14, 4.27];                                // measured: the arm's inner edge 1.02 studs out at chest height, hanging 18 degrees out
+  D.pivot = [P.ch + 0.1, 4.3];                                // measured: the arm's inner edge 1.02 studs out at chest height, hanging 18 degrees out
   const px = D.pivot[0];
   const len = 2.48;                                             // shoulder top to fingertip (measured)
-  D.arm = { in: px + 0.03, elbow: px + 0.03 + 0.45 * len, wrist: px + 0.03 + 0.82 * len, tip: px + 0.03 + len };
+  D.arm = { in: px + 0.04, elbow: px + 0.04 + 0.45 * len, wrist: px + 0.04 + 0.82 * len, tip: px + 0.04 + len };
   D.joint = { hips: 2.6, spine: 3.0, chest: 3.5, neck: 4.28, hip: 2.02 };
   const m = (v) => v * st;
   // the boxes the clothing templates are drawn on (standing / hanging frame), metres
@@ -98,24 +98,27 @@ B.body = function (o) {
     const ax = (v) => sd * m(v), py = m(D.pivot[1]);
     // the arm: a rounded shoulder, the upper arm, the forearm and a mitten hand with a thumb, one piece
     const A = C.newObject(sd > 0 ? 'ArmL' : 'ArmR');
-    T('arm', m(0.1));
-    C.ell([ax(D.arm.in + 0.32), py, 0], [m(0.32), m(P.arm + 0.06), m(P.arm + 0.05)]);
-    C.box([ax((D.arm.in + D.arm.elbow) / 2 + 0.05), py, 0], [m((D.arm.elbow - D.arm.in) / 2 - 0.05), m(P.arm), m(P.arm)], m(0.16));
-    C.box([ax((D.arm.elbow + D.arm.wrist) / 2), py, 0], [m((D.arm.wrist - D.arm.elbow) / 2 + 0.05), m(P.fa), m(P.fa)], m(0.15));
-    T('arm', m(0.05));
-    C.box([ax((D.arm.wrist + D.arm.tip) / 2), py, 0], [m((D.arm.tip - D.arm.wrist) / 2), m(P.hand), m(P.fa * 0.92)], m(0.12));
-    C.limb([ax(D.arm.wrist + 0.08), py - m(0.06), m(P.fa * 0.7)], [ax(D.arm.wrist + 0.22), py - m(P.hand + 0.02), m(P.fa + 0.12)], m(0.09), m(0.075));
+    // Robloxian 2.0: a big round shoulder (it sits over the torso's corner once the arm hangs),
+    // smooth near-tubular upper arm and forearm, and a mitten hand with a thumb nub
+    T('arm', m(0.2));
+    C.ell([ax(D.arm.in + 0.38), py, 0], [m(0.38), m(P.arm + 0.04), m(P.arm + 0.04)]);
+    C.box([ax((D.arm.in + 0.3 + D.arm.elbow) / 2), py, 0], [m((D.arm.elbow - D.arm.in - 0.3) / 2), m(P.arm), m(P.arm)], m(P.arm * 0.75));
+    C.box([ax((D.arm.elbow + D.arm.wrist) / 2), py, 0], [m((D.arm.wrist - D.arm.elbow) / 2 + 0.08), m(P.fa), m(P.fa)], m(P.fa * 0.72));
+    T('arm', m(0.07));
+    C.box([ax((D.arm.wrist + D.arm.tip) / 2), py - m(0.02), 0], [m((D.arm.tip - D.arm.wrist) / 2), m(P.hand), m(P.fa * 0.9)], m(0.15));
+    C.limb([ax(D.arm.wrist + 0.08), py - m(0.06), m(P.fa * 0.6)], [ax(D.arm.wrist + 0.24), py - m(P.hand + 0.04), m(P.fa + 0.13)], m(0.1), m(0.085));
     if (o.armExtra) o.armExtra(sd, ax, py, m);
     C.build(vox, 1, A);
     // the leg: thigh, shin, a tall boot whose foot widens, one piece
     const L = C.newObject(sd > 0 ? 'LegL' : 'LegR');
     const lx = sd * m(D.legX);
-    T('leg', m(0.1));
-    C.box([lx, m((1.15 + D.y.legTop) / 2), 0], [m(P.leg), m((D.y.legTop - 1.15) / 2), m(P.leg)], m(0.15));
-    C.box([lx, m((0.45 + 1.2) / 2), 0], [m(P.shin), m((1.2 - 0.45) / 2), m(P.shin)], m(0.14));
+    // one straight trouser leg, as on the still
     T('leg', m(0.08));
-    C.box([lx, m((0.4 + D.y.boot) / 2), 0], [m(P.shaft), m((D.y.boot - 0.4) / 2), m(P.shaft)], m(0.12));
-    C.box([lx, m(0.25), m(0.1)], [m(P.foot), m(0.25), m(P.foot + 0.1)], m(0.14));
+    C.box([lx, m((0.45 + D.y.legTop) / 2), 0], [m(P.leg), m((D.y.legTop - 0.45) / 2), m(P.leg)], m(0.16));
+    T('leg', m(0.08));
+    C.box([lx, m((0.4 + D.y.boot) / 2), 0], [m(P.shaft), m((D.y.boot - 0.4) / 2), m(P.shaft)], m(0.18));
+    C.box([lx, m(0.24), m(0.08)], [m(P.foot), m(0.24), m(P.foot + 0.1)], m(0.2));
+    C.ell([lx, m(0.2), m(0.5)], [m(P.foot * 0.92), m(0.21), m(0.24)]);                           // the rounded toe of the shoe
     if (o.legExtra) o.legExtra(sd, lx, m);
     C.build(vox, 1, L);
   }
