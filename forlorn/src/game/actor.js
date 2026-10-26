@@ -10,8 +10,8 @@ import { clamp, damp, angDiff, TAU } from '../core/util.js';
 import { byId } from '../data/characters.js';
 
 export const TUNE = {
-  survivor: { walk: 3.7, sprint: 6.0, accel: 24, drain: 11, regen: 17, delay: 0.9, radius: 0.42 },
-  killer: { walk: 4.1, sprint: 6.45, accel: 26, drain: 7.5, regen: 14, delay: 1.2, radius: 0.48 },
+  survivor: { walk: 3.8, sprint: 6.0, accel: 24, drain: 8.5, regen: 16, delay: 0.9, radius: 0.42 },
+  killer: { walk: 4.0, sprint: 6.25, accel: 24, drain: 7, regen: 12, delay: 1.4, radius: 0.48 },
   minion: { walk: 3.8, sprint: 5.4, accel: 20, drain: 0, regen: 0, delay: 0, radius: 0.42 },
   lobby: { walk: 3.7, sprint: 6.0, accel: 24, drain: 0, regen: 0, delay: 0, radius: 0.42 },
   gravity: 26, jump: 7.6

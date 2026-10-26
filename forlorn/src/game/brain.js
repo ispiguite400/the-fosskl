@@ -570,7 +570,7 @@ export class KillerBrain {
   onEvent(ev, d) {
     const M = this.M;
     if (ev === 'genNoise' && this.a.dist(d.gen) < 60 && !this.target) { this.patrol = [d.gen.x + (R() - 0.5) * 3, d.gen.z + (R() - 0.5) * 3]; }
-    if (ev === 'stunned' && d.who === this.a && this.chatCd <= 0 && R() < this.p.toxic) { this.say('reply_noob', { name: d.by.name }); this.chatCd = 10; }
+    if (ev === 'stunned' && d.who === this.a && d.by && this.chatCd <= 0 && R() < this.p.toxic) { this.say('reply_noob', { name: d.by.name }); this.chatCd = 10; }
     void M;
   }
 }

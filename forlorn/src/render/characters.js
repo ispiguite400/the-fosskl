@@ -11,7 +11,7 @@
  */
 import * as THREE from 'three';
 import { buildForgeCharacter } from './forge-loader.js';
-import { characterModel } from '../data/characters.js';
+import { characterModel, characterGlow } from '../data/characters.js';
 
 const buffers = new Map();       // file -> Promise<ArrayBuffer>
 const templates = new Map();     // file -> material with the baked texture, shared by every copy
@@ -22,17 +22,27 @@ function fetchBuffer(file) {
 }
 export function preloadModel(file) { return fetchBuffer(file).catch(() => null); }
 
-function rimMaterial(base) {
+/*
+ * The character material: the baked texture, a rim of light so silhouettes read at night, a hit
+ * flash, and (for characters whose eyes burn) a glow on the brightest, most saturated texels.
+ */
+function rimMaterial(base, glow = 0) {
   const m = base.clone();
   m.userData.rim = { value: new THREE.Color(0x6d7fa8) };
   m.userData.flash = { value: new THREE.Color(0, 0, 0) };
+  m.userData.glow = { value: glow };
   m.onBeforeCompile = (s) => {
-    s.uniforms.uRim = m.userData.rim; s.uniforms.uFlash = m.userData.flash;
+    s.uniforms.uRim = m.userData.rim; s.uniforms.uFlash = m.userData.flash; s.uniforms.uGlow = m.userData.glow;
     s.fragmentShader = s.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform vec3 uRim; uniform vec3 uFlash;')
+      .replace('#include <common>', '#include <common>\nuniform vec3 uRim; uniform vec3 uFlash; uniform float uGlow;')
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         float rimF = pow(1.0 - max(dot(normalize(normal), normalize(vViewPosition)), 0.0), 3.0);
-        totalEmissiveRadiance += uRim * rimF * 0.55 + uFlash;`);
+        totalEmissiveRadiance += uRim * rimF * 0.55 + uFlash;
+        if (uGlow > 0.0) {
+          float gx = max(max(diffuseColor.r, diffuseColor.g), diffuseColor.b), gn = min(min(diffuseColor.r, diffuseColor.g), diffuseColor.b);
+          float gk = smoothstep(0.3, 0.6, gx - gn) * smoothstep(0.08, 0.45, gx);
+          totalEmissiveRadiance += diffuseColor.rgb * gk * uGlow;
+        }`);
   };
   m.customProgramCacheKey = () => 'forlorn-rim';
   return m;
@@ -50,9 +60,9 @@ export async function makeCharacter(id, skin = 'default') {
     tpl = ch.mesh.material;
     tpl.emissive = new THREE.Color(0x101014);
     templates.set(file, tpl);
-    ch.mesh.material = rimMaterial(tpl);
+    ch.mesh.material = rimMaterial(tpl, characterGlow(id));
   } else {
-    ch = buildForgeCharacter(buf.slice(0), THREE, { material: rimMaterial(tpl) });
+    ch = buildForgeCharacter(buf.slice(0), THREE, { material: rimMaterial(tpl, characterGlow(id)) });
   }
   return new CharacterView(ch, id);
 }

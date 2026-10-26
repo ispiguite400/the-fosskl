@@ -116,7 +116,7 @@ export class Match {
     this.later(0.4 + text.length * 0.05 * (1.2 - a.member.persona.skill * 0.4), () => { if (!a.left) this.game.chat.post(a.member, text, a); });
   }
   /** Every bot in the round hears about something. */
-  tell(ev, d) { for (const a of this.actors) if (a.brain && a.brain.onEvent) a.brain.onEvent(ev, d); }
+  tell(ev, d) { for (const a of this.actors) if (a.brain && a.brain.onEvent) { try { a.brain.onEvent(ev, d); } catch (e) { console.error('[brain event]', ev, e); } } }
   callout(from, K) {
     this.tell('callout', { from, x: K.x, z: K.z });
     if (this.player && this.player.role === 'survivor' && this.player !== from && this.player.alive) bus.emit('ping', { x: K.x, z: K.z, kind: 'killer', label: from.name + ': killer', t: 3.5 });
@@ -413,7 +413,7 @@ export class Match {
       for (const u of g.users) {
         if (!u.alive || !u.busy || u.busy.gen !== g) { g.users.delete(u); continue; }
         if (u.isPlayer) continue;
-        let rate = 0.075 + u.member.persona.skill * 0.04;                 // about 40-50 s for a generator alone
+        let rate = 0.085 + u.member.persona.skill * 0.045;                // about 35-45 s for a generator alone
         if (u.def.id === 'matt' && g.users.size > 1) rate *= 1.15;
         if (this.survivors.some((c) => c.alive && c.def.id === 'captain' && c.dist(u) < 10)) rate *= 1.1;
         if (this.bondedNear(u)) rate *= 1.1;

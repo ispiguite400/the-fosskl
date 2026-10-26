@@ -129,7 +129,7 @@ export const KILLERS = [
       { id: 'levitate', key: 'R', name: 'Levitate', cd: 30, text: 'Lift the survivor you are looking at (18m): helpless for 1.6s, 20 damage.' },
       { id: 'vanish', key: 'F', name: 'Vanish', cd: 40, text: 'Fade from sight for 5 seconds and move 20% faster.' }
     ],
-    skins: [{ id: 'default', name: 'The Terrible', price: 0 }, { id: 'classic', name: 'Black Eyes', price: 500 }, { id: 'inferno', name: 'Inferno', price: 900 }]
+    skins: [{ id: 'default', name: 'The Terrible', price: 0 }, { id: 'classic', name: 'White Eyes', price: 500 }, { id: 'inferno', name: 'Inferno', price: 900 }]
   },
   {
     id: 'bacongeneral', name: 'Bacon General', title: 'Ruler of the Bacon Empire', film: 'The Last Guest', price: 0, color: '#3d74c9',
@@ -184,8 +184,11 @@ export const byId = (id) => ALL.find((c) => c.id === id) || MINIONS.find((c) => 
 
 /* Which models have been forged and shipped. A character whose model is not ready yet is
    shown as "in the forge" in the menus and cannot be picked. */
-export const SHIPPED = new Set(['guest1337']);
+export const SHIPPED = new Set(['guest1337', 'terrible']);
 export const isReady = (id) => SHIPPED.has(id);
+/** How strongly a character's eyes (its brightest, most saturated colours) glow. */
+const GLOW = { terrible: 4, bloxwatch: 4, charlie: 1.2 };
+export const characterGlow = (id) => GLOW[id] || 0;
 export function characterModel(id, skin = 'default') {
   return 'assets/models/' + id + (skin && skin !== 'default' ? '_' + skin : '') + '.glb';
 }
