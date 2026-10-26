@@ -11,6 +11,7 @@ import { input } from '../core/input.js';
 import { audio } from '../audio/audio.js';
 import { R } from '../core/util.js';
 import { PARTS } from '../game/props.js';
+import { glyph } from './glyph.js';
 
 const COLORS = ['#ff4b4b', '#ffd23f', '#3fa7ff', '#4bff7a', '#c46bff', '#ff8a3f'];
 
@@ -49,7 +50,7 @@ export class Puzzle {
   }
   updateHint() {
     const d = input.device;
-    this.el.querySelector('.hint').textContent = d === 'pad' ? 'D-pad to choose · ✕ connect · ○ leave' : d === 'touch' ? 'Tap a wire, then its match · move to leave' : 'Click a wire, then its match · move or Esc to leave';
+    this.el.querySelector('.hint').innerHTML = d === 'pad' ? 'D-pad to choose · ' + glyph('confirm') + ' connect · ' + glyph('cancel') + ' leave' : d === 'touch' ? 'Tap a wire, then its match · move to leave' : 'Click a wire, then its match · move or ' + glyph('cancel') + ' to leave';
     this.el.querySelector('.gp i').style.width = (this.gen.progress / PARTS * 100) + '%';
   }
   pick(side, i) {

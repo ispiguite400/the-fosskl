@@ -45,9 +45,15 @@ Plays in any current browser with WebGL 2: desktop, phones and tablets. On weake
 | Scoreboard | Tab | Touchpad | (pause menu) |
 | Menu | Esc | OPTIONS | ☰ |
 
-Menus work with the D-pad or stick (✕ to choose, ○ to go back, L1/R1 to switch tabs). The game
-shows the right button glyphs for whatever you touched last, and the DualSense rumbles on hits
-and stuns.
+Menus work with the D-pad or stick (✕ to choose, ○ to go back, L1/R1 to switch tabs). The
+DualSense rumbles on hits and stuns.
+
+The game always shows the button to press on whatever you used last, and switches the moment you
+pick up something else: a keycap or the mouse on a computer; the PlayStation shapes in their
+colours, Xbox letters (A B X Y, LB RB LT RT) or Switch letters, depending on the controller's
+name; or the touch button's own label or picture on a phone. That is the badge on top of each
+ability, the interact prompt, each ability on the Characters screen, and the button list in How to
+play and Settings (`src/ui/glyph.js`).
 
 ## The game
 

@@ -11,6 +11,7 @@ import { music } from '../audio/music.js';
 import { portrait, mapArt } from './art.js';
 import { icon, abilityIcon } from './icons.js';
 import { MenuNav } from './nav.js';
+import { glyph, controlsList } from './glyph.js';
 import { ABILITIES } from '../game/abilities.js';
 import { IS_TOUCH } from '../core/device.js';
 
@@ -192,8 +193,8 @@ export class UI {
       ? bar('Health', c.hp, (c.hp - 60) / 80, 's') + bar('Speed', Math.round(c.speed * 100) + '%', (c.speed - 0.85) / 0.25, 's') + bar('Stamina', c.stamina, (c.stamina - 80) / 50, 's')
       : bar('Attack', esc(c.m1.name) + ' · ' + c.m1.dmg, c.m1.dmg / 40) + bar('Speed', Math.round(c.speed * 100) + '%', (c.speed - 0.85) / 0.25) + bar('Swing', c.m1.cd + 's', 1.6 - c.m1.cd);
     const abil = (c.passive ? '<div class="abil p"><div class="k">' + icon('star') + '</div><div><b>' + esc(c.passive.name) + ' <span>passive</span></b><span>' + esc(c.passive.text) + '</span></div></div>' : '') +
-      (tab === 'killer' ? '<div class="abil"><div class="k">' + abilityIcon(/claw/i.test(c.m1.name) ? 'claw' : 'm1', 'M1') + '</div><div><b>' + esc(c.m1.name) + '</b><span>' + c.m1.dmg + ' damage, every ' + c.m1.cd + 's.</span></div></div>' : '') +
-      c.abilities.map((a) => '<div class="abil"><div class="k">' + abilityIcon(a.id, (ABILITIES[a.id] && ABILITIES[a.id].icon) || a.key) + '</div><div><b>' + esc(a.name) + ' <span>' + a.key + ' · ' + a.cd + 's</span></b><span>' + esc(a.text) + '</span></div></div>').join('');
+      (tab === 'killer' ? '<div class="abil"><div class="k">' + abilityIcon(/claw/i.test(c.m1.name) ? 'claw' : 'm1', 'M1') + '</div><div><b>' + esc(c.m1.name) + ' ' + glyph('attack') + '</b><span>' + c.m1.dmg + ' damage, every ' + c.m1.cd + 's.</span></div></div>' : '') +
+      c.abilities.map((a, i) => '<div class="abil"><div class="k">' + abilityIcon(a.id, (ABILITIES[a.id] && ABILITIES[a.id].icon) || a.key) + '</div><div><b>' + esc(a.name) + ' ' + glyph(['ability1', 'ability2', 'ability3'][i], 'ab:' + a.id) + ' <span>' + a.cd + 's cooldown</span></b><span>' + esc(a.text) + '</span></div></div>').join('');
     box.innerHTML = '<div class="art"><div class="glow" style="background:' + c.color + '"></div><div class="role">' + (tab === 'survivor' ? 'SURVIVOR' : 'KILLER') + '</div><img alt="" src="' + portrait(c.id, skin) + '" onerror="this.style.visibility=\'hidden\'"></div><div class="info"><div class="film">' + esc(c.film) + '</div><h3>' + esc(c.name) + '</h3><div class="ttl">' + esc(c.title) + '</div><div class="bio">' + esc(c.bio) + '</div><div class="stats">' + stats + '</div>' + abil + '<div class="label" style="margin-top:.5rem">SKINS</div><div class="skins"></div><div class="act"></div></div>';
     const sk = box.querySelector('.skins');
     for (const k of c.skins) {
@@ -334,8 +335,8 @@ export class UI {
     sec('GAMEPLAY');
     row('Bot chat', 'The other players talking', choice('botChat', [[true, 'On'], [false, 'Off']]));
     row('Play as killer', 'Off: you are never picked as the killer', choice('killerOptOut', [[false, 'On'], [true, 'Off']]));
-    const ctrl = el('div', 'set-row', '<label>Controls<small>Move WASD · Sprint Shift · Jump Space · Interact E · Abilities Q R F · Attack LMB · Emote G · Chat / · Scoreboard Tab · Menu Esc<br>DualSense: L-stick move · R-stick look · L3/L1 sprint · ✕ jump · □ interact · R1 L2 △ abilities · R2 attack · ▶ emote · touchpad scores · OPTIONS menu</small></label>');
-    box.appendChild(ctrl);
+    sec('BUTTONS');
+    box.appendChild(el('div', 'set-row ctl-row', controlsList()));
     this._set('settings', s);
   }
 
@@ -357,20 +358,14 @@ export class UI {
   /* ---------------- how to play ---------------- */
   howto() {
     const s = el('div', 'screen panel-screen fade-in');
-    const dev = input.device;
-    const ctl = dev === 'pad'
-      ? 'Left stick move · Right stick look · L3/L1 sprint · ✕ jump · □ repair / pick up · R1 L2 abilities · △ item (killer: third ability) · R2 attack · ▶ emote · CREATE quick chat · OPTIONS menu'
-      : dev === 'touch'
-        ? 'Left thumb moves (push far to run) · drag the right side to look · USE repairs and picks up · the round buttons are your abilities and item · 💬 chat · ☰ menu'
-        : 'WASD move · mouse look (click to lock) · Shift sprint · Space jump · E repair / pick up · Q R abilities · F item (killer: third ability) · Left click attack · G emote · / chat · Tab scores · Esc menu';
     const sec = (ic, t, body) => '<div class="set-row"><label>' + icon(ic) + t + '</label><small>' + body + '</small></div>';
     s.innerHTML = this._head('HOW TO PLAY', 'ONE KILLER · SEVEN SURVIVORS') + '<div class="settings howto">' +
+      sec('gear', 'Controls', (input.device === 'touch' ? 'Push the stick far to run. Each ability has its own round button, with its picture and name on it. ' : '') + 'Pick up another controller, keyboard or touch screen at any time and these change to match.') + controlsList() +
       sec('person', 'Survivors', 'Survive until the timer runs out. Every generator you repair takes 20 seconds off it: stand at one and press interact, then join the matching wires. A wrong wire sparks, and the killer hears it. Pick up medkits and Bloxy Colas. Use your two abilities to stun, heal, hide or outrun the killer, and loop it round walls and buildings. Your heart beats faster the closer the killer is.') +
       sec('knife', 'The killer', 'Kill every survivor before the timer runs out. Your attack hits in front of you; your three abilities hunt, trap and punish. You are a little faster than a sprinting survivor, but they loop and stun you.') +
       sec('note', 'Last Man Standing', 'When one survivor is left, the song starts. The round now lasts exactly as long as the song. The survivor gets a burst of speed and stamina; the killer starts in a Frenzy.') +
       sec('star', 'What is different here', '<b>Bond</b>: stay near another survivor for a while and you bond. Bonded survivors repair faster and see each other through walls. <b>Echoes</b>: dead survivors can reveal the killer to the living once a round. <b>Bloodlust</b>: the killer fills it by hitting and chasing; when it boils over, a Frenzy. <b>Events</b>: every map has its own, halfway through: an air raid, a lockdown, a blackout, a curfew.') +
       sec('skull', 'Who is the killer?', 'Every round you are not the killer, your malice goes up. The highest malice is the next killer. Turn "Play as killer" off in Settings to stay a survivor.') +
-      sec('gear', 'Controls', ctl) +
       '</div>';
     s.querySelector('[data-back]').onclick = () => this.back();
     this.onTab = null;

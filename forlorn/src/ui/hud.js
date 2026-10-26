@@ -9,6 +9,7 @@ import { bus } from '../core/events.js';
 import { ABILITIES, ITEMS } from '../game/abilities.js';
 import { portrait } from './art.js';
 import { icon, abilityIcon } from './icons.js';
+import { glyph } from './glyph.js';
 import { settings } from '../core/save.js';
 import { PARTS } from '../game/props.js';
 
@@ -101,12 +102,15 @@ export class Hud {
     r.appendChild(bottom); r.appendChild(this.abils);
     this.spec = el('div', 'h-spec hidden'); r.appendChild(this.spec);
     this.board = el('div', 'h-board hidden'); r.appendChild(this.board);
-    this.t = 0; this.lastDevice = '';
+    this.t = 0;
   }
   _ab(o) {
-    const e = el('div', 'ab' + (o.item ? ' item' : '') + (o.m1 ? ' m1' : ''), '<span class="key glyph"></span><span class="ic">' + o.icon + '</span><span class="nm">' + esc(o.name) + '</span><div class="cd hidden"></div>');
-    this.abils.appendChild(e);
-    return Object.assign(o, { el: e, key: e.querySelector('.key'), cdEl: e.querySelector('.cd'), ic: e.querySelector('.ic'), nm: e.querySelector('.nm') });
+    // the button to press sits on top of each tile, drawn for the device in use (ui/glyph.js keeps it current)
+    const w = el('div', 'abw', glyph(o.action));
+    const e = el('div', 'ab' + (o.item ? ' item' : '') + (o.m1 ? ' m1' : ''), '<span class="ic">' + o.icon + '</span><span class="nm">' + esc(o.name) + '</span><div class="cd hidden"></div>');
+    w.appendChild(e);
+    this.abils.appendChild(w);
+    return Object.assign(o, { el: e, cdEl: e.querySelector('.cd'), ic: e.querySelector('.ic'), nm: e.querySelector('.nm') });
   }
   feedLine(text, kind) {
     if (!this.feed) return;
@@ -181,11 +185,8 @@ export class Hud {
     if (near > 0) this.heart.style.setProperty('--beat', (1.25 - near * 0.85).toFixed(2) + 's');
     this.terror.style.opacity = me && me.role === 'survivor' ? Math.max(0, near * 1.4 - 0.35).toFixed(2) : 0;
     if (me) {
-      // abilities and their buttons on this device
-      const dev = input.device;
+      // abilities and their cooldowns
       for (const o of this.abEls) {
-        o.key.textContent = dev === 'touch' ? '' : input.glyph(o.action);
-        o.key.classList.toggle('pad', dev === 'pad');
         let cd = 0;
         if (o.m1) cd = me.attackCd;
         else if (o.item) { if (o._item !== me.item) { o._item = me.item; o.ic.innerHTML = me.item ? abilityIcon(me.item, ITEMS[me.item].icon) : '·'; o.nm.textContent = me.item ? ITEMS[me.item].name : 'No item'; } o.el.style.opacity = me.item ? 1 : 0.5; }
@@ -205,15 +206,14 @@ export class Hud {
     // prompt
     const p = player.prompt;
     if (p && me && me.alive) {
-      const g = input.glyph(p.action);
-      const html = (g ? '<span class="glyph' + (input.device === 'pad' ? ' pad' : '') + '">' + esc(g) + '</span>' : '') + esc(p.text) + (p.progress !== undefined ? '<span class="prog"><i style="width:' + Math.round(p.progress * 100) + '%"></i></span>' : '');
+      const html = glyph(p.action) + '<span>' + esc(p.text) + '</span>' + (p.progress !== undefined ? '<span class="prog"><i style="width:' + Math.round(p.progress * 100) + '%"></i></span>' : '');
       if (html !== this._prompt) { this.prompt.innerHTML = html; this._prompt = html; }
       this.prompt.classList.remove('hidden');
     } else this.prompt.classList.add('hidden');
     // spectating
     if (me && !me.alive && player.spectating) {
       const s = player.spectating, e = m.echoes.get(me);
-      const echo = e && !e.used ? '<button class="btn small" data-echo>ECHO ' + esc(input.glyph('ability1')) + '</button>' : '<span style="color:var(--faint);font-size:.75rem">echo used</span>';
+      const echo = e && !e.used ? '<button class="btn small" data-echo>ECHO ' + glyph('ability1') + '</button>' : '<span style="color:var(--faint);font-size:.75rem">echo used</span>';
       const html = '<button class="btn small" data-prev>◀</button><div class="who"><small>SPECTATING</small>' + esc(s.name) + ' · ' + esc(s.def.name) + '</div><button class="btn small" data-next>▶</button>' + echo;
       if (html !== this._spec) {
         this.spec.innerHTML = html; this._spec = html;

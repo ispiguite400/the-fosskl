@@ -6,14 +6,24 @@
  *   input.look   { x, y }   this frame's look delta, in "mouse pixels"
  *   input.down(a) / pressed(a) / released(a)
  *   input.device 'kbm' | 'pad' | 'touch'  (the last one used; drives on-screen glyphs)
- *   input.glyph(a)          the button to show for an action on the current device
+ *   input.padKind 'ps' | 'xbox' | 'switch'  (which controller, from its name; PlayStation if unsure)
+ *   input.label(a)          { kind, text } of the button for an action on the current device
+ *   input.glyph(a)          the same as plain text, for sentences
  *   input.rumble(strong, weak, ms)
  */
 import { clamp } from './util.js';
 import { IS_TOUCH } from './device.js';
 
 export const PAD = { CROSS: 0, CIRCLE: 1, SQUARE: 2, TRIANGLE: 3, L1: 4, R1: 5, L2: 6, R2: 7, CREATE: 8, OPTIONS: 9, L3: 10, R3: 11, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15, PS: 16, TOUCHPAD: 17 };
-const PAD_GLYPH = { 0: '✕', 1: '○', 2: '□', 3: '△', 4: 'L1', 5: 'R1', 6: 'L2', 7: 'R2', 8: 'CREATE', 9: 'OPTIONS', 10: 'L3', 11: 'R3', 12: '▲', 13: '▼', 14: '◀', 15: '▶', 17: 'TOUCHPAD' };
+/* what each button is called, on the controllers people have (the standard mapping is by position) */
+const PAD_NAME = {
+  ps:     { 0: '✕', 1: '○', 2: '□', 3: '△', 4: 'L1', 5: 'R1', 6: 'L2', 7: 'R2', 8: 'CREATE', 9: 'OPTIONS', 10: 'L3', 11: 'R3', 12: '▲', 13: '▼', 14: '◀', 15: '▶', 17: 'TOUCHPAD' },
+  xbox:   { 0: 'A', 1: 'B', 2: 'X', 3: 'Y', 4: 'LB', 5: 'RB', 6: 'LT', 7: 'RT', 8: 'VIEW', 9: 'MENU', 10: 'LS', 11: 'RS', 12: '▲', 13: '▼', 14: '◀', 15: '▶', 17: 'SHARE' },
+  switch: { 0: 'B', 1: 'A', 2: 'Y', 3: 'X', 4: 'L', 5: 'R', 6: 'ZL', 7: 'ZR', 8: '−', 9: '+', 10: 'LS', 11: 'RS', 12: '▲', 13: '▼', 14: '◀', 15: '▶', 17: 'CAPTURE' }
+};
+const padKindOf = (id = '') => (/045e|xbox|xinput/i.test(id) ? 'xbox' : /057e|nintendo|pro controller|joy-con/i.test(id) ? 'switch' : 'ps');
+/* what the touch buttons say (ui/touch.js); abilities show their own icon and name instead */
+const TOUCH_LABEL = { jump: 'JUMP', sprint: 'RUN', interact: 'USE', attack: 'HIT', emote: 'EMOTE', chat: '💬', pause: '☰' };
 
 /* action -> keys, mouse buttons, pad buttons */
 const BIND = {
@@ -52,8 +62,9 @@ class Input {
     this.held = new Set(); this.prev = new Set(); this._pressed = new Set(); this._released = new Set();
     this.mouseDelta = { x: 0, y: 0 };
     this.locked = false;
-    this.touch = { move: { x: 0, y: 0 }, look: { x: 0, y: 0 }, buttons: new Set() };
-    this.pad = null; this.padIndex = -1;
+    this.touchT = -1e9;                     // when a finger last touched the screen
+    this.touch ={ move: { x: 0, y: 0 }, look: { x: 0, y: 0 }, buttons: new Set() };
+    this.pad = null; this.padIndex = -1; this.padKind = 'ps';
     this.wheel = 0;
     this._bind();
   }
@@ -65,7 +76,10 @@ class Input {
     });
     addEventListener('keyup', (e) => { this.keys.delete(e.code); });
     addEventListener('blur', () => { this.keys.clear(); this.mouse.clear(); });
-    addEventListener('mousedown', (e) => { this.mouse.add(e.button); this.mouseTaps.add(e.button); this.device = 'kbm'; });
+    // a tap on a phone also fires a pretend mouse click after it: that is not a mouse (and not an attack)
+    addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch' || e.pointerType === 'pen') this.touchT = performance.now(); }, true);
+    const fromTouch = () => performance.now() - this.touchT < 1000;
+    addEventListener('mousedown', (e) => { if (fromTouch()) return; this.mouse.add(e.button); this.mouseTaps.add(e.button); this.device = 'kbm'; });
     addEventListener('mouseup', (e) => this.mouse.delete(e.button));
     addEventListener('contextmenu', (e) => e.preventDefault());
     addEventListener('mousemove', (e) => {
@@ -95,6 +109,7 @@ class Input {
     let pad = this.padIndex >= 0 ? pads[this.padIndex] : null;
     if (!pad) for (const p of pads) if (p && p.connected) { pad = p; this.padIndex = p.index; break; }
     this.pad = pad;
+    if (pad) this.padKind = padKindOf(pad.id);
     let px = 0, py = 0, lx = 0, ly = 0;
     const dz = (v, d = 0.14) => (Math.abs(v) < d ? 0 : (v - Math.sign(v) * d) / (1 - d));
     if (pad) {
@@ -141,13 +156,29 @@ class Input {
   consume(a) { this._pressed.delete(a); }
   takeWheel() { const w = this.wheel; this.wheel = 0; return w; }
 
-  /** The button label to show for an action on the device in use. */
-  glyph(a) {
-    const b = BIND[a]; if (!b) return '';
-    if (this.device === 'pad') return b.pad && b.pad.length ? PAD_GLYPH[b.pad[0]] : '';
-    if (this.device === 'touch') return '';
-    if (b.mouse && b.mouse.length && !b.keys.length) return b.mouse[0] === 0 ? 'LMB' : 'RMB';
-    return b.keys.length ? (KEY_LABEL[b.keys[0]] || b.keys[0].replace(/^Key|^Digit/, '')) : '';
+  /**
+   * The button for an action on the device in use: { kind, text }, kind being 'key', 'mouse',
+   * 'face' (a controller's four face buttons; also carries pad and button), 'pad' (any other
+   * controller button), 'touch', or '' when the device has no button for it.
+   */
+  label(a) {
+    const b = BIND[a], none = { kind: '', text: '' };
+    if (!b) return none;
+    if (this.device === 'pad') {
+      if (!b.pad || !b.pad.length) return none;
+      const i = b.pad[0];
+      return { kind: i <= 3 ? 'face' : 'pad', text: PAD_NAME[this.padKind][i], pad: this.padKind, button: i };
+    }
+    if (this.device === 'touch') return TOUCH_LABEL[a] ? { kind: 'touch', text: TOUCH_LABEL[a] } : none;
+    if (b.mouse && b.mouse.length && !b.keys.length) return { kind: 'mouse', text: b.mouse[0] === 0 ? 'LMB' : 'RMB' };
+    return b.keys.length ? { kind: 'key', text: KEY_LABEL[b.keys[0]] || b.keys[0].replace(/^Key|^Digit/, '') } : none;
+  }
+  /** The button for an action as plain text, for sentences ('' when there is none). */
+  glyph(a) { return this.label(a).text; }
+  /** What the player is holding, in words. */
+  deviceName() {
+    if (this.device === 'pad') return { ps: 'PlayStation controller', xbox: 'Xbox controller', switch: 'Switch controller' }[this.padKind];
+    return this.device === 'touch' ? 'Touch screen' : 'Keyboard and mouse';
   }
   rumble(strong = 0.5, weak = 0.5, ms = 120) {
     const a = this.pad && this.pad.vibrationActuator;

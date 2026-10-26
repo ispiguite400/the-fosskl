@@ -21,6 +21,7 @@ import { Chat } from './ui/chat.js';
 import { WorldUI } from './ui/worldui.js';
 import { Puzzle } from './ui/puzzle.js';
 import { Touch } from './ui/touch.js';
+import { refreshGlyphs } from './ui/glyph.js';
 import { loadLobby, loadMap, availableMaps } from './data/maps.js';
 import { preloadModel } from './render/characters.js';
 import { characterModel, SHIPPED, loadShipped } from './data/characters.js';
@@ -239,6 +240,7 @@ class Game {
   sim(seconds, dt = 1 / 30) { for (let t = 0; t < seconds; t += dt) this.step(dt); }
   step(dt) {
     input.update();
+    refreshGlyphs();
     if (input.pressed('pause') && !this.chat.isOpen && !this.puzzle.open) {
       if (this.ui.curName === 'pause' || this.ui.curName === 'lobbymenu') this.resume();
       else if (['settings', 'characters', 'shop', 'howto'].includes(this.ui.curName)) this.ui.back();
@@ -246,6 +248,7 @@ class Game {
     }
     this.ui.update(dt);
     this.chat.update(dt);
+    this.touch.root.classList.toggle('modal', this.ui.modal());
     const R2 = this.renderer;
     if (this.state === 'title' || this.state === 'boot') {
       this.titleT = (this.titleT || 0) + dt;

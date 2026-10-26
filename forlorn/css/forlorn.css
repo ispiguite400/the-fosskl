@@ -43,9 +43,28 @@ h1, h2, h3, .hd { font-family: var(--head); font-weight: 400; letter-spacing: 0.
 .btn.small { font-size: 1.02rem; padding: 0.5em 1.05em 0.46em; }
 .btn.on { background: linear-gradient(180deg, rgba(200,22,31,0.75), rgba(110,10,16,0.75)); color: #fff; box-shadow: inset 3px 0 0 #fff; }
 .btn[disabled] { opacity: 0.38; pointer-events: none; }
-.glyph { display: inline-flex; align-items: center; justify-content: center; min-width: 1.6em; height: 1.6em; padding: 0 0.35em; border-radius: 3px; background: rgba(236,228,214,0.14); border: 1px solid rgba(236,228,214,0.3); font-family: var(--body); font-weight: 700; font-size: 0.72em; letter-spacing: 0; color: var(--text); }
-.glyph.pad { border-radius: 50%; min-width: 1.7em; }
+/* button glyphs (ui/glyph.js): a keycap, a mouse, controller buttons or a touch button, for the device in use */
+.glyph { display: inline-flex; align-items: center; gap: 0.2em; vertical-align: middle; line-height: 1; font-family: var(--body); font-weight: 800; letter-spacing: 0.02em; text-shadow: none; text-transform: none; }
 .glyph:empty { display: none; }
+.glyph > span { display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.g-key, .g-pad, .g-touch { font-size: 0.8em; height: 2em; min-width: 2em; padding: 0 0.5em; white-space: nowrap; }
+.g-key { border-radius: 0.32em; background: linear-gradient(180deg, #f6f1e8, #d6cdbd); color: #131016; box-shadow: 0 0.18em 0 #6d6457, 0 0.25em 0.45em rgba(0,0,0,0.55); margin-bottom: 0.18em; }
+.g-mouse { width: 1.65em; height: 2.05em; padding: 0.15em 0.1em; border-radius: 0.45em; color: #f4efe6; background: linear-gradient(180deg, #2b2830, #0f0e12); box-shadow: inset 0 0 0 0.09em rgba(236,228,214,0.4), 0 0.12em 0.35em rgba(0,0,0,0.6); }
+.g-mouse svg { width: 100%; height: 100%; }
+.g-face { width: 1.75em; height: 1.75em; border-radius: 50%; background: radial-gradient(circle at 50% 35%, #2b2830, #0f0e12); box-shadow: inset 0 0 0 0.09em rgba(236,228,214,0.4), 0 0.12em 0.35em rgba(0,0,0,0.6); font-size: 1em; }
+.g-face svg { width: 1.2em; height: 1.2em; fill: none; stroke: currentColor; stroke-width: 2.7; stroke-linecap: round; stroke-linejoin: round; }
+.g-pad { border-radius: 0.5em; background: linear-gradient(180deg, #2b2830, #0f0e12); color: #f4efe6; box-shadow: inset 0 0 0 0.11em rgba(236,228,214,0.4), 0 0.12em 0.35em rgba(0,0,0,0.6); }
+.g-pad.trig { border-radius: 0.9em 0.9em 0.35em 0.35em; }
+.g-tbtn { width: 2em; height: 2em; border-radius: 50%; background: radial-gradient(circle at 50% 35%, rgba(40,36,42,0.9), rgba(8,7,10,0.85)); box-shadow: inset 0 0 0 0.11em rgba(236,228,214,0.45); color: #fff; }
+.g-tbtn .aico { width: 1.15em; height: 1.15em; }
+.g-touch { border-radius: 999px; background: rgba(20,18,24,0.75); color: #f4efe6; box-shadow: inset 0 0 0 0.12em rgba(236,228,214,0.6); }
+.ctl-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: 0.15rem 1.4rem; margin-top: 0.5rem; width: 100%; }
+.ctl-dev { grid-column: 1 / -1; color: var(--dim); font-size: 0.78rem; margin-bottom: 0.3rem; }
+.ctl-dev b { color: var(--text); }
+.ctl-item { display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.32rem 0; border-bottom: 1px solid var(--line); font-size: 0.86rem; color: #d8d1c4; }
+.ctl-item .glyph { font-size: 0.95rem; }
+.ctl-item:has(.glyph:empty) { display: none; }
+.set-row.ctl-row { display: block; }
 
 /* ---------- full-screen screens ---------- */
 .screen { position: absolute; inset: 0; pointer-events: auto; display: flex; flex-direction: column; }
@@ -171,7 +190,7 @@ h1, h2, h3, .hd { font-family: var(--head); font-weight: 400; letter-spacing: 0.
 .tabs { display: flex; gap: 0.2rem; }
 .tabs .btn { font-size: 1.12rem; padding: 0.45em 1.2em 0.42em; }
 .cs { flex: 1; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 1.3rem; min-height: 0; }
-.cs .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.8rem, 1fr)); gap: 0.6rem; overflow-y: auto; align-content: start; padding: 4px 6px 4px 4px; }
+.cs .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(7.8rem, 1fr)); grid-auto-rows: max-content; gap: 0.6rem; overflow-y: auto; align-content: start; padding: 4px 6px 4px 4px; }   /* max-content rows: in a short grid the cards would otherwise overlap */
 .ccard { position: relative; aspect-ratio: 3 / 4; background: radial-gradient(ellipse at 50% 30%, var(--tint, #2a2630) 0%, #0e0d11 75%); overflow: hidden; text-align: left; clip-path: var(--cut); transition: transform 0.14s; }
 .ccard img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 12%; transition: transform 0.25s; }
 .ccard .shade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 48%, rgba(0,0,0,0.9)); }
@@ -211,7 +230,8 @@ h1, h2, h3, .hd { font-family: var(--head); font-weight: 400; letter-spacing: 0.
 .abil .k { flex: none; width: 2.4rem; height: 2.4rem; display: flex; align-items: center; justify-content: center; background: linear-gradient(180deg, #2a2530, #121015); box-shadow: inset 0 0 0 1px var(--line2); font-family: var(--head); font-size: 1.15rem; clip-path: polygon(0 0, 100% 0, 100% 75%, 75% 100%, 0 100%); }
 .abil.p .k { color: var(--gold); }
 .abil b { display: block; font-size: 0.88rem; }
-.abil b span { color: var(--faint); font-weight: 400; font-size: 0.75rem; }
+.abil b > span:not(.glyph) { color: var(--faint); font-weight: 400; font-size: 0.75rem; }
+.abil b .glyph { font-size: 0.82rem; margin: 0 0.15rem; }
 .abil > div > span { color: var(--dim); }
 .skins { display: flex; gap: 0.45rem; flex-wrap: wrap; margin: 0.6rem 0 0.3rem; }
 .skin { position: relative; width: 4.6rem; padding: 0; text-align: center; background: #15131a; clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%); box-shadow: inset 0 0 0 1px var(--line2); overflow: hidden; }
@@ -348,7 +368,9 @@ h1, h2, h3, .hd { font-family: var(--head); font-weight: 400; letter-spacing: 0.
 .ab.m1 .ic .aico { width: 1.6rem; height: 1.6rem; }
 .ab .nm { position: absolute; left: 0; right: 0; bottom: 0.22rem; font-size: 0.52rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 3px; letter-spacing: 0.06em; text-transform: uppercase; }
 .ab .cd { position: absolute; inset: 0; background: conic-gradient(rgba(0,0,0,0.78) var(--p, 100%), rgba(0,0,0,0.25) 0); display: flex; align-items: center; justify-content: center; font-family: var(--head); font-size: 1.6rem; text-shadow: 0 1px 3px #000; }
-.ab .key { position: absolute; left: 0.2rem; top: 0.2rem; font-size: 0.6rem; z-index: 1; }
+.abw { position: relative; }
+.abw > .glyph { position: absolute; left: 50%; top: 0; translate: -50% -58%; z-index: 2; font-size: 1rem; }
+.h-abils { padding-top: 0.9rem; }
 .ab.ready { box-shadow: inset 0 0 0 1px rgba(236,228,214,0.4), inset 0 -3px 0 var(--red); }
 .ab.active { box-shadow: inset 0 0 0 2px var(--cyan), inset 0 0 18px rgba(134,226,255,0.5); }
 .ab.item { box-shadow: inset 0 0 0 1px rgba(240,194,75,0.4); }
@@ -516,7 +538,8 @@ h1, h2, h3, .hd { font-family: var(--head); font-weight: 400; letter-spacing: 0.
 
 /* ---------- touch controls ---------- */
 #touch { pointer-events: none; }
-#touch.on .tz { position: absolute; pointer-events: auto; }
+#touch.modal .tbtns, #touch.modal .ttop { display: none; }   /* a menu is open: it has its own buttons */
+#touch.on .tz { position: absolute; pointer-events: auto; z-index: -1; }   /* under the menus and HUD buttons, so a tap on those reaches them; empty screen falls through to here */
 .tz.move { left: 0; bottom: 0; width: 45%; height: 60%; }
 .tz.look { right: 0; top: 0; width: 55%; height: 100%; }
 .stick { position: absolute; width: 8.5rem; height: 8.5rem; margin: -4.25rem; border-radius: 50%; border: 2px solid rgba(236,228,214,0.25); background: radial-gradient(circle, rgba(0,0,0,0.05), rgba(0,0,0,0.35)); pointer-events: none; }
@@ -541,7 +564,10 @@ h1, h2, h3, .hd { font-family: var(--head); font-weight: 400; letter-spacing: 0.
   .h-team { transform: scale(0.82); transform-origin: top left; }
   .h-feed { display: none; }
   .ab { width: 3.2rem; height: 3.2rem; }
+  .abw > .glyph { font-size: 0.85rem; }
   .cs { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1.1fr); }
+  .cs .grid { grid-template-columns: repeat(auto-fill, minmax(6.2rem, 1fr)); gap: 0.45rem; }
+  .ccard { aspect-ratio: 1; }
   .detail .art { min-height: 5rem; }
   .detail .info { max-height: none; }
   .lobby-players { display: none; }
