@@ -23,7 +23,7 @@ import { Puzzle } from './ui/puzzle.js';
 import { Touch } from './ui/touch.js';
 import { loadLobby, loadMap, availableMaps } from './data/maps.js';
 import { preloadModel } from './render/characters.js';
-import { characterModel, SHIPPED } from './data/characters.js';
+import { characterModel, SHIPPED, loadShipped } from './data/characters.js';
 import * as THREE from 'three';
 
 class Game {
@@ -52,6 +52,8 @@ class Game {
   }
   async boot() {
     music.loadManifest();
+    await loadShipped();
+    this.server = new Server(this);
     for (const id of SHIPPED) preloadModel(characterModel(id));
     this.lobbyDef = await loadLobby();
     this.maps = await availableMaps();
@@ -204,8 +206,9 @@ class Game {
     if (this.paused) return this.resume();
     if (this.ui.modal()) return;
     this.paused = this.state === 'round';
-    this.ui.stack = [this.state === 'round' ? null : 'lobby'].filter(Boolean);
-    if (this.state === 'round') this.ui.pause(); else this.ui.push('settings');
+    this.ui.stack = [];
+    input.releaseLock();
+    if (this.state === 'round') this.ui.pause(); else this.ui.lobbyMenu();
   }
   resume() { this.paused = false; this.ui.clear(); this.ui.stack = []; if (this.state === 'lobby') this.ui.lobby(); this.relock(); }
   forfeit() {
@@ -233,12 +236,12 @@ class Game {
   step(dt) {
     input.update();
     if (input.pressed('pause') && !this.chat.isOpen && !this.puzzle.open) {
-      if (this.ui.curName === 'pause') this.resume();
-      else if (this.ui.curName === 'settings' || this.ui.curName === 'characters' || this.ui.curName === 'shop') this.ui.back();
+      if (this.ui.curName === 'pause' || this.ui.curName === 'lobbymenu') this.resume();
+      else if (['settings', 'characters', 'shop', 'howto'].includes(this.ui.curName)) this.ui.back();
       else this.togglePause();
     }
     this.ui.update(dt);
-    this.chat.update();
+    this.chat.update(dt);
     const R2 = this.renderer;
     if (this.state === 'title' || this.state === 'boot') {
       this.titleT = (this.titleT || 0) + dt;

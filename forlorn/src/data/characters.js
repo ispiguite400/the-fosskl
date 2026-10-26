@@ -184,8 +184,14 @@ export const byId = (id) => ALL.find((c) => c.id === id) || MINIONS.find((c) => 
 
 /* Which models have been forged and shipped. A character whose model is not ready yet is
    shown as "in the forge" in the menus and cannot be picked. */
-export const SHIPPED = new Set(['guest1337', 'terrible']);
+export const SHIPPED = new Set(['guest1337', 'matt', 'daisy', 'rose', 'captain', 'emily', 'justin', 'richguy', 'charlie', 'jez',
+  'terrible', 'bacongeneral', 'baconcolonel', 'eliteguard', 'bloxwatch', 'baconsoldier']);
 export const isReady = (id) => SHIPPED.has(id);
+/** Every model in assets/models/index.json (written by forge/make.mjs) counts as shipped. */
+export async function loadShipped() {
+  try { const r = await fetch('assets/models/index.json', { cache: 'no-cache' }); if (r.ok) for (const n of await r.json()) SHIPPED.add(n); } catch { /* keep the built-in list */ }
+  return SHIPPED;
+}
 /** How strongly a character's eyes (its brightest, most saturated colours) glow. */
 const GLOW = { terrible: 4, bloxwatch: 4, charlie: 1.2 };
 export const characterGlow = (id) => GLOW[id] || 0;

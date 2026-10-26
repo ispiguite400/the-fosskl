@@ -20,7 +20,7 @@ export class Chat {
     this.logEl = el('div', 'log');
     this.input = el('input'); this.input.type = 'text'; this.input.maxLength = 120; this.input.placeholder = 'To chat click here or press / key'; this.input.className = 'hidden';
     this.quick = el('div', 'quick hidden');
-    for (const q of QUICK) { const b = el('button', '', q); b.onclick = () => { this.send(q); this.close(); }; this.quick.appendChild(b); }
+    for (const q of QUICK) { const b = el('button', 'btn small', q); b.onclick = () => { this.send(q); this.close(); }; this.quick.appendChild(b); }
     this.box.append(this.logEl, this.input, this.quick);
     root.appendChild(this.box);
     this.btn = el('button', 'chat-btn', '💬 Chat');
@@ -85,7 +85,14 @@ export class Chat {
       setTimeout(() => this.post(b, line), 900 + n * 700 + R() * 1500);
     }
   }
-  update() {
+  update(dt) {
+    // a controller can't type: it picks a quick line instead
+    if (this.isOpen && input.device === 'pad') {
+      if (document.activeElement === this.input) { this.input.blur(); input.typing = false; }
+      this.game.ui.nav.update(this.quick, dt || 0.016, { onBack: () => this.close() });
+      if (input.pressed('chat')) this.close();
+      return;
+    }
     if (input.typing) return;
     if (input.pressed('chat') && !this.game.ui.modal()) { input.consume('chat'); this.open(); }
   }

@@ -251,6 +251,37 @@ export const TRACKS = {
       lead: MEL('lead', '7 - - - 6 - - - 4 - - - 2 - - - | 3 - - - 4 - - - 2 - - - - - - - ', 0, 0.9, 0)
     }
   },
+  lms_guest1337_terrible: {
+    title: 'Guest Against Guest', artist: 'FORLORN OST', bpm: 152, key: 50, scale: 'harmonic', prog: [0, 5, 2, 4], loop: false,
+    sections: [{ bars: 4, on: 'box heart' }, { bars: 4, on: 'box heart riser hat' }, { bars: 16, on: 'kick snare hat bass saw choir' }, { bars: 8, on: 'box drone heart' }, { bars: 16, on: 'kick snare hat bass saw choir brass crash' }, { bars: 4, on: 'box drone' }],
+    parts: {
+      box: MEL('box', '4 . 3 . 2 . 0 . | 1 . 2 . -1 . . . | 4 . 3 . 2 . 4 . | 5 . 4 - - - . .', 0, 1, 1), heart: D('heart', 'x..x....x..x....', 0, 0.8), drone: PAD('drone', 0, 0.9, -2, 2), riser: { kind: 'riser', layer: 0, vol: 0.9 },
+      kick: D('kick', 'x...x...x...x.x.', 0, 1), snare: D('snare', '....X.......X...', 0, 0.9), hat: D('hat', 'x.xxx.xxx.xxx.xx', 0, 0.5), crash: D('crash', 'x...............', 0, 0.4),
+      bass: BASS('reese', 'x.x.xx.xx.x.xx.x', 0, 0.85), choir: PAD('choir', 0, 0.9, 0), brass: PAD('brass', 0, 0.6, -1),
+      saw: MEL('saw', '4 - - - 2 - 4 - 5 - 4 - 2 - 0 - | 1 - - - -1 - 1 - 2 - - - . . . . | 7 - - - 6 - 4 - 5 - 4 - 2 - 4 - | 3 - 2 - 1 - -1 - 0 - - - . . . . ', 0, 1, 1)
+    }
+  },
+  lms_jez_bacongeneral: {
+    title: 'Like Father', artist: 'FORLORN OST', bpm: 138, key: 48, scale: 'dorian', prog: [0, 3, 6, 4], loop: false,
+    sections: [{ bars: 4, on: 'piano roll' }, { bars: 4, on: 'piano roll riser' }, { bars: 16, on: 'kick snare hat bass brass pad' }, { bars: 8, on: 'piano pad' }, { bars: 16, on: 'kick snare hat bass brass pad lead crash' }, { bars: 4, on: 'piano' }],
+    parts: {
+      piano: ARP('piano', 'x..x..x.x..x..x.', 'updown', 0, 1, 0), roll: D('snare', 'g.g.g.g.g.g.gxgx', 0, 0.4), riser: { kind: 'riser', layer: 0, vol: 0.9 },
+      kick: D('kick', 'x...x...x...x...', 0, 1), snare: D('snare', '....X.......X.xx', 0, 0.9), hat: D('hat', 'x.x.x.x.x.x.x.x.', 0, 0.6), crash: D('crash', 'x...............', 0, 0.4),
+      bass: BASS('bass', 'x..x..x.x..x..x.', 0, 0.9), pad: PAD('pad', 0, 0.8, -1),
+      brass: MEL('brass', '0 - - 0 2 - 3 - 4 - - - 3 - 2 - | 0 - - - -1 - - - 0 - - - . . . . ', 0, 0.9, 0),
+      lead: MEL('lead', '7 - - - 6 - 5 - 4 - - - 2 - 4 - | 5 - - - 4 - 2 - 0 - - - . . . . ', 0, 1, 1)
+    }
+  },
+  lms_rose_baconcolonel: {
+    title: 'Jailbreak', artist: 'FORLORN OST', bpm: 164, key: 52, scale: 'minor', prog: [0, 6, 5, 6], loop: false,
+    sections: [{ bars: 4, on: 'tick bass' }, { bars: 16, on: 'kick snare hat bass arp lead' }, { bars: 8, on: 'tick bass pad' }, { bars: 16, on: 'kick snare hat bass arp lead crash pad' }, { bars: 4, on: 'tick pad' }],
+    parts: {
+      tick: D('rim', 'x.x.x.x.x.x.x.x.', 0, 0.5), pad: PAD('pad', 0, 0.7, -1),
+      kick: D('kick', 'x.x...x.x.x...x.', 0, 1), snare: D('clap', '....x.......x...', 0, 0.85), hat: D('hat', 'xxxxxxxxxxxxxxxx', 0, 0.45), crash: D('crash', 'x...............', 0, 0.4),
+      bass: BASS('bass', 'x.xxx.xxx.xxx.xx', 0, 0.85), arp: ARP('pluck', 'xxxxxxxxxxxxxxxx', 'up', 0, 0.5, 1),
+      lead: MEL('saw', '4 - 4 - 6 - 7 - 6 - 4 - 2 - - - | 4 - 4 - 6 - 9 - 7 - 6 - 4 - - - ', 0, 0.9, 0)
+    }
+  },
   lms_charlie_bloxwatch: {
     title: 'Astral Bloodline', artist: 'FORLORN OST', bpm: 140, key: 49, scale: 'hungarian', prog: [0, 3, 1, 4], loop: false,
     sections: [{ bars: 4, on: 'bell choir' }, { bars: 4, on: 'bell choir riser' }, { bars: 16, on: 'kick clap hat reese lead arp' }, { bars: 8, on: 'bell choir reese' }, { bars: 16, on: 'kick clap hat reese lead arp choir crash' }, { bars: 4, on: 'bell' }],
@@ -266,7 +297,6 @@ export const TRACKS = {
 /** The LMS song for a matchup: the films' pairings first, then the killer's own. */
 export function lmsTrackFor(survivorId, killerId) {
   if (TRACKS['lms_' + survivorId + '_' + killerId]) return 'lms_' + survivorId + '_' + killerId;
-  if (survivorId === 'jez' && killerId === 'bacongeneral') return 'lms_guest1337_bacongeneral';
   if (TRACKS['lms_' + killerId]) return 'lms_' + killerId;
   return 'lms_terrible';
 }

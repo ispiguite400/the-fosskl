@@ -42,6 +42,18 @@ export class Server {
     while (this.members.length < SIZE && (this.members.length < SIZE - 2 || R() < 0.6)) { const b = this._newBot(); this.members.push(b); joined.push(b); }
     return { left, joined };
   }
+  /** One player comes or goes mid-intermission. Returns { left } or { joined } or null. */
+  drift() {
+    const bots = this.bots();
+    if (bots.length > 4 && R() < 0.5) {
+      const m = R.pick(bots.filter((b) => b.persona.patience < 0.75 || b.persona.style === 'afk')) || null;
+      if (!m) return null;
+      this.members = this.members.filter((x) => x !== m);
+      return { left: m };
+    }
+    if (this.members.length < SIZE) { const b = this._newBot(); this.members.push(b); return { joined: b }; }
+    return null;
+  }
   /** Highest malice is the killer; the rest are survivors. */
   pickKiller(optOut) {
     this.me.malice = profile.malice;

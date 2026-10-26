@@ -57,3 +57,27 @@ Guessing proportions from a picture went wrong three times. For every character 
 
 References live in `forge/references/`. Get canon details right the first time: skin colour,
 hair colour and style, facial hair, outfit.
+
+## The rest of the cast (built without film stills: check each against the films)
+
+Shared kits: `lib/wear.js` (drawn clothing), `lib/faces.js` (decals), `lib/acc.js` (hair, hats,
+hoods, glasses, eyepatch, chain, sword, pistol), `lib/cast.js` (the common build). Packages:
+robloxian2 for most, `slim` for Daisy, Rose, Emily and Charlie, `man` for the Army Captain, Rich
+Guy, the Bacon General and the Bacon Colonel, `superhero` for the Elite Guard.
+
+| Character | Skin | Outfit as built | Accessories |
+|---|---|---|---|
+| Matt | light | red pullover hoodie, dark jeans, white sneakers | short brown hair |
+| Daisy | peach | teal sweatshirt with a daisy, light jeans | long golden hair, ponytail |
+| Rose | light | pink tracksuit with white stripes | pink bob with a bun |
+| Army Captain | tan | olive dress uniform, gold buttons, ribbons, Sam Browne | peaked cap, moustache (decal) |
+| Emily | light | lavender crop top, black jeans, boots | long black hair, fringe |
+| Justin | brown | green hoodie, charcoal jeans | the hood up |
+| Rich Guy | light | gold suit, black shirt, gold tie | slicked hair, gold shades, gold chain |
+| Charlie | WHITE (Guest's daughter) | white tee, open denim jacket | long navy hair, glowing cyan Astral eyes |
+| Jez | light | black leather jacket over an orange motorcycle tee | Bacon hair |
+| Bacon General | light | Empire-blue tunic, red sash, gold epaulettes, black boots | peaked cap, pistol |
+| Bacon Colonel | light | grey greatcoat with fur, dark uniform | ushanka, eyepatch (left), scar |
+| Elite Guard | light | black armour, red sash | black bandana, scar (right eye), sword |
+| Blox Watch | pitch black | black hoodie with gold lightning | hood up, glowing yellow eyes |
+| Bacon Soldier | light | Empire-blue tunic, black trousers | blue helmet |

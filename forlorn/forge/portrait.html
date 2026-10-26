@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><base href="/">
+<script type="importmap">{ "imports": { "three": "/vendor/three.module.js", "three/addons/": "/vendor/addons/" } }</script>
+<script>try { const k = "forlorn.settings.v1", v = JSON.parse(localStorage.getItem(k) || "{}"); v.quality = "ultra"; localStorage.setItem(k, JSON.stringify(v)); } catch (e) {}</script>
+<style>html,body{margin:0;background:transparent}</style></head>
+<body><canvas id="c" width="600" height="800"></canvas>
+<script type="module">
+/*
+ * FORLORN — portrait renders for the menus (forge/renders.mjs drives this page).
+ * Each shipped model is loaded through the game's own loader and material, posed in its Pose
+ * clip and lit like a poster: a warm key, a cold rim from behind, a soft fill. Transparent PNG.
+ */
+import * as THREE from 'three';
+import { makeCharacter } from '/src/render/characters.js';
+const canvas = document.getElementById('c');
+const gl = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
+gl.setPixelRatio(1); gl.setSize(600, 800, false);
+gl.outputColorSpace = THREE.SRGBColorSpace; gl.toneMapping = THREE.ACESFilmicToneMapping; gl.toneMappingExposure = 1.05;
+gl.setClearColor(0x000000, 0);
+window.portrait = async (id, skin, killer) => {
+  const scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xbfc8ff, 0x2a2420, 0.9));
+  const key = new THREE.DirectionalLight(0xfff0dc, 2.6); key.position.set(-2.2, 3.2, 3.4); scene.add(key);
+  const rim = new THREE.DirectionalLight(killer ? 0xff4a4a : 0x8ab4ff, 3.2); rim.position.set(2.4, 2.4, -3); scene.add(rim);
+  const rim2 = new THREE.DirectionalLight(killer ? 0xff7a5a : 0xc8d8ff, 1.6); rim2.position.set(-2.6, 1.8, -2.4); scene.add(rim2);
+  const v = await makeCharacter(id, skin);
+  scene.add(v.root);
+  v.rim(killer ? 0x5a1a1e : 0x2a3a5a);
+  v.loop('pose');
+  for (let i = 0; i < 30; i++) v.update(1 / 30);
+  v.root.rotation.y = killer ? -0.32 : 0.32;
+  v.root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(v.mesh);
+  const h = box.max.y - box.min.y, cy = (box.max.y + box.min.y) / 2;
+  const cam = new THREE.PerspectiveCamera(24, 600 / 800, 0.1, 50);
+  const dist = (h * 0.62) / Math.tan(THREE.MathUtils.degToRad(12));
+  cam.position.set(0, cy + 0.08, dist); cam.lookAt(0, cy - 0.02, 0);
+  gl.render(scene, cam);
+  const url = canvas.toDataURL('image/png');
+  v.dispose();
+  return url;
+};
+window.ready = true;
+</script></body></html>

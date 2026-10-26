@@ -78,5 +78,8 @@ if (opt('ship', false)) {
   fs.mkdirSync(models, { recursive: true });
   fs.copyFileSync(path.join(out, name + '_game.glb'), path.join(models, name + '.glb'));
   keep(['_game-sheet.png', '_game-face.png', '_game_anim_walk.png'].map((s) => path.join(out, name + s)));
+  // the game reads this list at boot to know which characters and skins are ready
+  const index = fs.readdirSync(models).filter((f) => f.endsWith('.glb')).map((f) => f.slice(0, -4)).sort();
+  fs.writeFileSync(path.join(models, 'index.json'), JSON.stringify(index) + '\n');
   console.log(`\nin the game: assets/models/${name}.glb`);
 }

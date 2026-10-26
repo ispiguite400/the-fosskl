@@ -38,7 +38,8 @@ export class Hud {
     this.timer = el('div', 'h-timer', '0:00');
     this.gensEl = el('div', 'h-gens');
     this.genCells = match.gens.map(() => { const i = el('i', '', '<b></b>'); this.gensEl.appendChild(i); return i; });
-    top.append(this.timer, this.gensEl, el('div', 'h-map', esc(match.def.name)));
+    this.mapEl = el('div', 'h-map', esc(match.def.name));
+    top.append(this.timer, this.gensEl, this.mapEl);
     r.appendChild(top);
     this.team = el('div', 'h-team'); r.appendChild(this.team);
     this.rows = new Map();
@@ -121,6 +122,7 @@ export class Hud {
     this.t = 0.1;
     this.timer.textContent = fmtTime(m.timeLeft);
     this.timer.classList.toggle('lms', m.phase === 'lms');
+    if (m.lms && !this._lmsShown) { this._lmsShown = true; this.mapEl.innerHTML = '<span style="color:var(--red2)">LAST MAN STANDING</span> · ♪ ' + esc(m.lms.title || ''); }
     m.gens.forEach((g, i) => { const c = this.genCells[i]; c.classList.toggle('done', g.done); c.firstChild.style.width = (g.progress / PARTS * 100) + '%'; });
     for (const [a, r] of this.rows) {
       const f = a.hp / a.maxHp;

@@ -9,6 +9,9 @@ a story that runs from a burning village to a god above the clouds.
 Everything is generated at runtime — terrain, models, music, menu artwork. The
 only dependency is a vendored copy of Three.js.
 
+> This repository also holds **FORLORN**, an asymmetrical survival game with ObliviousHD's
+> film cast, in [`forlorn/`](forlorn/README.md).
+
 ---
 
 ## Running it

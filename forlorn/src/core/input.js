@@ -26,7 +26,7 @@ const BIND = {
   ability3:  { keys: ['KeyF'], pad: [PAD.TRIANGLE] },
   emote:     { keys: ['KeyG'], pad: [PAD.RIGHT] },
   scoreboard:{ keys: ['Tab'], pad: [PAD.TOUCHPAD] },
-  chat:      { keys: ['Enter', 'Slash'] },
+  chat:      { keys: ['Enter', 'Slash'], pad: [PAD.CREATE] },
   pause:     { keys: ['Escape'], pad: [PAD.OPTIONS] },
   lockCam:   { keys: [], mouse: [2] },
   confirm:   { keys: ['Enter', 'Space'], pad: [PAD.CROSS] },
@@ -79,7 +79,11 @@ class Input {
   }
   requestLock(canvas) {
     if (this.device !== 'kbm' || this.locked) return;
-    try { const p = canvas.requestPointerLock({ unadjustedMovement: true }); if (p && p.catch) p.catch(() => { try { canvas.requestPointerLock(); } catch { /* not allowed here */ } }); } catch { /* sandboxed */ }
+    const quiet = (p) => { if (p && p.catch) p.catch(() => {}); return p; };
+    try {
+      const p = canvas.requestPointerLock({ unadjustedMovement: true });
+      if (p && p.catch) p.catch(() => { try { quiet(canvas.requestPointerLock()); } catch { /* not allowed here */ } });
+    } catch { /* sandboxed */ }
   }
   releaseLock() { if (document.pointerLockElement) document.exitPointerLock(); }
 

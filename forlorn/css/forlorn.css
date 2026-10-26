@@ -349,4 +349,15 @@ h1, h2, h3, .hd { font-family: var(--head); font-weight: 400; letter-spacing: 0.
 body.touch .h-cross { display: none; }
 body.touch .h-bottom { bottom: calc(0.8rem + var(--safe-b)); }
 body.touch .h-abils { display: none; }
-body.touch .chat-btn { bottom: auto; top: calc(0.6rem + var(--safe-t)); left: auto; right: calc(7rem + var(--safe-r)); }
+body.touch .chat-btn { display: none; }
+body.touch .lobby-me { top: calc(3.6rem + var(--safe-t)); }
+@media (max-width: 760px), (max-height: 500px) {
+  body.touch .chat { bottom: auto; top: calc(3.6rem + var(--safe-t)); left: auto; right: calc(0.8rem + var(--safe-r)); width: 38vw; }
+  body.touch .chat .log { align-items: flex-end; text-align: right; max-height: 6rem; }
+  body.touch #ui:has(#lobby) .chat { top: calc(10.5rem + var(--safe-t)); }
+  .tm { min-width: 0; padding: 0.1rem 0.6rem 0.1rem 0.1rem; gap: 0.3rem; }
+  .tm .pic { width: 1.5rem; height: 1.5rem; }
+  .tm .ch { display: none; }
+  .tm .nm { font-size: 0.66rem; max-width: 6.5rem; }
+  .h-team { gap: 0.15rem; }
+}

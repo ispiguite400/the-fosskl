@@ -35,7 +35,7 @@ export class UI {
     this.nav = new MenuNav();
   }
   /** A blocking menu is up (the player is not playing). */
-  modal() { return ['characters', 'shop', 'settings', 'pause', 'title', 'loading', 'results'].includes(this.curName); }
+  modal() { return ['characters', 'shop', 'settings', 'pause', 'lobbymenu', 'howto', 'title', 'loading', 'results'].includes(this.curName); }
   clear() { this.screens.innerHTML = ''; this.cur = null; this.curName = ''; this.nav.reset(); }
   _set(name, node) {
     this.screens.innerHTML = ''; this.screens.appendChild(node); this.cur = node; this.curName = name; this.nav.reset();
@@ -58,7 +58,7 @@ export class UI {
       return;
     }
     this.nav.update(this.cur, dt, {
-      onBack: this.curName === 'results' ? null : () => (this.curName === 'pause' ? this.game.resume() : this.stack.length ? this.back() : null),
+      onBack: this.curName === 'results' ? null : () => (this.curName === 'pause' || this.curName === 'lobbymenu' ? this.game.resume() : this.stack.length ? this.back() : null),
       onTab: this.onTab
     });
     if (this.curName === 'results') this.updateResults(dt);
@@ -95,6 +95,7 @@ export class UI {
     btn('Characters', () => this.push('characters'));
     btn('Shop', () => this.push('shop'));
     btn('Settings', () => this.push('settings'));
+    btn('How to play', () => this.push('howto'));
     this.optBtn = btn(settings.killerOptOut ? 'Killer: off' : 'Killer: on', () => { settings.killerOptOut = !settings.killerOptOut; saveSettings(); this.optBtn.textContent = settings.killerOptOut ? 'Killer: off' : 'Killer: on'; }, 'small');
     this._set('lobby', s);
     this.lobbyEl = s;
@@ -265,6 +266,44 @@ export class UI {
     const ctrl = el('div', 'set-row', '<label>Controls<small>Move WASD · Sprint Shift · Jump Space · Interact E · Abilities Q R F · Attack LMB · Emote G · Chat / · Scoreboard Tab · Menu Esc<br>DualSense: L-stick move · R-stick look · L3/L1 sprint · ✕ jump · □ interact · R1 L2 △ abilities · R2 attack · ▶ emote · touchpad scores · OPTIONS menu</small></label>');
     box.appendChild(ctrl);
     this._set('settings', s);
+  }
+
+  /* ---------------- the lobby menu (OPTIONS / Esc / ☰ in the lobby) ---------------- */
+  lobbyMenu() {
+    const s = el('div', 'screen pause fade-in');
+    s.innerHTML = '<h2>MENU</h2>';
+    const b = (label, fn, cls = '') => { const x = el('button', 'btn ' + cls, label); x.onclick = () => { audio.sfx('ui'); fn(); }; s.appendChild(x); };
+    b('Back to the camp', () => this.game.resume(), 'primary');
+    b('Characters', () => { this.stack = ['lobby']; this.characters(); });
+    b('Shop', () => { this.stack = ['lobby']; this.shop(); });
+    b('Settings', () => { this.stack = ['lobby']; this.settings(); });
+    b('How to play', () => { this.stack = ['lobby']; this.howto(); });
+    this.onTab = null;
+    this._set('lobbymenu', s);
+    if (input.device === 'pad') this.nav.set(s.querySelector('.btn'));
+  }
+
+  /* ---------------- how to play ---------------- */
+  howto() {
+    const s = el('div', 'screen panel-screen fade-in');
+    const dev = input.device;
+    const ctl = dev === 'pad'
+      ? 'Left stick move · Right stick look · L3/L1 sprint · ✕ jump · □ repair / pick up · R1 L2 abilities · △ item (killer: third ability) · R2 attack · ▶ emote · CREATE quick chat · OPTIONS menu'
+      : dev === 'touch'
+        ? 'Left thumb moves (push far to run) · drag the right side to look · USE repairs and picks up · the round buttons are your abilities and item · 💬 chat · ☰ menu'
+        : 'WASD move · mouse look (click to lock) · Shift sprint · Space jump · E repair / pick up · Q R abilities · F item (killer: third ability) · Left click attack · G emote · / chat · Tab scores · Esc menu';
+    const sec = (t, body) => '<div class="set-row" style="display:block"><label style="font-family:var(--head);font-size:1.3rem;letter-spacing:.08em">' + t + '</label><small style="font-size:.85rem;line-height:1.5;color:#c9c7d4">' + body + '</small></div>';
+    s.innerHTML = '<div class="panel-head"><button class="btn small" data-back>◀ Back</button><h2>HOW TO PLAY</h2></div><div class="settings">' +
+      sec('Survivors', 'Survive until the timer runs out. Every generator you repair takes 20 seconds off it: stand at one and press interact, then join the matching wires. A wrong wire sparks, and the killer hears it. Pick up medkits and Bloxy Colas. Use your two abilities to stun, heal, hide or outrun the killer, and loop it round walls and buildings.') +
+      sec('The killer', 'Kill every survivor before the timer runs out. Your attack hits in front of you; your three abilities hunt, trap and punish. You are a little faster than a sprinting survivor, but they loop and stun you.') +
+      sec('Last Man Standing', 'When one survivor is left, the song starts. The round now lasts exactly as long as the song. The survivor gets a burst of speed and stamina; the killer starts in a Frenzy.') +
+      sec('What is different here', '<b>Bond</b>: stay near another survivor for a while and you bond. Bonded survivors repair faster and see each other through walls. <b>Echoes</b>: dead survivors can reveal the killer to the living once a round. <b>Bloodlust</b>: the killer fills it by hitting and chasing; when it boils over, a Frenzy. <b>Events</b>: every map has its own, halfway through.') +
+      sec('Who is the killer?', 'Every round you are not the killer, your malice goes up. The highest malice is the next killer. Turn "Play as killer" off in Settings to stay a survivor.') +
+      sec('Controls', ctl) +
+      '</div>';
+    s.querySelector('[data-back]').onclick = () => this.back();
+    this.onTab = null;
+    this._set('howto', s);
   }
 
   /* ---------------- pause ---------------- */

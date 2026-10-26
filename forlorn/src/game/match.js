@@ -117,8 +117,10 @@ export class Match {
     const text = say(a.member, topic, Object.assign({ name: this.player ? this.player.name : '', killer: this.killer ? this.killer.def.name : '', kname: this.killer ? this.killer.name : '' }, vars), force);
     if (!text) return;
     this.lastChat = this.time;
-    // they take a moment to type it
-    this.later(0.4 + text.length * 0.05 * (1.2 - a.member.persona.skill * 0.4), () => { if (!a.left) this.game.chat.post(a.member, text, a); });
+    // they take a moment to type it, and most people stop to type
+    const typing = 0.4 + text.length * 0.05 * (1.2 - a.member.persona.skill * 0.4);
+    if (a.brain && a.brain.p && a.brain.p.skill < 0.8) a.brain.typingT = typing;
+    this.later(typing, () => { if (!a.left) this.game.chat.post(a.member, text, a); });
   }
   /** Every bot in the round hears about something. */
   tell(ev, d) { for (const a of this.actors) if (a.brain && a.brain.onEvent) { try { a.brain.onEvent(ev, d); } catch (e) { console.error('[brain event]', ev, e); } } }
@@ -354,7 +356,7 @@ export class Match {
       const s = alive[0], k = this.killer;
       const track = lmsTrackFor(s.charId, k.charId);
       const len = music.duration(track);
-      this.lms = { survivor: s, track, len, start: this.time };
+      this.lms = { survivor: s, track, len, start: this.time, title: music.title(track) };
       this.phase = 'lms';
       this.timeLeft = len;
       s.fx.add('haste', 9999, 0.12); s.maxStamina *= 1.3; s.stamina = s.maxStamina; s.heal(25);

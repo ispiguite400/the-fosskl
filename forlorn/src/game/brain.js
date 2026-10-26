@@ -152,6 +152,8 @@ export class SurvivorBrain {
     this.threat = (seenAgo < 2.5 && kd < flee) || this.chasedNow || (this.minion && a.dist(this.minion) < 6);
     a.chaseHeat = this.chasedNow ? Math.min(1, a.chaseHeat + dt * 2) : Math.max(0, a.chaseHeat - dt);
 
+    // stopped to type a message (not while the killer is on them)
+    if (this.typingT > 0) { this.typingT -= dt; if (!this.threat) { a.intent.mx = a.intent.mz = 0; a.intent.sprint = false; return; } }
     // the AFK one stands there
     if (this.afkT > 0 && !(this.threat && kd < 5)) {
       this.afkT -= dt; a.intent.mx = a.intent.mz = 0; a.intent.sprint = false;
@@ -597,6 +599,13 @@ export class LobbyBrain {
     const a = this.a, L = this.L, I = a.intent;
     I.face = null;
     if (this.afk) { I.mx = I.mz = 0; return; }
+    // someone waved at us: wave back, the friendly ones anyway
+    const me = L.me;
+    if (me && me !== a && me.view && me.view.oneShot && me.view.oneShot.getClip().name === 'Wave' && a.dist(me) < 9 && !this.wavedAt) {
+      this.wavedAt = true;
+      if (R() < 0.3 + this.p.team * 0.6) setTimeout(() => { a.yaw = Math.atan2(me.x - a.x, me.z - a.z); a.view && a.view.once('wave'); }, 300 + R() * 900);
+      setTimeout(() => { this.wavedAt = false; }, 4000);
+    }
     this.t -= dt;
     if (this.t <= 0 || !this.goal) {
       this.t = 4 + R() * 10;

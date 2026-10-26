@@ -72,6 +72,12 @@ export class Lobby {
       this.vote(m, R() < 0.6 ? fav.id : R.pick(this.choices).id);
       if (settings.botChat && R() < 0.15 * m.persona.chat) { const t = say(m, 'voteMap', { map: R.pick(this.choices).name }); if (t) this.game.chat.post(m, t); }
     }
+    // now and then someone leaves or joins, as on any real server
+    if (this.timeLeft > 8 && R() < dt / 70) {
+      const d = this.game.server.drift();
+      if (d && d.left) { this.despawn(d.left); this.votes.delete(d.left); this.game.chat.system(d.left.name + ' left the game', 'leave'); audio.sfx('leave', { vol: 0.5 }); }
+      if (d && d.joined) { this.spawn(d.joined); this.game.chat.system(d.joined.name + ' joined the game', 'join'); audio.sfx('join', { vol: 0.5 }); if (R() < 0.6) setTimeout(() => { const t = say(d.joined, 'join', {}); if (t) this.game.chat.post(d.joined, t); }, 2500 + R() * 3000); }
+    }
     // small talk
     this.chatT -= dt;
     if (this.chatT <= 0) {

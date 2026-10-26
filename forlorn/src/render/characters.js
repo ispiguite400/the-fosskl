@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 import { buildForgeCharacter } from './forge-loader.js';
 import { characterModel, characterGlow } from '../data/characters.js';
+import { settings } from '../core/save.js';
 
 const buffers = new Map();       // file -> Promise<ArrayBuffer>
 const templates = new Map();     // file -> material with the baked texture, shared by every copy
@@ -58,6 +59,7 @@ export async function makeCharacter(id, skin = 'default') {
     ch = buildForgeCharacter(buf.slice(0), THREE, { roughness: 0.62, metalness: 0.02 });
     await ch.ready;
     tpl = ch.mesh.material;
+    shrinkTexture(tpl);
     tpl.emissive = new THREE.Color(0x101014);
     templates.set(file, tpl);
     ch.mesh.material = rimMaterial(tpl, characterGlow(id));
@@ -65,6 +67,19 @@ export async function makeCharacter(id, skin = 'default') {
     ch = buildForgeCharacter(buf.slice(0), THREE, { material: rimMaterial(tpl, characterGlow(id)) });
   }
   return new CharacterView(ch, id);
+}
+
+/* On the lighter settings a character's 2048 texture is cut down when it loads (phones hold a
+   dozen characters at once). */
+const TEX_MAX = { low: 512, medium: 1024 };
+function shrinkTexture(mat) {
+  const max = TEX_MAX[settings.quality], img = mat.map && mat.map.image;
+  if (!max || !img || !img.width || img.width <= max) return;
+  const c = document.createElement('canvas'); c.width = c.height = max;
+  c.getContext('2d').drawImage(img, 0, 0, max, max);
+  const t = new THREE.CanvasTexture(c);
+  t.flipY = mat.map.flipY; t.colorSpace = mat.map.colorSpace; t.anisotropy = 2;
+  mat.map.dispose(); mat.map = t; mat.needsUpdate = true;
 }
 
 const LOCO = { idle: 'Idle', walk: 'Walk', run: 'Run', chase: 'Chase' };
