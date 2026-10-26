@@ -106,6 +106,7 @@ const LINES = {
   seeKiller: ['killer at {place}', 'KILLER', 'killer here', 'he is at {place}', 'killer near gen {gen}', 'run its {killer}', 'killer!!', 'i see the killer'],
   chased: ['help', 'HELP', 'hes on me', 'killer chasing me', 'im being chased', 'run', 'aaaa', 'nooo', 'pls', 'im looping him', 'chasing me at {place}', 'someone stun him'],
   chasedCalm: ['im looping', 'ez loop', 'come on', 'too slow', 'cant catch me', 'hes on me but im fine'],
+  beg: ['pls dont kill me', 'spare me pls', 'im friendly!!', 'teamers?', 'i wont do gens i promise', 'noooo pls', 'can we team', 'pls im new'],
   hurt: ['im hurt', 'need heals', 'low hp', 'anyone have a medkit', 'ow', 'i need heal'],
   saved: ['thanks', 'ty', 'thank you {name}', 'ty {name}', 'tysm', 'thx', 'saved me'],
   helping: ['omw', 'coming', 'on my way {name}', 'ill help', 'hold on {name}', 'got you'],

@@ -229,6 +229,7 @@ class Game {
     dt = Math.min(dt, 0.05);
     this.fps = this.fps * 0.95 + (1 / dt) * 0.05;
     this.step(dt);
+    music.tick();
     const c = this.renderer.camera;
     audio.setListener(c.position.x, c.position.y, c.position.z, this.camRig.yaw);
     this.renderer.render(dt);

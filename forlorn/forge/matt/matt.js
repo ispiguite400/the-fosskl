@@ -7,6 +7,7 @@
  */
 const WAR = SKIN_ID === 'war';
 CAST({
+  body: WAR ? { voxel: 0.0031 } : {},             // the helmet's extra piece needs a smaller sculpt to ship
   skin: '#f0d0b0',
   clothes: WAR ? {
     torso: { kind: 'tee', color: '#5d6236', collar: 'shirt', color2: '#6a6e40', buttons: 4, buttonColor: '#a08850', pocket: 'chest', belt: '#4a3420', pants: '#4f5430' },

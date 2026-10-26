@@ -167,7 +167,12 @@ export class SurvivorBrain {
       M.callout(a, K);
       if (this.chatCd <= 0 && !this.chasedNow) { this.say('seeKiller', { place: placeName(M, K.x, K.z), gen: placeName(M, K.x, K.z).replace('gen ', ''), killer: K.def.name }); this.chatCd = 8 + R() * 8; }
     }
-    if (this.chasedNow && M.time - this.saidChased > 14 && this.chatCd <= 0) { this.saidChased = M.time; this.say('chased', { place: placeName(M, a.x, a.z) }); this.chatCd = 6; M.askForHelp(a); }
+    if (this.chasedNow && M.time - this.saidChased > 14 && this.chatCd <= 0) {
+      this.saidChased = M.time; this.chatCd = 6; M.askForHelp(a);
+      // a real person is the killer: some beg, some try to team
+      if (K.isPlayer && (p.skill < 0.4 || p.style === 'coward' || p.style === 'newbie') && R() < 0.6) { this.say('beg', {}, true); if (a.view && R() < 0.5) a.view.once('wave'); }
+      else this.say('chased', { place: placeName(M, a.x, a.z) });
+    }
     if (a.hp < a.maxHp * 0.5 && M.time - this.saidHurt > 30 && !this.threat && this.chatCd <= 0) { this.saidHurt = M.time; this.say('hurt'); this.chatCd = 8; }
 
     // abilities and items, with a reaction delay

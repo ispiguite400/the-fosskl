@@ -377,11 +377,15 @@ class Music {
       g.gain.setTargetAtTime(v, now, tc);
     });
   }
+  /** Called from the game loop as well as the timer: whichever runs first keeps the music fed. */
+  tick() { this._tick(); }
   _tick() {
     const st = this.cur; if (!st || st.ended || !audio.ctx || st.source) return;
     const ctx = audio.ctx, tr = st.tr; if (!tr) return;
     const sp16 = 60 / tr.bpm / 4;
-    while (st.next < ctx.currentTime + 0.14) {
+    // schedule a third of a second ahead, so a slow frame or a throttled timer leaves no gap
+    if (st.next < ctx.currentTime - 0.5) { const sp = 60 / tr.bpm / 4, skip = Math.floor((ctx.currentTime - st.next) / sp); st.step += skip; st.next += skip * sp; }
+    while (st.next < ctx.currentTime + 0.32) {
       this._step(st, st.step, st.next, sp16);
       st.step++;
       const sw = tr.swing && st.step % 2 === 1 ? sp16 * tr.swing : (tr.swing && st.step % 2 === 0 ? -sp16 * tr.swing : 0);
