@@ -259,7 +259,10 @@ export class SurvivorBrain {
       case 'flee': return this.flee(dt);
       case 'gen': {
         if (g.gen.done) { this.goal = null; this.say('genDone', { gen: g.gen.index + 1 }); return; }
-        if (!g.spot) { const spots = g.gen.spots(); g.spot = spots.find((s) => !M.actors.some((o) => o !== a && o.alive && dist(o.x, o.z, s[0], s[1]) < 0.6)) || spots[0]; }
+        if (!g.spot) {
+          const nav = M.world.nav, spots = g.gen.spots().filter((s) => nav.walkable(s[0], s[1]));
+          g.spot = spots.find((s) => !M.actors.some((o) => o !== a && o.alive && dist(o.x, o.z, s[0], s[1]) < 0.6)) || spots[0] || g.gen.spots()[0];
+        }
         this.mv.to(g.spot[0], g.spot[1]);
         const left = this.mv.step(dt, 1, sprintFar(a.dist(g.gen)));
         if (left < 0.5) {

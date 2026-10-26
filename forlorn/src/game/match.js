@@ -52,7 +52,12 @@ export class Match {
     this.fx = new Effects(world, this);
     this.landmarks = (this.def.landmarks || []).map(([name, x, z]) => ({ name, x, z }));
     onProgress(0.3, 'Placing generators');
-    world.gens.forEach(([x, z, ry], i) => this.gens.push(new Generator(this.scene, x, z, ry || 0, i)));
+    world.gens.forEach(([x, z, ry], i) => {
+      this.gens.push(new Generator(this.scene, x, z, ry || 0, i));
+      // a generator is solid: you run round it, not through it
+      const c = { type: 'box', x, z, hw: 0.85, hd: 0.5, ry: ry || 0, y0: 0, y1: 1.3, sight: false };
+      world.collision.add(c); world.nav.stamp(c, 1);
+    });
     // items: a few of the spots, medkits more often than colas
     const spots = R.shuffle(world.items.slice());
     spots.slice(0, Math.min(spots.length, 4 + Math.floor(R() * 3))).forEach(([x, z]) => this.pickups.push(new Pickup(this.scene, x + (R() - 0.5), z + (R() - 0.5), R() < 0.6 ? 'medkit' : 'cola')));

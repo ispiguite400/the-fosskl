@@ -13,6 +13,9 @@ import { NavGrid } from './nav.js';
 import { makeSky, skyEnvironment } from '../render/sky.js';
 import { rng } from '../core/util.js';
 
+// map lamps are written in friendly numbers (a street lamp is about 7); three.js lights are physical
+const LIGHT_GAIN = 22;
+
 export function buildWorld(renderer, def, seed = 1) {
   const r = rng(seed * 7919 + def.id.length);
   const P = new Parts();
@@ -92,7 +95,7 @@ export function buildWorld(renderer, def, seed = 1) {
         if (!L || L._d > 50 * 50) { l.intensity = 0; continue; }
         const fl = L.flicker ? (1 - L.flicker * 0.5 + Math.sin(this.time * 17 + i * 3) * L.flicker * 0.25 + Math.sin(this.time * 41 + i) * L.flicker * 0.25) : 1;
         l.position.set(L.x, L.y, L.z); l.color.setHex(L.color); l.distance = L.distance; l.decay = L.decay;
-        l.intensity = L.intensity * fl * this.lightScale * (L.off ? 0 : 1);
+        l.intensity = L.intensity * LIGHT_GAIN * fl * this.lightScale * (L.off ? 0 : 1);
       }
       for (const L of ls) if (L.sprite) L.sprite.material.opacity = 0.55 * this.lightScale * (L.off ? 0 : 1);
       if (particles) particles.update(dt, focus);

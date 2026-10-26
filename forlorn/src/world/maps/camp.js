@@ -10,15 +10,15 @@ export default {
   ambience: {
     sky: { top: 0x070b1c, horizon: 0x2a2f55, bottom: 0x0b0d14, sunDir: [-0.4, 0.5, 0.6], sunColor: 0xc8d4ff, sunSize: 0.012, stars: 1, clouds: 0.25, cloud: 0x1a1d33 },
     fog: { color: 0x10142a, density: 0.03 },
-    hemi: { sky: 0x4a5a9a, ground: 0x1c1a14, intensity: 0.7 },
-    sun: { dir: [-0.4, 0.6, 0.6], color: 0xaabbff, intensity: 0.8 },
+    hemi: { sky: 0x5a6aaa, ground: 0x24221a, intensity: 1.0 },
+    sun: { dir: [-0.4, 0.6, 0.6], color: 0xaabbff, intensity: 1.1 },
     envIntensity: 0.45,
     particles: 'fireflies'
   },
   build(P, r) {
     P.box({ x: 0, y: -0.5, z: 0, w: 60, h: 0.5, d: 60, mat: 'grass', color: 0x2f3f26, collide: false, cast: false });
     P.cyl({ x: 0, y: 0, z: 0, r: 8, h: 0.03, mat: 'dirt', color: 0x5a4632, seg: 28, collide: false, cast: false });
-    campfire(P, 0, 0, { intensity: 14 });
+    campfire(P, 0, 0, { intensity: 9 });
     // log benches round the fire
     for (let i = 0; i < 6; i++) {
       const a = i / 6 * Math.PI * 2 + 0.3, x = Math.cos(a) * 4.2, z = Math.sin(a) * 4.2;
