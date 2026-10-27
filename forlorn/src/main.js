@@ -65,7 +65,9 @@ class Game {
     music.loadManifest();
     await loadShipped();
     this.server = new Server(this);
-    for (const id of SHIPPED) preloadModel(characterModel(id));
+    // served: fetch every model early so rounds load fast; the one-file build has them on hand already,
+    // and unpacking all 33 up front would only hold the ones nobody plays in memory
+    if (!window.__oneFile) for (const id of SHIPPED) preloadModel(characterModel(id));
     this.lobbyDef = await loadLobby();
     this.maps = await availableMaps();
     // the title sits over the camp at night

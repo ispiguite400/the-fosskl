@@ -108,15 +108,26 @@ export function buildForgeCharacter(buf, THREE, opts = {}) {
   if (pbr && pbr.baseColorTexture && json.images && at.TEXCOORD_0 !== undefined) {
     const img = json.images[json.textures[pbr.baseColorTexture.index].source], bv = json.bufferViews[img.bufferView];
     const bytes = new Uint8Array(bin.buffer, bin.byteOffset + (bv.byteOffset || 0), bv.byteLength).slice();
-    const el = new Image();
-    map = new THREE.Texture(el);
+    const blob = new Blob([bytes], { type: img.mimeType || 'image/png' });
+    map = new THREE.Texture();
     map.flipY = false;                                  // glTF UVs start top-left
     if ('colorSpace' in map) map.colorSpace = THREE.SRGBColorSpace; else map.encoding = 3001;
-    ready = new Promise((resolve) => {
-      el.onload = () => { map.needsUpdate = true; URL.revokeObjectURL(el.src); resolve(); };
-      el.onerror = () => resolve();
-    });
-    el.src = URL.createObjectURL(new Blob([bytes], { type: img.mimeType || 'image/png' }));
+    if (typeof createImageBitmap === 'function') {
+      // decoded as a bitmap with the same colour handling as an <img>, and let go once it is on the
+      // GPU: a 2048 texture is 16 MB of pixels the page would otherwise keep for nothing
+      ready = createImageBitmap(blob, { premultiplyAlpha: 'none', colorSpaceConversion: 'default' }).then((bmp) => {
+        map.image = bmp; map.needsUpdate = true;
+        map.onUpdate = () => { if (map.image && map.image.close) map.image.close(); map.onUpdate = null; };
+      }).catch(() => {});
+    } else {
+      const el = new Image();
+      map.image = el;
+      ready = new Promise((resolve) => {
+        el.onload = () => { map.needsUpdate = true; URL.revokeObjectURL(el.src); resolve(); };
+        el.onerror = () => resolve();
+      });
+      el.src = URL.createObjectURL(blob);
+    }
   }
   const material = opts.material || new THREE.MeshStandardMaterial({
     map,

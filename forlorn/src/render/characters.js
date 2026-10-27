@@ -17,7 +17,10 @@ import { characterModel, characterGlow } from '../data/characters.js';
 import { settings } from '../core/save.js';
 
 const buffers = new Map();       // file -> Promise<ArrayBuffer>
-const templates = new Map();     // file -> material with the baked texture, shared by every copy
+// file -> { mat: Promise<material with the baked texture>, users, timer }: one texture shared by every
+// copy of a character, let go KEEP seconds after the last copy goes (and rebuilt if it comes back)
+const templates = new Map();
+const KEEP = 45;
 
 function fetchBuffer(file) {
   if (!buffers.has(file)) buffers.set(file, fetch(file).then((r) => { if (!r.ok) throw new Error('missing model ' + file); return r.arrayBuffer(); }));
@@ -55,20 +58,30 @@ export async function makeCharacter(id, skin = 'default') {
   const file = characterModel(id, skin);
   let buf;
   try { buf = await fetchBuffer(file); } catch (e) { buf = await fetchBuffer(characterModel('guest1337', 'default')); }
-  let tpl = templates.get(file);
-  let ch;
-  if (!tpl) {
+  let t = templates.get(file), ch;
+  if (!t) {
+    // the first copy builds the shared material (a second one arriving meanwhile waits for it)
+    t = { mat: null, users: 0, timer: 0 };
+    templates.set(file, t);
     ch = buildForgeCharacter(buf.slice(0), THREE, { roughness: 0.62, metalness: 0.02 });
-    await ch.ready;
-    tpl = ch.mesh.material;
-    shrinkTexture(tpl);
-    tpl.emissive = new THREE.Color(0x101014);
-    templates.set(file, tpl);
-    ch.mesh.material = rimMaterial(tpl, characterGlow(id));
+    t.mat = ch.ready.then(() => { const m = ch.mesh.material; shrinkTexture(m); m.emissive = new THREE.Color(0x101014); return m; });
+    ch.mesh.material = rimMaterial(await t.mat, characterGlow(id));
   } else {
-    ch = buildForgeCharacter(buf.slice(0), THREE, { material: rimMaterial(tpl, characterGlow(id)) });
+    ch = buildForgeCharacter(buf.slice(0), THREE, { material: rimMaterial(await t.mat, characterGlow(id)) });
   }
-  return new CharacterView(ch, id);
+  t.users++; clearTimeout(t.timer);
+  const view = new CharacterView(ch, id);
+  view.onDispose = () => release(file, t);
+  return view;
+}
+function release(file, t) {
+  if (--t.users > 0) return;
+  clearTimeout(t.timer);
+  t.timer = setTimeout(() => {
+    if (t.users > 0 || templates.get(file) !== t) return;
+    templates.delete(file);
+    t.mat.then((m) => { if (m.map) m.map.dispose(); m.dispose(); });
+  }, KEEP * 1000);
 }
 
 /* On the lighter settings a character's 2048 texture is cut down when it loads (phones hold a
@@ -81,6 +94,7 @@ function shrinkTexture(mat) {
   c.getContext('2d').drawImage(img, 0, 0, max, max);
   const t = new THREE.CanvasTexture(c);
   t.flipY = mat.map.flipY; t.colorSpace = mat.map.colorSpace; t.anisotropy = 2;
+  if (img.close) img.close();
   mat.map.dispose(); mat.map = t; mat.needsUpdate = true;
 }
 
@@ -297,5 +311,8 @@ export class CharacterView {
       this.mesh.material.userData.flash.value.copy(this.flashColor).multiplyScalar(k * 0.8);
     } else this.mesh.material.userData.flash.value.setRGB(0, 0, 0);
   }
-  dispose() { this.root.removeFromParent(); this.mesh.material.dispose(); if (this.xr) this.xr.material.dispose(); }
+  dispose() {
+    this.root.removeFromParent(); this.mesh.material.dispose(); if (this.xr) this.xr.material.dispose();
+    if (this.onDispose) { const f = this.onDispose; this.onDispose = null; f(); }   // the shared texture may go too
+  }
 }
