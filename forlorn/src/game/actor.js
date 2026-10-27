@@ -259,7 +259,7 @@ export class Actor {
     v.root.position.set(this.x, this.y, this.z);
     v.root.rotation.y = this.yaw;
     if (this.alive) {
-      if (!v.override) v.setMove(this.speed, this.sprinting, this.role === 'killer');
+      if (!v.override) v.setMove(this.speed, this.sprinting, this.role === 'killer', { grounded: this.grounded, vy: this.vy, injured: this.role === 'survivor' && this.hp < this.maxHp * 0.4 });
     }
     v.update(dt);
   }

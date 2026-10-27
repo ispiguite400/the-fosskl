@@ -164,11 +164,21 @@ A.peaked = function (o) {
   const H = Hd(), cy = H.c[1], r = H.r + (o.wide || 0), top = cy + H.hh + (o.lift || 0);   // lift and wide: to sit on top of a full head of hair
   A.colors.cap = o.color || '#2c4a8a'; A.colors.band = o.band || '#111111'; A.colors.brim = '#0e0e0e'; A.colors.badge = o.badge || '#e0b84a';
   const obj = C.newObject('Cap');
-  // the crown first and cut flat underneath; then the band, so the cut can't eat it; the visor hangs off the band
-  T('cap', 0.01); C.ell([0, top + 0.03, -0.015], [r + 0.05, 0.05, r + 0.06]);
-  C.box([0, top - 0.06, 0], [0.4, 0.04, 0.4], 0, null, { mode: 'subtract' });
-  T('band', 0.006); C.cyl([0, top - 0.035, -0.005], r + 0.018, 0.035, 0.01);
-  T('brim', 0.003); C.ell([0, top - 0.064, r * 0.86], [r * 0.82, 0.009, r * 0.5], [16, 0, 0]);
+  if (o.lift || o.wide) {
+    // over a full head of hair (the Bacon General): the crown first and cut flat underneath; then the
+    // band, so the cut can't eat it; the visor hangs off the band
+    T('cap', 0.01); C.ell([0, top + 0.03, -0.015], [r + 0.05, 0.05, r + 0.06]);
+    C.box([0, top - 0.06, 0], [0.4, 0.04, 0.4], 0, null, { mode: 'subtract' });
+    T('band', 0.006); C.cyl([0, top - 0.035, -0.005], r + 0.018, 0.035, 0.01);
+    T('brim', 0.003); C.ell([0, top - 0.064, r * 0.86], [r * 0.82, 0.009, r * 0.5], [16, 0, 0]);
+  } else {
+    // over short hair (the Army Captain): the cut takes the band down to a thin line, and the hair
+    // shows under the crown, as the Captain was accepted; a full band would let the hair poke through
+    T('band', 0.006); C.cyl([0, top - 0.035, -0.005], r + 0.018, 0.035, 0.01);
+    T('cap', 0.01); C.ell([0, top + 0.03, -0.015], [r + 0.05, 0.05, r + 0.06]);
+    C.box([0, top - 0.06, 0], [0.4, 0.04, 0.4], 0, null, { mode: 'subtract' });
+    T('brim', 0.003); C.ell([0, top - 0.06, r * 0.82], [r * 0.82, 0.009, r * 0.5], [16, 0, 0]);
+  }
   T('badge', 0.002); C.ell([0, top + 0.01, r + 0.035], [0.028, 0.024, 0.01]);
   C.build(0.0016, 1, obj);
 };

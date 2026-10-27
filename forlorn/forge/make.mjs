@@ -9,7 +9,8 @@
  *        -> the build prints "# JOINTS {...}", saved as forge/<id>/<id>_joints.json
  *   2. --rig   rig.mjs on the full sculpt: the T-pose / arms-down / step / crouch check sheet
  *   3. --ship  ship.mjs: weld, 2,000-5,000 triangles, texture baked from the sculpt, rig,
- *              every clip in lib/clips.js; the game file goes to assets/models/<id>[_skin].glb
+ *              every clip in lib/clips_r6.js (in the style spec.json's "anim" names);
+ *              the game file goes to assets/models/<id>[_skin].glb
  *
  * Every render is copied to forge/<id>/renders/ so the look of every round is kept.
  * The .sculpt stays in the scratch folder (9 MB gzipped each); the build script
@@ -72,7 +73,8 @@ if (opt('rig', false)) {
 if (opt('ship', false)) {
   const tris = String(opt('tris', spec.tris || 4000));
   const clips = path.join(out, 'clips.js');
-  fs.writeFileSync(clips, `const ROLE = ${JSON.stringify(spec.role || 'survivor')};\n` + fs.readFileSync(path.join(HERE, 'lib', spec.clips || 'clips_r6.js'), 'utf8'));
+  // the clips read the character's role and movement style (spec.json "anim": soldier, casual, nervous, posh, stalker, officer, brute, blade, watcher)
+  fs.writeFileSync(clips, `const ROLE = ${JSON.stringify(spec.role || 'survivor')};\nconst STYLE = ${JSON.stringify(spec.anim || '')};\n` + fs.readFileSync(path.join(HERE, 'lib', spec.clips || 'clips_r6.js'), 'utf8'));
   run(path.join(PLUGIN, 'ship.mjs'), [sculpt, '--out', out, '--name', name, '--joints', joints, '--tris', tris,
     '--clips', clips, '--texture', String(spec.texture || 1024)]);
   const models = path.join(GAME, 'assets/models');

@@ -552,7 +552,7 @@ export class KillerBrain {
   /** The friendly killer lets a dancing or emoting survivor go, once. */
   friendlyCheck(t) {
     if (this.ks.mercy <= 0) return false;
-    if (t.view && ['dance', 'wave', 'cheer'].includes(t.view.oneShot && t.view.oneShot.getClip().name.toLowerCase()) && R() < this.ks.mercy) {
+    if (t.view && ['dance', 'wave', 'cheer'].includes(t.view.shotName) && R() < this.ks.mercy) {
       this.spare.add(t); this.M.later(20, () => this.spare.delete(t));
       this.say('taunt', {}, true);
       return true;
@@ -606,7 +606,7 @@ export class LobbyBrain {
     if (this.afk) { I.mx = I.mz = 0; return; }
     // someone waved at us: wave back, the friendly ones anyway
     const me = L.me;
-    if (me && me !== a && me.view && me.view.oneShot && me.view.oneShot.getClip().name === 'Wave' && a.dist(me) < 9 && !this.wavedAt) {
+    if (me && me !== a && me.view && me.view.shotName === 'wave' && a.dist(me) < 9 && !this.wavedAt) {
       this.wavedAt = true;
       if (R() < 0.3 + this.p.team * 0.6) setTimeout(() => { a.yaw = Math.atan2(me.x - a.x, me.z - a.z); a.view && a.view.once('wave'); }, 300 + R() * 900);
       setTimeout(() => { this.wavedAt = false; }, 4000);
