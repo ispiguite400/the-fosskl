@@ -92,7 +92,7 @@ export class Curfew {
         if (M.time - last > 8) {
           M.feed('A searchlight caught ' + s.name, 'bad');
           audio.sfx('trap', { pos: s, vol: 0.6 });
-          if (s.isPlayer) { bus.emit('toast', 'CURFEW VIOLATION: the killer knows where you are'); M.game.input.rumble && M.game.input.rumble(0.4, 0.2, 200); }
+          if (s.isPlayer) { bus.emit('toast', 'CURFEW VIOLATION: the killer knows where you are', s); M.local(s, (x) => x.input.rumble(0.4, 0.2, 200)); }
           if (s.brain && R() < 0.35) M.botSay(s, 'spotted');
         }
         this.caught.set(s, M.time);

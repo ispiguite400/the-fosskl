@@ -30,7 +30,7 @@ export class Lobby {
     if (this.actors.some((a) => a.member === m)) return;
     const { charId, skin } = this.game.server.survivorFor(m);
     const v = await makeCharacter(charId, skin);
-    const a = new Actor(this.world, { name: m.name, charId, skin, role: 'lobby', isPlayer: m.isMe, member: m });
+    const a = new Actor(this.world, { name: m.name, charId, skin, role: 'lobby', isPlayer: m.isMe || !!m.local, member: m });
     a.setView(v); v.rim(0x5a6f9a);
     const s = R.pick(this.world.spawns.survivor);
     a.place(s[0] + (R() - 0.5) * 2, s[1] + (R() - 0.5) * 2, Math.atan2(-s[0], -s[1]));
@@ -48,6 +48,17 @@ export class Lobby {
     this.game.camRig.target = a;
   }
   get me() { return this.actors.find((a) => a.member.isMe); }
+  /** Split screen: player two's body. */
+  get p2() { return this.actors.find((a) => a.member.local === 2); }
+  /** Player two changed character: swap their body where it stands. */
+  async refreshMember(m) {
+    const old = this.actors.find((a) => a.member === m);
+    const x = old ? old.x : 0, z = old ? old.z : 0, yaw = old ? old.yaw : 0;
+    this.despawn(m);
+    const a = await this.spawn(m);
+    if (a && old) a.place(x, z, yaw);
+    return a;
+  }
   vote(m, mapId) { this.votes.set(m, mapId); }
   tally() {
     const n = new Map(this.choices.map((c) => [c.id, 0]));

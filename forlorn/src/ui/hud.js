@@ -2,6 +2,9 @@
  * The in-round HUD: timer and generators, the team, the feed, health/stamina/bloodlust,
  * abilities with cooldowns and the right button glyph for the device in use, prompts,
  * big centre messages, spectating, the scoreboard.
+ *
+ * One per local player (split screen: each over its own half). Messages meant for one player
+ * (a toast, a hit, a ping for one side) carry who they are for, and the other HUD ignores them.
  */
 import { el, esc, fmtTime } from '../core/util.js';
 import { input } from '../core/input.js';
@@ -20,19 +23,28 @@ const STATUS = {
 };
 
 export class Hud {
-  constructor(game, root) {
-    this.game = game; this.root = root; this.m = null;
+  /** slot: whose HUD ({ p, input, worldUi }); player one's by default */
+  constructor(game, root, slot = null) {
+    this.game = game; this.root = root; this.m = null; this.me = null;
+    this.slot = slot;
     this.offs = [];
+    const mine = (who) => !who || who === this.me;
     this.offs.push(bus.on('feed', (d) => this.feedLine(d.text, d.kind)));
-    this.offs.push(bus.on('toast', (t) => this.toast(t)));
-    this.offs.push(bus.on('ping', (p) => this.game.worldUi.ping(p)));
-    this.offs.push(bus.on('hurt', () => this.hurtFlash()));
+    this.offs.push(bus.on('toast', (t, who) => { if (mine(who)) this.toast(t); }));
+    this.offs.push(bus.on('ping', (p) => {
+      if (p.to && (p.to === 'survivor' || p.to === 'killer') ? !this.me || this.me.role !== p.to : !mine(p.to)) return;
+      this.worldUi.ping(p);
+    }));
+    this.offs.push(bus.on('hurt', (d) => { if (mine(d && d.actor)) this.hurtFlash(); }));
     this.offs.push(bus.on('gen', (d) => { if (!d.left) this.center('EVERY GENERATOR IS RUNNING', 'Hold out until the timer runs out', 3); }));
-    this.offs.push(bus.on('frenzy', (d) => { const P = this.game.focusActor(); if (P && P.role === 'killer') this.center('FRENZY', 'Faster, harder, for 8 seconds', 2.5); else this.center(d.killer.name.toUpperCase() + ' IS IN A FRENZY', '', 2.2); }));
+    this.offs.push(bus.on('frenzy', (d) => { const P = this.me; if (P && P.role === 'killer') this.center('FRENZY', 'Faster, harder, for 8 seconds', 2.5); else this.center(d.killer.name.toUpperCase() + ' IS IN A FRENZY', '', 2.2); }));
     this.offs.push(bus.on('event', (ev) => this.center(ev.title || 'EVENT', ev.text || '', 3.5)));
-    this.offs.push(bus.on('death', (d) => { if (d.actor.isPlayer) this.center('YOU DIED', 'You linger as an echo: press ' + (input.glyph('ability1') || 'the Echo button') + ' once to reveal the killer', 4); }));
-    this.offs.push(bus.on('bond', (d) => { if (d.a.isPlayer || d.b.isPlayer) this.toast('Bonded with ' + (d.a.isPlayer ? d.b.name : d.a.name) + ': faster repairs together'); }));
+    this.offs.push(bus.on('death', (d) => { if (d.actor === this.me) this.center('YOU DIED', 'You linger as an echo: press ' + (this.inp.glyph('ability1') || 'the Echo button') + ' once to reveal the killer', 4); }));
+    this.offs.push(bus.on('bond', (d) => { if (d.a === this.me || d.b === this.me) this.toast('Bonded with ' + (d.a === this.me ? d.b.name : d.a.name) + ': faster repairs together'); }));
   }
+  get p() { return this.slot ? this.slot.p : 1; }
+  get inp() { return this.slot ? this.slot.input : input; }
+  get worldUi() { return this.slot && this.slot.worldUi ? this.slot.worldUi : this.game.worldUi; }
   build(match, me) {
     this.m = match; this.me = me;
     const r = this.root; r.innerHTML = '';
@@ -106,7 +118,7 @@ export class Hud {
   }
   _ab(o) {
     // the button to press sits on top of each tile, drawn for the device in use (ui/glyph.js keeps it current)
-    const w = el('div', 'abw', glyph(o.action));
+    const w = el('div', 'abw', glyph(o.action, '', this.p));
     const e = el('div', 'ab' + (o.item ? ' item' : '') + (o.m1 ? ' m1' : ''), '<span class="ic">' + o.icon + '</span><span class="nm">' + esc(o.name) + '</span><div class="cd hidden"></div>');
     w.appendChild(e);
     this.abils.appendChild(w);
@@ -121,7 +133,7 @@ export class Hud {
   }
   toast(text) {
     const t = el('div', 'toast', esc(text));
-    this.game.ui.overlay.appendChild(t);
+    this.root.appendChild(t);
     setTimeout(() => t.remove(), 2600);
   }
   center(big, small, t = 2.5) {
@@ -206,14 +218,14 @@ export class Hud {
     // prompt
     const p = player.prompt;
     if (p && me && me.alive) {
-      const html = glyph(p.action) + '<span>' + esc(p.text) + '</span>' + (p.progress !== undefined ? '<span class="prog"><i style="width:' + Math.round(p.progress * 100) + '%"></i></span>' : '');
+      const html = glyph(p.action, '', this.p) + '<span>' + esc(p.text) + '</span>' + (p.progress !== undefined ? '<span class="prog"><i style="width:' + Math.round(p.progress * 100) + '%"></i></span>' : '');
       if (html !== this._prompt) { this.prompt.innerHTML = html; this._prompt = html; }
       this.prompt.classList.remove('hidden');
     } else this.prompt.classList.add('hidden');
     // spectating
     if (me && !me.alive && player.spectating) {
       const s = player.spectating, e = m.echoes.get(me);
-      const echo = e && !e.used ? '<button class="btn small" data-echo>ECHO ' + glyph('ability1') + '</button>' : '<span style="color:var(--faint);font-size:.75rem">echo used</span>';
+      const echo = e && !e.used ? '<button class="btn small" data-echo>ECHO ' + glyph('ability1', '', this.p) + '</button>' : '<span style="color:var(--faint);font-size:.75rem">echo used</span>';
       const html = '<button class="btn small" data-prev>◀</button><div class="who"><small>SPECTATING</small>' + esc(s.name) + ' · ' + esc(s.def.name) + '</div><button class="btn small" data-next>▶</button>' + echo;
       if (html !== this._spec) {
         this.spec.innerHTML = html; this._spec = html;
@@ -225,7 +237,7 @@ export class Hud {
       this.spec.classList.remove('hidden');
     } else this.spec.classList.add('hidden');
     // the scoreboard
-    if (input.down('scoreboard')) {
+    if (this.inp.down('scoreboard')) {
       const rows = [...m.survivors, m.killer].filter(Boolean).map((a) => { const st = a.role === 'killer' ? ['Killer', ''] : a.left ? ['Left', 's-left'] : a.alive ? ['Alive', 's-alive'] : ['Dead', 's-dead']; return '<tr' + (a.role === 'killer' ? ' class="k"' : '') + '><td><span class="pp" style="background-image:url(' + portrait(a.charId, a.skin) + ')"></span>' + esc(a.name) + '</td><td>' + esc(a.def.name) + '</td><td class="' + st[1] + '">' + st[0] + '</td><td>' + a.stats.gens + '</td><td>' + a.stats.stuns + '</td><td>' + (a.role === 'killer' ? a.stats.kills : Math.round(a.stats.heals)) + '</td></tr>'; }).join('');
       this.board.innerHTML = '<h4 class="label">' + esc(m.def.name.toUpperCase()) + ' · ' + fmtTime(m.timeLeft) + '</h4><table><tr><th>Player</th><th>Character</th><th>Status</th><th>Gens</th><th>Stuns</th><th>Heals / Kills</th></tr>' + rows + '</table>';
       this.board.classList.remove('hidden');

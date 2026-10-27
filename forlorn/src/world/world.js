@@ -5,6 +5,7 @@
  *   const world = buildWorld(renderer, MAPDEF)
  *   world.scene / world.collision / world.nav / world.spawns / world.gens / world.items
  *   world.update(dt, focus)     lights follow the camera, fires flicker, particles drift
+ *   world.focus(pos)            just move the shadow box and the lamp pool (each split-screen view)
  */
 import * as THREE from 'three';
 import { Parts } from './parts.js';
@@ -80,6 +81,11 @@ export function buildWorld(renderer, def, seed = 1) {
     update(dt, focus) {
       this.time += dt;
       sky.userData.tick(dt);
+      this.focus(focus);
+      if (particles) particles.update(dt, focus);
+    },
+    /** Put the shadow box and the lamp pool around a camera (split screen: each view before it draws). */
+    focus(focus) {
       // keep the shadow box on the action, snapped to texels so it does not shimmer
       const half = q.shadowFar / 2, texel = q.shadowFar / q.shadow;
       const fx = Math.round(focus.x / texel) * texel, fz = Math.round(focus.z / texel) * texel;
@@ -98,7 +104,6 @@ export function buildWorld(renderer, def, seed = 1) {
         l.intensity = L.intensity * LIGHT_GAIN * fl * this.lightScale * (L.off ? 0 : 1);
       }
       for (const L of ls) if (L.sprite) L.sprite.material.opacity = 0.55 * this.lightScale * (L.off ? 0 : 1);
-      if (particles) particles.update(dt, focus);
     }
   };
   return world;

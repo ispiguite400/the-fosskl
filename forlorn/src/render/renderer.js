@@ -70,49 +70,83 @@ export class Renderer {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(settings.fov || 70, 1, 0.08, 400);
     this.time = 0;
-    this.grade = GradeShader.uniforms;
+    this.views = [];                          // one per player: { camera, composer, renderPass, bloom, gradePass, fxaa, grade, rect }
+    this.cameras = [this.camera];
     this.setQuality(settings.quality);
     addEventListener('resize', () => this.resize());
   }
+  /** Player one's grade (the screen's mood); views[i].grade for the others. */
+  get grade() { return this.views[0].grade; }
   setQuality(q) {
     this.q = QUALITY[q] || QUALITY.medium;
     this.qName = q;
-    const c = new EffectComposer(this.gl);
-    this.renderPass = new RenderPass(this.scene, this.camera);
-    c.addPass(this.renderPass);
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.5, 0.82);
-    this.bloom.enabled = this.q.bloom;
-    c.addPass(this.bloom);
-    const old = this.gradePass ? this.gradePass.uniforms : null;
-    this.gradePass = new ShaderPass(GradeShader);
-    if (old) for (const k in old) if (k !== 'tDiffuse') this.gradePass.uniforms[k].value = old[k].value;   // keep the grade across a quality change
-    c.addPass(this.gradePass);
-    c.addPass(new OutputPass());
-    this.fxaa = new ShaderPass(FXAAShader);
-    this.fxaa.enabled = this.q.aa;
-    c.addPass(this.fxaa);
-    this.composer = c;
-    this.grade = this.gradePass.uniforms;
-    this.grade.uGrain.value = this.q.grain ? 0.035 : 0;
+    const old = this.views.map((v) => v.grade);
+    this.views = this.cameras.map((cam, i) => this._view(cam, old[i]));
     this.resize();
   }
+  _view(camera, oldGrade) {
+    const c = new EffectComposer(this.gl);
+    const renderPass = new RenderPass(this.scene, camera);
+    c.addPass(renderPass);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.5, 0.82);
+    bloom.enabled = this.q.bloom;
+    c.addPass(bloom);
+    const gradePass = new ShaderPass(GradeShader);
+    if (oldGrade) for (const k in oldGrade) if (k !== 'tDiffuse') gradePass.uniforms[k].value = oldGrade[k].value;   // keep the grade across a quality change
+    c.addPass(gradePass);
+    c.addPass(new OutputPass());
+    const fxaa = new ShaderPass(FXAAShader);
+    fxaa.enabled = this.q.aa;
+    c.addPass(fxaa);
+    const grade = gradePass.uniforms;
+    grade.uGrain.value = this.q.grain ? 0.035 : 0;
+    return { camera, composer: c, renderPass, bloom, gradePass, fxaa, grade, rect: { x: 0, y: 0, w: 1, h: 1 } };
+  }
+  /** Split screen: a second camera gets the right half of the screen (null goes back to one view). */
+  setSplit(camera2) {
+    const want = camera2 ? [this.camera, camera2] : [this.camera];
+    if (want.length === this.cameras.length && want[1] === this.cameras[1]) return;
+    this.cameras = want;
+    if (camera2) this.views[1] = this._view(camera2, null);
+    else this.views.length = 1;
+    for (const v of this.views) v.renderPass.scene = this.scene;
+    this.resize();
+  }
+  get split() { return this.views.length > 1; }
   resize() {
-    const w = innerWidth, h = innerHeight;
+    const W = innerWidth, H = innerHeight, n = this.views.length;
     const ratio = Math.min(devicePixelRatio || 1, this.q.ratio) * (settings.renderScale || 1);
     this.gl.setPixelRatio(ratio);
-    this.gl.setSize(w, h, false);
-    this.composer.setPixelRatio(ratio);
-    this.composer.setSize(w, h);
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
-    this.fxaa.material.uniforms.resolution.value.set(1 / (w * ratio), 1 / (h * ratio));
-    this.grade.uRes.value.set(w * ratio, h * ratio);
-    this.bloom.resolution.set(w * ratio * 0.5, h * ratio * 0.5);
+    this.gl.setSize(W, H, false);
+    this.views.forEach((v, i) => {
+      // side by side: each player keeps the full height
+      const w = Math.floor(W / n), x = i * w;
+      v.rect = { x, y: 0, w: i === n - 1 ? W - x : w, h: H };
+      v.composer.setPixelRatio(ratio);
+      v.composer.setSize(v.rect.w, v.rect.h);
+      v.camera.aspect = v.rect.w / v.rect.h;
+      v.camera.updateProjectionMatrix();
+      v.fxaa.material.uniforms.resolution.value.set(1 / (v.rect.w * ratio), 1 / (v.rect.h * ratio));
+      v.grade.uRes.value.set(v.rect.w * ratio, v.rect.h * ratio);
+      v.bloom.resolution.set(v.rect.w * ratio * 0.5, v.rect.h * ratio * 0.5);
+    });
   }
-  setScene(scene) { this.scene = scene; this.renderPass.scene = scene; }
-  render(dt) {
+  setScene(scene) { this.scene = scene; for (const v of this.views) v.renderPass.scene = scene; }
+  /** Draw every view; before(i) runs ahead of view i (split screen moves the shadows and x-ray per player). */
+  render(dt, before) {
     this.time += dt;
-    this.grade.uTime.value = this.time;
-    this.composer.render(dt);
+    const split = this.views.length > 1, H = innerHeight;
+    this.views.forEach((v, i) => {
+      v.grade.uTime.value = this.time;
+      if (before) before(i, v);
+      if (split) {
+        const r = v.rect;
+        this.gl.setViewport(r.x, H - r.y - r.h, r.w, r.h);
+        this.gl.setScissor(r.x, H - r.y - r.h, r.w, r.h);
+        this.gl.setScissorTest(true);
+      }
+      v.composer.render(dt);
+    });
+    if (split) { this.gl.setScissorTest(false); this.gl.setViewport(0, 0, innerWidth, H); }
   }
 }

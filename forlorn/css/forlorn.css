@@ -612,3 +612,31 @@ body.touch .lobby-me { top: calc(3.6rem + var(--safe-t)); }
   .h-team { gap: 0.15rem; }
   .h-bars { width: min(17rem, 44vw); }
 }
+
+/* ---------- split screen: two players side by side (main.js addPlayer2) ---------- */
+#ui.split > #hud, #ui.split > #world-ui { right: 50%; }
+#ui.split > #hud2, #ui.split > #world-ui2, #ui.split > #overlay2 { left: 50%; }
+#ui > #world-ui2 { overflow: hidden; }
+#ui > #overlay2 > * { pointer-events: auto; }
+#ui.split::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 4px; translate: -50% 0; background: #050507; box-shadow: 0 0 0 1px rgba(236,228,214,0.1); pointer-events: none; }
+#ui.split > #hud, #ui.split > #hud2 { font-size: 12px; }
+#ui.split .h-team { transform: scale(0.78); transform-origin: top left; }
+#ui.split .h-feed { display: none; }
+#ui.split > #overlay > .puzzle { left: 25%; width: min(25rem, 46vw); }
+#ui.split .lobby-players { display: none; }
+#ui.split .h-top { left: auto; right: calc(0.6rem + var(--safe-r)); translate: none; }
+#ui.split .h-bottom { left: calc(0.8rem + var(--safe-l)); translate: none; align-items: flex-start; }
+#ui.split .h-bars { width: min(15rem, 22vw); }
+#ui.split .h-abils { right: calc(0.7rem + var(--safe-r)); }
+#ui.split .vote { left: 25%; }
+.lobby-me .join { margin-top: 0.45rem; padding-top: 0.45rem; border-top: 1px solid var(--line); font-size: 0.74rem; color: var(--cyan); display: flex; align-items: center; gap: 0.35rem; }
+.lobby-me .join .ico { width: 1rem; height: 1rem; }
+.lobby-me .join .glyph { font-size: 0.85rem; }
+.p2-card { position: absolute; left: 1rem; top: calc(8.2rem + var(--safe-t)); background: linear-gradient(180deg, rgba(22,20,25,0.92), rgba(10,9,12,0.9)); clip-path: var(--cut); box-shadow: inset 0 0 0 1px var(--line2), inset 3px 0 0 var(--cyan); padding: 0.6rem 0.9rem 0.65rem; min-width: 15rem; font-size: 13px; }
+.p2-tag { font-family: var(--head); letter-spacing: 0.3em; color: var(--cyan); font-size: 1rem; margin-bottom: 0.35rem; }
+.p2-row { display: flex; align-items: center; gap: 0.45rem; padding: 0.2rem 0; }
+.p2-row small { width: 4.6rem; color: var(--dim); font-size: 0.62rem; letter-spacing: 0.18em; }
+.p2-row b { flex: 1; text-align: center; font-family: var(--head); font-size: 1.15rem; letter-spacing: 0.06em; font-weight: 400; }
+.p2-row .glyph { font-size: 0.85rem; }
+.p2-hint { margin-top: 0.35rem; color: var(--dim); font-size: 0.7rem; display: flex; align-items: center; gap: 0.3rem; }
+.p2-hint .glyph { font-size: 0.8rem; }

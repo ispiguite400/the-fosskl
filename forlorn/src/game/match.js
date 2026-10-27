@@ -30,7 +30,7 @@ const ROUND_TIME = 225, GEN_CUT = 20, BOND_TIME = 35;
 export class Match {
   constructor(game, def, roster) {
     this.game = game; this.def = def; this.roster = roster;
-    this.actors = []; this.survivors = []; this.killer = null; this.player = null;
+    this.actors = []; this.survivors = []; this.killer = null; this.player = null; this.player2 = null; this.players = [];
     this.gens = []; this.pickups = [];
     this.phase = 'loading'; this.time = 0; this.timeLeft = def.time || ROUND_TIME;
     this.timers = [];
@@ -77,7 +77,7 @@ export class Match {
         a.place(s[0] + (R() - 0.5) * 0.6, s[1] + (R() - 0.5) * 0.6, Math.atan2(-s[0], -s[1]) + (R() - 0.5));
         this.survivors.push(a);
       }
-      if (a.isPlayer) this.player = a;
+      if (a.isPlayer) { if (r.member.isMe) this.player = a; else this.player2 = a; this.players.push(a); }
       else a.brain = r.role === 'killer' ? new KillerBrain(a, this) : new SurvivorBrain(a, this);
       this.actors.push(a);
     });
@@ -110,7 +110,9 @@ export class Match {
   /* ---------------- talk ---------------- */
   sfx(name, pos, opts = {}) { audio.sfx(name, Object.assign({ pos: pos && pos.x !== undefined ? pos : null }, opts)); }
   feed(text, kind = 'bad') { bus.emit('feed', { text, kind }); this.log.push(text); }
-  denied(a, why) { if (a.isPlayer) { bus.emit('toast', why); audio.sfx('deny'); } }
+  denied(a, why) { if (a.isPlayer) { bus.emit('toast', why, a); audio.sfx('deny'); } }
+  /** Feedback for a local player's own screen and controller (split screen: whichever one it is). */
+  local(a, fn) { const s = a && a.isPlayer && this.game.slotFor ? this.game.slotFor(a) : null; if (s) fn(s); }
   botSay(a, topic, vars = {}, force = false) {
     if (!a.member || !a.member.bot || a.left) return;
     if (!settings.botChat) return;
@@ -127,12 +129,12 @@ export class Match {
   tell(ev, d) { for (const a of this.actors) if (a.brain && a.brain.onEvent) { try { a.brain.onEvent(ev, d); } catch (e) { console.error('[brain event]', ev, e); } } }
   callout(from, K) {
     this.tell('callout', { from, x: K.x, z: K.z });
-    if (this.player && this.player.role === 'survivor' && this.player !== from && this.player.alive) bus.emit('ping', { x: K.x, z: K.z, kind: 'killer', label: from.name + ': killer', t: 3.5 });
+    if (this.players.some((p) => p.role === 'survivor' && p !== from && p.alive)) bus.emit('ping', { x: K.x, z: K.z, kind: 'killer', label: from.name + ': killer', t: 3.5, to: 'survivor' });
   }
   askForHelp(from) { this.tell('askHelp', { from }); }
-  onBotHelping(bot, who) { if (who.isPlayer) bus.emit('ping', { x: bot.x, z: bot.z, kind: 'ally', label: bot.name + ' is coming', t: 3, follow: bot }); }
+  onBotHelping(bot, who) { if (who.isPlayer) bus.emit('ping', { x: bot.x, z: bot.z, kind: 'ally', label: bot.name + ' is coming', t: 3, follow: bot, to: who }); }
   onHelped(by, who, verb) {
-    if (who.isPlayer) bus.emit('toast', by.name + ' ' + verb + ' you');
+    if (who.isPlayer) bus.emit('toast', by.name + ' ' + verb + ' you', who);
     if (who.brain && R() < 0.6) this.botSay(who, 'thanksHeal', { name: by.name });
     by.stats.saves++;
   }
@@ -209,7 +211,7 @@ export class Match {
     this.sfx('gen_bad', gen, { range: 60 });
     this.fx.burst(gen.x, 1, gen.z + 0.4, 0xffd060, 18, 3, 0.4);
     this.tell('genNoise', { gen });
-    if (this.killer && this.killer.isPlayer) bus.emit('ping', { x: gen.x, z: gen.z, kind: 'gen', label: 'Noise', t: 3 });
+    if (this.killer && this.killer.isPlayer) bus.emit('ping', { x: gen.x, z: gen.z, kind: 'gen', label: 'Noise', t: 3, to: 'killer' });
     gen.addProgress(-0.25);
     gen.progress = Math.max(0, gen.progress);
   }
@@ -242,7 +244,13 @@ export class Match {
     }
     this.shakeNear({ x, z }, 0.5);
   }
-  shakeNear(p, a) { const c = this.game.camRig, P = this.game.focusActor(); if (!P) return; const d = dist(P.x, P.z, p.x, p.z); if (d < 25) c.shake(a * (1 - d / 25), 0.35); }
+  shakeNear(p, a) {
+    for (const s of this.game.slots || []) {
+      const P = s.control && s.control.spectating && this.players.includes(s.actor) && !s.actor.alive ? s.control.spectating : s.actor;
+      if (!P) continue;
+      const d = dist(P.x, P.z, p.x, p.z); if (d < 25) s.camRig.shake(a * (1 - d / 25), 0.35);
+    }
+  }
 
   /* ---------------- hooks from actors ---------------- */
   beforeDamage(t, amount, src, kind) {
@@ -271,7 +279,7 @@ export class Match {
   }
   onStun(t, time, src) {
     if (t.role === 'killer') { this.bloodlust = Math.min(100, this.bloodlust + 8); this.tell('stunned', { by: src, who: t }); }
-    if (t.isPlayer || (src && src.isPlayer)) { this.game.input.rumble(0.7, 0.4, 200); }
+    for (const x of [t, src]) this.local(x, (s) => s.input.rumble(0.7, 0.4, 200));
     if (t.brain && t.brain.mv) t.brain.mv.clear();
   }
   onMeleeHit(k, s, dmg) {
@@ -281,8 +289,8 @@ export class Match {
     if (s.alive) s.fx.add('haste', 1.5, 0.35);        // ...and the survivor bolts
     if (k.role === 'killer') this.bloodlust = Math.min(100, this.bloodlust + 14);
     if (k.fx.has('interrogate')) { k.fx.remove('interrogate'); for (const o of this.survivorsAlive()) this.reveal(o, 6, 'killer'); this.feed(k.name + ' made ' + s.name + ' talk: everyone revealed', 'bad'); }
-    if (s.isPlayer) { this.game.camRig.shake(0.35, 0.3); this.game.input.rumble(1, 0.6, 260); bus.emit('hurt', { dmg }); }
-    if (k.isPlayer) { this.game.camRig.shake(0.15, 0.15); this.game.input.rumble(0.5, 0.8, 120); }
+    this.local(s, (x) => { x.camRig.shake(0.35, 0.3); x.input.rumble(1, 0.6, 260); bus.emit('hurt', { dmg, actor: s }); });
+    this.local(k, (x) => { x.camRig.shake(0.15, 0.15); x.input.rumble(0.5, 0.8, 120); });
   }
   onWhiff(k) { k.fx.add('slow', 0.5, 0.25); }
   onDamaged(t, dmg, src, kind) {

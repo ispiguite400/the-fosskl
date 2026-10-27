@@ -55,6 +55,17 @@ name; or the touch button's own label or picture on a phone. That is the badge o
 ability, the interact prompt, each ability on the Characters screen, and the button list in How to
 play and Settings (`src/ui/glyph.js`).
 
+### Split screen
+
+Two players on one screen, each on a controller. In the camp, a second controller presses ✕ (A on
+Xbox) to join; or pick **Add player 2** in the camp menu to keep player one on keyboard and mouse
+and give the controller to player two. The screen splits side by side. Each player has their own
+camera, HUD, button glyphs, name tags, wire puzzle, rumble and screen mood (fear, death, blind),
+and sees through walls only what their own side would. Both play every round from then on, on the
+same team or one of them as the killer. Player two picks a survivor with L1 / R1 and a killer
+with L2 / R2 from the characters you own, and holds ○ (B) to leave. Either player's OPTIONS
+pauses, and both can drive the pause menu. Player two's earnings go into the same bank.
+
 ## The game
 
 - **A server full of bots.** Up to seven other players share the server. Each one is a person:
@@ -151,12 +162,36 @@ rules say scenery should be; only characters get sculpted models.
 script, joints and renders; `forge/lib/` holds the body kit, clothing, faces, accessories and the
 R6 animation clips.
 
+### Animation
+
+The characters stay R6 (six rigid parts), but move like the ones in Forsaken rather than stock
+R6 swinging (`forge/lib/clips_r6.js`, baked into every model by `ship.mjs`):
+
+- **Weight**: the hips ride as low as the rigid legs allow, so feet stay planted and the body dips
+  and rises through every step; a foot stays down longer than it swings; arms lag the legs; the
+  torso twists over the feet and shifts onto the standing leg; a run leaves the ground between
+  strides.
+- **Timing**: strikes anticipate, hit in a few frames and follow through; reactions snap in and
+  ease out; idles breathe, shift weight and look around in holds rather than a sweeping sine.
+- **Character**: each character has a movement style (`"anim"` in its `spec.json`). Survivors are
+  *soldier* (Guest 1337, the Captain), *casual* (Matt, Justin, Jez, Daisy, Rose), *nervous* (Emily,
+  Charlie: hunched, arms held in) or *posh* (Rich Guy: hands behind the back, checks his watch).
+  Killers each have their own: The Terrible's dead-armed float and trailing-arm sprint, the Bacon
+  General's march and pistol whip, the Colonel's heavy stomp and rifle-butt jab, the Elite Guard's
+  sword stance and flat cut, Blox Watch's stillness, head snaps and shock.
+- **States**: hurt survivors limp and clutch their side, jumps have a take-off, fall and landing,
+  a stun is a dizzy sway, death staggers, buckles and falls flat.
+
+In the game (`src/render/characters.js`) clips cross-fade with weights that always add up to one;
+walk and run keep their step when they change; attacks, throws and casts play on the upper body
+while the legs keep running; and the body leans into turns at speed.
+
 ## Layout
 
 ```text
 index.html, css/          the page and the UI's look (fonts are served locally from assets/fonts)
 src/main.js               boot and the state machine (title, lobby, round, results)
-src/core/                 input (keyboard, mouse, DualSense, touch), save, events, helpers
+src/core/                 input (keyboard, mouse, DualSense, touch; player two's controller), save, events, helpers
 src/render/               renderer and post effects, materials, sky, characters (forge-loader)
 src/world/                parts, collision, navigation, prefabs, the maps
 src/game/                 actors, abilities, effects, match, bots' brains, player, lobby, server

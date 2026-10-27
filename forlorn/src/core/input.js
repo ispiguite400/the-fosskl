@@ -10,6 +10,9 @@
  *   input.label(a)          { kind, text } of the button for an action on the current device
  *   input.glyph(a)          the same as plain text, for sentences
  *   input.rumble(strong, weak, ms)
+ *
+ * That is player one: keyboard, mouse, touch and the first controller. Split screen gives player two
+ * a PadInput of their own: the same interface, on one controller, which player one then ignores.
  */
 import { clamp } from './util.js';
 import { IS_TOUCH } from './device.js';
@@ -65,6 +68,9 @@ class Input {
     this.touchT = -1e9;                     // when a finger last touched the screen
     this.touch ={ move: { x: 0, y: 0 }, look: { x: 0, y: 0 }, buttons: new Set() };
     this.pad = null; this.padIndex = -1; this.padKind = 'ps';
+    this.claimed = new Set();               // controllers that belong to player two
+    this.others = [];                       // player two's input, when a menu is shared
+    this.menuShare = false;
     this.wheel = 0;
     this._bind();
   }
@@ -106,8 +112,9 @@ class Input {
     this.prev = this.held; this.held = new Set();
     // gamepad
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    if (this.claimed.has(this.padIndex)) this.padIndex = -1;
     let pad = this.padIndex >= 0 ? pads[this.padIndex] : null;
-    if (!pad) for (const p of pads) if (p && p.connected) { pad = p; this.padIndex = p.index; break; }
+    if (!pad) for (const p of pads) if (p && p.connected && !this.claimed.has(p.index)) { pad = p; this.padIndex = p.index; break; }
     this.pad = pad;
     if (pad) this.padKind = padKindOf(pad.id);
     let px = 0, py = 0, lx = 0, ly = 0;
@@ -151,7 +158,12 @@ class Input {
     this.touch.look.x = this.touch.look.y = 0;
   }
   down(a) { return this.held.has(a); }
-  pressed(a) { return this._pressed.has(a); }
+  /** Pause is anyone's; while a menu is open, player two can drive it too. */
+  pressed(a) {
+    if (this._pressed.has(a)) return true;
+    if (a === 'pause' || (this.menuShare && MENU.has(a))) for (const o of this.others) if (o.pressed(a)) return true;
+    return false;
+  }
   released(a) { return this._released.has(a); }
   consume(a) { this._pressed.delete(a); }
   takeWheel() { const w = this.wheel; this.wheel = 0; return w; }
@@ -187,3 +199,68 @@ class Input {
 }
 
 export const input = new Input();
+
+const MENU = new Set(['confirm', 'cancel', 'menuUp', 'menuDown', 'menuLeft', 'menuRight', 'tabPrev', 'tabNext']);
+
+/** Every connected controller: [{ index, id, pressed: [button numbers] }]. */
+export function scanPads() {
+  const out = [];
+  for (const p of (navigator.getGamepads ? navigator.getGamepads() : [])) if (p && p.connected) out.push({ index: p.index, id: p.id, pressed: p.buttons.map((b, i) => (b.pressed ? i : -1)).filter((i) => i >= 0) });
+  return out;
+}
+
+/**
+ * Player two in split screen: one controller, with input's interface (move, look, down, pressed,
+ * released, label, glyph, rumble), so the player's hands, the HUD and the puzzle take either.
+ */
+export class PadInput {
+  constructor(index) {
+    this.padIndex = index; this.pad = null; this.padKind = 'ps';
+    this.device = 'pad'; this.typing = false; this.locked = false;
+    this.move = { x: 0, y: 0 }; this.look = { x: 0, y: 0 };
+    this.held = new Set(); this.prev = new Set(); this._pressed = new Set(); this._released = new Set();
+    this.keys = new Set(); this.touch = { move: { x: 0, y: 0 }, look: { x: 0, y: 0 }, buttons: new Set() };
+  }
+  get connected() { const p = navigator.getGamepads ? navigator.getGamepads()[this.padIndex] : null; return !!(p && p.connected); }
+  update() {
+    this.prev = this.held; this.held = new Set();
+    const pad = (navigator.getGamepads ? navigator.getGamepads() : [])[this.padIndex] || null;
+    this.pad = pad && pad.connected ? pad : null;
+    const dz = (v, d = 0.14) => (Math.abs(v) < d ? 0 : (v - Math.sign(v) * d) / (1 - d));
+    let px = 0, py = 0, lx = 0, ly = 0;
+    if (this.pad) {
+      this.padKind = padKindOf(this.pad.id);
+      px = dz(this.pad.axes[0] || 0); py = -dz(this.pad.axes[1] || 0);
+      lx = dz(this.pad.axes[2] || 0, 0.1); ly = dz(this.pad.axes[3] || 0, 0.1);
+      for (const a in BIND) {
+        const b = BIND[a];
+        if (b.pad) for (const i of b.pad) if (this.pad.buttons[i] && (this.pad.buttons[i].pressed || this.pad.buttons[i].value > 0.4)) this.held.add(a);
+      }
+    }
+    this._pressed = new Set([...this.held].filter((a) => !this.prev.has(a)));
+    this._released = new Set([...this.prev].filter((a) => !this.held.has(a)));
+    const len = Math.hypot(px, py);
+    this.move.x = len > 1 ? px / len : px; this.move.y = len > 1 ? py / len : py;
+    const stick = 16 * (1 + 1.6 * Math.max(Math.abs(lx), Math.abs(ly)));
+    this.look.x = lx * stick; this.look.y = ly * stick;
+  }
+  down(a) { return this.held.has(a); }
+  pressed(a) { return this._pressed.has(a); }
+  released(a) { return this._released.has(a); }
+  consume(a) { this._pressed.delete(a); }
+  takeWheel() { return 0; }
+  requestLock() {}
+  releaseLock() {}
+  label(a) {
+    const b = BIND[a];
+    if (!b || !b.pad || !b.pad.length) return { kind: '', text: '' };
+    const i = b.pad[0];
+    return { kind: i <= 3 ? 'face' : 'pad', text: PAD_NAME[this.padKind][i], pad: this.padKind, button: i };
+  }
+  glyph(a) { return this.label(a).text; }
+  deviceName() { return { ps: 'PlayStation controller', xbox: 'Xbox controller', switch: 'Switch controller' }[this.padKind]; }
+  rumble(strong = 0.5, weak = 0.5, ms = 120) {
+    const a = this.pad && this.pad.vibrationActuator;
+    if (a && a.playEffect) a.playEffect('dual-rumble', { duration: ms, strongMagnitude: clamp(strong, 0, 1), weakMagnitude: clamp(weak, 0, 1) }).catch(() => {});
+  }
+}

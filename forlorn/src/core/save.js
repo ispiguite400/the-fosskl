@@ -12,6 +12,7 @@ const DEFAULT_PROFILE = {
   malice: 0,                     // the killer chance: highest malice is the killer next round
   owned: { guest1337: ['default'] },
   equipped: { survivor: 'guest1337', killer: 'terrible', skins: {} },
+  p2: { name: 'Player 2', survivor: 'guest1337', killer: 'terrible' },   // split screen: who player two plays (from the same owned characters)
   stats: { rounds: 0, escapes: 0, kills: 0, gens: 0, saves: 0, lmsWins: 0 },
   emotes: ['wave', 'point', 'dance', 'cheer']
 };

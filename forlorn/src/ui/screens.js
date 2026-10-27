@@ -5,7 +5,7 @@
 import { el, esc, fmtTime, clamp } from '../core/util.js';
 import { profile, settings, saveProfile, saveSettings, owns, grant, equippedSkin } from '../core/save.js';
 import { SURVIVORS, KILLERS, isReady, byId } from '../data/characters.js';
-import { input } from '../core/input.js';
+import { input, scanPads } from '../core/input.js';
 import { audio } from '../audio/audio.js';
 import { music } from '../audio/music.js';
 import { portrait, mapArt } from './art.js';
@@ -97,7 +97,7 @@ export class UI {
     const g = this.game, L = g.lobby;
     const s = el('div', 'screen see-through'); s.id = 'lobby';
     s.innerHTML = '<div class="lobby-top"><div class="inter">INTERMISSION</div><div class="count">0:30</div><div class="sub"></div></div>' +
-      '<div class="lobby-me"><div class="row1"><div class="nm"></div><div class="lvl"></div></div><div class="money"></div><div class="xpbar"><i></i></div><div class="mal"><span>Malice</span><b></b></div><div class="malbar"><i></i></div><div class="queue"></div></div>' +
+      '<div class="lobby-me"><div class="row1"><div class="nm"></div><div class="lvl"></div></div><div class="money"></div><div class="xpbar"><i></i></div><div class="mal"><span>Malice</span><b></b></div><div class="malbar"><i></i></div><div class="queue"></div><div class="join hidden"></div></div>' +
       '<div class="lobby-players"><h4 class="label">SERVER</h4><div class="rows"></div></div>' +
       '<div class="lobby-side"></div><div class="vote hidden"></div>';
     const side = s.querySelector('.lobby-side');
@@ -150,6 +150,11 @@ export class UI {
       const q = g.server.killerQueue(), qe = s.querySelector('.lobby-me .queue');
       qe.textContent = settings.killerOptOut ? 'Killer off' : q.pos === 1 && !q.gap ? 'You are the next killer' : q.pos === 1 ? 'Tied for killer' : '#' + q.pos + ' in line for killer';
       qe.classList.toggle('first', !settings.killerOptOut && q.pos === 1 && !q.gap);
+      // split screen: tell a second controller it can join
+      const je = s.querySelector('.lobby-me .join'), pads = scanPads().length;
+      const ask = !g.p2 && (g.joinWait || pads >= 2);
+      je.classList.toggle('hidden', !ask);
+      if (ask && je.dataset.v !== String(g.joinWait)) { je.dataset.v = String(g.joinWait); je.innerHTML = icon('people') + (g.joinWait ? 'Player 2: press ' : 'Split screen: a second controller presses ') + '<span class="glyph"><span class="g-face" style="color:#8db8ff"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></span></span> to join'; }
       s.querySelector('.lobby-players .rows').innerHTML = members.map((m) => '<div class="row' + (m.isMe ? ' me' : '') + (m === next ? ' next' : '') + '"><span class="n">' + esc(m.name) + '</span><span class="mb"><i style="width:' + Math.round(m.malice / top * 100) + '%"></i></span><span class="m">' + m.malice + '</span></div>').join('');
       if (L.timeLeft < 13 && !this._voteBuilt) this.buildVote();
       if (this._voteBuilt) {
@@ -350,6 +355,8 @@ export class UI {
     b('Shop', 'bag', () => { this.stack = ['lobby']; this.shop(); });
     b('Settings', 'gear', () => { this.stack = ['lobby']; this.settings(); });
     b('How to play', 'book', () => { this.stack = ['lobby']; this.howto(); });
+    if (this.game.p2) b('Remove player 2', 'door', () => { this.game.resume(); this.game.removePlayer2(); });
+    else b('Add player 2', 'people', () => { this.game.joinWait = true; this.game.resume(); this.game.chat.system('Split screen: Player 2, press ✕ on your controller to join'); });
     this.onTab = null;
     this._set('lobbymenu', s);
     if (input.device === 'pad') this.nav.set(s.querySelector('.btn'));
@@ -366,6 +373,7 @@ export class UI {
       sec('note', 'Last Man Standing', 'When one survivor is left, the song starts. The round now lasts exactly as long as the song. The survivor gets a burst of speed and stamina; the killer starts in a Frenzy.') +
       sec('star', 'What is different here', '<b>Bond</b>: stay near another survivor for a while and you bond. Bonded survivors repair faster and see each other through walls. <b>Echoes</b>: dead survivors can reveal the killer to the living once a round. <b>Bloodlust</b>: the killer fills it by hitting and chasing; when it boils over, a Frenzy. <b>Events</b>: every map has its own, halfway through: an air raid, a lockdown, a blackout, a curfew.') +
       sec('skull', 'Who is the killer?', 'Every round you are not the killer, your malice goes up. The highest malice is the next killer. Turn "Play as killer" off in Settings to stay a survivor.') +
+      sec('people', 'Split screen', 'Two players on one screen, each with a controller. In the camp, a second controller presses ✕ (A on Xbox) to join, or pick <b>Add player 2</b> from the menu to play player one on keyboard and mouse. The screen splits down the middle; both of you play the next rounds, on the same side or against each other. Player two changes survivor with L1 / R1 and killer with L2 / R2, and holds ○ (B) to leave.') +
       '</div>';
     s.querySelector('[data-back]').onclick = () => this.back();
     this.onTab = null;
@@ -388,6 +396,7 @@ export class UI {
   /* ---------------- results ---------------- */
   results(res, onDone) {
     const meRow = res.rows.find((r) => r.member && r.member.isMe);
+    const local = (r) => r.member && (r.member.isMe || r.member.local);
     const k = res.winner === 'killer';
     const s = el('div', 'screen results fade-in' + (k ? '' : ' s'));
     const win = meRow ? (meRow.role === 'killer') === k : !k;
@@ -395,7 +404,7 @@ export class UI {
     const label = { escaped: ['Survived', 'st-esc', 'heart'], dead: ['Dead', 'st-dead', 'skull'], killer: ['Killer', 'st-k', 'knife'], left: ['Left', 'st-left', 'door'] };
     const rows = res.rows.map((r, i) => {
       const L = label[r.status];
-      return '<div class="pr' + (r.member && r.member.isMe ? ' me' : '') + '" style="animation-delay:' + (0.15 + i * 0.05) + 's"><span class="pic" style="background-image:url(' + portrait(r.charId || '', r.skin) + ')"></span><span class="n">' + esc(r.name) + '</span><span class="c">' + esc(r.char) + '</span><span class="stamp ' + L[1] + '">' + icon(L[2]) + L[0] + '</span><span class="num">' + r.stats.gens + '</span><span class="num">' + r.stats.stuns + '</span><span class="num">' + (r.role === 'killer' ? r.stats.kills : Math.round(r.stats.heals)) + '</span><span class="cash">$' + r.money + '</span></div>';
+      return '<div class="pr' + (local(r) ? ' me' : '') + '" style="animation-delay:' + (0.15 + i * 0.05) + 's"><span class="pic" style="background-image:url(' + portrait(r.charId || '', r.skin) + ')"></span><span class="n">' + esc(r.name) + '</span><span class="c">' + esc(r.char) + '</span><span class="stamp ' + L[1] + '">' + icon(L[2]) + L[0] + '</span><span class="num">' + r.stats.gens + '</span><span class="num">' + r.stats.stuns + '</span><span class="num">' + (r.role === 'killer' ? r.stats.kills : Math.round(r.stats.heals)) + '</span><span class="cash">$' + r.money + '</span></div>';
     }).join('');
     s.innerHTML = '<div class="win worn ' + (k ? 'k' : 's') + '">' + title + '</div><div class="why">' + esc(res.reason || '') + ' · ' + esc(res.map.name) + (res.lms ? ' · LMS: ' + esc(res.lms.name) + (res.lms.won ? ' clutched it' : ' fell') : '') + '</div>' +
       '<div class="players"><div class="pr h"><span></span><span>PLAYER</span><span>CHARACTER</span><span>RESULT</span><span class="num">GENS</span><span class="num">STUNS</span><span class="num">HEAL/K</span><span class="cash">EARNED</span></div>' + rows + '</div>' +

@@ -8,8 +8,9 @@ import { el, esc } from '../core/util.js';
 const _v = new THREE.Vector3();
 
 export class WorldUI {
-  constructor(game, root) {
-    this.game = game; this.root = root;
+  /** camera: whose view it draws over (split screen: one each); root fills that view */
+  constructor(game, root, camera = null) {
+    this.game = game; this.root = root; this.camera = camera;
     this.tags = new Map();         // actor -> { el, nm, bubbles }
     this.pings = [];
   }
@@ -41,7 +42,7 @@ export class WorldUI {
     this.pings.push(Object.assign({ el: e, t: o.t || 3, y: 1.4 }, o));
   }
   update(dt, ctx) {
-    const cam = this.game.renderer.camera, W = innerWidth, H = innerHeight;
+    const cam = this.camera || this.game.renderer.camera, W = this.root.clientWidth || innerWidth, H = this.root.clientHeight || innerHeight;
     const actors = ctx.actors || [];
     const viewer = ctx.viewer;
     const inRound = !!ctx.match;
