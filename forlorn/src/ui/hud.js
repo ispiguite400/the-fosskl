@@ -39,6 +39,7 @@ export class Hud {
     this.offs.push(bus.on('gen', (d) => { if (!d.left) this.center('EVERY GENERATOR IS RUNNING', 'Hold out until the timer runs out', 3); }));
     this.offs.push(bus.on('frenzy', (d) => { const P = this.me; if (P && P.role === 'killer') this.center('FRENZY', 'Faster, harder, for 8 seconds', 2.5); else this.center(d.killer.name.toUpperCase() + ' IS IN A FRENZY', '', 2.2); }));
     this.offs.push(bus.on('event', (ev) => this.center(ev.title || 'EVENT', ev.text || '', 3.5)));
+    this.offs.push(bus.on('timeAdd', (d) => this.timeAdd(d.secs)));
     this.offs.push(bus.on('death', (d) => { if (d.actor === this.me) this.center('YOU DIED', 'You linger as an echo: press ' + (this.inp.glyph('ability1') || 'the Echo button') + ' once to reveal the killer', 4); }));
     this.offs.push(bus.on('bond', (d) => { if (d.a === this.me || d.b === this.me) this.toast('Bonded with ' + (d.a === this.me ? d.b.name : d.a.name) + ': faster repairs together'); }));
   }
@@ -140,6 +141,14 @@ export class Hud {
     if (!this.centerEl) return;
     this.centerEl.innerHTML = '<div class="big worn">' + esc(big) + '</div>' + (small ? '<div class="small">' + esc(small) + '</div>' : '');
     clearTimeout(this._ct); this._ct = setTimeout(() => { if (this.centerEl) this.centerEl.innerHTML = ''; }, t * 1000);
+  }
+  /** A kill bought the killer time: the clock shows it. */
+  timeAdd(secs) {
+    if (!this.clock) return;
+    const e = el('div', 'h-plus', '+' + secs + 's');
+    (this.clock.parentNode || this.clock).appendChild(e);       // the plate clips, so it hangs off the bar
+    this.clock.classList.add('bumped');
+    setTimeout(() => { e.remove(); if (this.clock) this.clock.classList.remove('bumped'); }, 2200);
   }
   hurtFlash() { if (!this.vign) return; this.vign.style.boxShadow = 'inset 0 0 140px rgba(232,50,60,0.75)'; setTimeout(() => { if (this.vign) this.vign.style.boxShadow = ''; }, 250); }
   clear() { clearTimeout(this._ct); this.root.innerHTML = ''; this.m = null; this.feed = null; this.centerEl = null; this.vign = null; this.killerRow = null; }

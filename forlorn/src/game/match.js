@@ -26,6 +26,8 @@ import { bus } from '../core/events.js';
 import { R, clamp, dist, damp } from '../core/util.js';
 
 const ROUND_TIME = 225, GEN_CUT = 20, BOND_TIME = 35;
+export const MISS_CHANCE = 0.2;     // an ability that would land on someone misses one time in five
+export const KILL_TIME = 40;        // a kill gives the killer this many more seconds, as in other asym games
 
 export class Match {
   constructor(game, def, roster) {
@@ -111,6 +113,21 @@ export class Match {
   sfx(name, pos, opts = {}) { audio.sfx(name, Object.assign({ pos: pos && pos.x !== undefined ? pos : null }, opts)); }
   feed(text, kind = 'bad') { bus.emit('feed', { text, kind }); this.log.push(text); }
   denied(a, why) { if (a.isPlayer) { bus.emit('toast', why, a); audio.sfx('deny'); } }
+  /**
+   * Does an ability land on its target? One time in five it does not: dodged, grazed, fumbled.
+   * A miss shows MISS over the target, whiffs, and tells a player who was part of it.
+   */
+  lands(src, t, what) {
+    const hit = R() >= MISS_CHANCE;
+    bus.emit('abilityLand', { src, target: t, hit, what });
+    if (!hit && t) {
+      this.sfx('swing', t, { pitch: 1.3, vol: 0.7 });
+      this.fx.burst(t.x, 1.3, t.z, 0xd8d8d8, 12, 2.5, 0.35);
+      bus.emit('ping', { x: t.x, z: t.z, kind: 'miss', label: 'MISS', t: 1.1, follow: t });
+      if ((src && src.isPlayer) || t.isPlayer) this.feed((src ? src.name + "'s " : '') + what + ' missed ' + t.name, 'info');
+    }
+    return hit;
+  }
   /** Feedback for a local player's own screen and controller (split screen: whichever one it is). */
   local(a, fn) { const s = a && a.isPlayer && this.game.slotFor ? this.game.slotFor(a) : null; if (s) fn(s); }
   botSay(a, topic, vars = {}, force = false) {
@@ -235,6 +252,9 @@ export class Match {
       if (!this.world.collision.sightClear(x, z, a.x, a.z, 0.8)) continue;
       const k = 1 - d / r, dx = (a.x - x) / (d || 1), dz = (a.z - z) / (d || 1);
       const isK = a.role === 'killer' || a.role === 'minion';
+      // an ability's blast can miss whoever it would land on (map events cannot)
+      const sideOf = (x) => (x.role === 'killer' || x.role === 'minion');
+      if (o.ability && by && sideOf(by) !== isK && !this.lands(by, a, o.ability)) continue;
       if (isK) {
         if (o.stun && by && by.role === 'survivor' && a.stun(o.stun, by)) this.feed(by.name + ' blew up ' + a.name, 'good');
         if (o.dmgKiller) a.damage(o.dmgKiller * k, by, 'blast');
@@ -308,6 +328,12 @@ export class Match {
     this.feed((src && src !== a ? src.name + how : '') + a.name + (src && src !== a ? '' : ' died'), 'bad');
     this.echoes.set(a, { used: false, at: this.time });
     bus.emit('death', { actor: a, by: src });
+    // the killer's kill buys them time
+    if (this.phase === 'play' && src && (src.role === 'killer' || src.role === 'minion')) {
+      this.timeLeft += KILL_TIME;
+      this.feed('+' + KILL_TIME + ' seconds for ' + (this.killer ? this.killer.name : 'the killer'), 'bad');
+      bus.emit('timeAdd', { secs: KILL_TIME });
+    }
     if (a.brain) {
       this.later(1 + R() * 2, () => this.botSay(a, 'died', {}, R() < 0.5));
       if (a.member.persona.toxic > 0.6 && R() < 0.35) this.later(4 + R() * 6, () => this.rageQuit(a));
@@ -368,7 +394,7 @@ export class Match {
       this.lms = { survivor: s, track, len, start: this.time, title: music.title(track) };
       this.phase = 'lms';
       this.timeLeft = len;
-      s.fx.add('haste', 9999, 0.12); s.maxStamina *= 1.3; s.stamina = s.maxStamina; s.heal(25);
+      s.fx.add('haste', 9999, 0.13); s.maxStamina *= 1.3; s.stamina = s.maxStamina; s.heal(40);      // balance: tuned on all-bot rounds
       this.bloodlust = 100;
       music.play(track, { fade: 0.4, restart: true });
       audio.sfx('sting', { vol: 0.8 });

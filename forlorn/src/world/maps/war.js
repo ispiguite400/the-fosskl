@@ -7,6 +7,7 @@ import { tree, rock, crate, barrel, sandbags, frame, ruinWall, lamp, tent } from
 import { building, tank, barbed, crater, trench } from '../prefabs2.js';
 
 export default {
+  time: 210,                          // balance: this map's round length (225 elsewhere)
   id: 'war', name: 'The Great War', film: 'The Last Guest',
   blurb: 'No man\'s land, between the Army and the Empire. Keep your head down.',
   size: [96, 100],

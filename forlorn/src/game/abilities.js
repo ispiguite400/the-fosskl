@@ -77,7 +77,7 @@ function stunKiller(src, k, t, M, label) {
 export const ABILITIES = {
   /* ===== survivors ===== */
   block: {
-    icon: '🛡', cast(a, M) { a.fx.add('blocking', 1.2); a.view && a.view.once('block', { speed: 0.9 }); M.sfx('ui', a, { vol: 0.4 }); return true; },
+    icon: '🛡', cast(a, M) { a.fx.add('blocking', 1.5); a.view && a.view.once('block', { speed: 0.9 }); M.sfx('ui', a, { vol: 0.4 }); return true; },
     ai(a, M, c) { return c.kd < 3.2 && c.kFacing && c.killer.attackCd <= 0.2; }
   },
   grenade: {
@@ -90,7 +90,7 @@ export const ABILITIES = {
       M.sfx('whoosh', a);
       M.fx.projectile({ x: h.x, y: h.y, z: h.z, vx: fx * dist / t, vy, vz: fz * dist / t, gravity: 18, owner: a, color: 0x7a8a40, size: 0.13, bounce: 0.35, life: 1.2, glow: false, spin: true,
         onExpire: (p) => {
-          const P = p.mesh.position; M.explode(P.x, P.z, 4, a, { stun: 1.8, dmgKiller: 0, knock: 5, color: 0xffb050 });
+          const P = p.mesh.position; M.explode(P.x, P.z, 4, a, { stun: 1.8, dmgKiller: 0, knock: 5, color: 0xffb050, ability: 'grenade' });
         } });
       return true;
     },
@@ -106,7 +106,7 @@ export const ABILITIES = {
       let hit = false;
       a.shove(fx * 12.5, fz * 12.5, 0.4, (s) => {
         if (hit) return;
-        for (const k of enemies(s, M)) if (s.dist(k) < 1.4) { hit = true; stunKiller(s, k, 1.5, M, 'shield-bashed'); k.shove(fx * 7, fz * 7, 0.25); s.push = null; M.sfx('block', k); break; }
+        for (const k of enemies(s, M)) if (s.dist(k) < 1.4) { hit = true; s.push = null; if (M.lands(s, k, 'shield bash')) { stunKiller(s, k, 1.5, M, 'shield-bashed'); k.shove(fx * 7, fz * 7, 0.25); M.sfx('block', k); } break; }
       });
       return true;
     },
@@ -181,7 +181,7 @@ export const ABILITIES = {
         const r = hitscan(a, M, yaw, 25, 0.45);
         a.view && a.view.once('shoot');
         M.sfx('shot', a); M.fx.beam(hand(a), r.end, 0xfff0b0, 0, 0.12); M.fx.flash(a.x, 1.4, a.z, 0xffd080, 8, 0.12);
-        if (r.hit) stunKiller(a, r.hit, 1.5, M, 'shot');
+        if (r.hit && M.lands(a, r.hit, 'shot')) stunKiller(a, r.hit, 1.5, M, 'shot');
       } });
       a.view && a.view.once('shoot', { speed: 0.6 });
       return true;
@@ -210,18 +210,18 @@ export const ABILITIES = {
       M.fx.beam(chest(a), new THREE.Vector3(a.x + fx * 8, 1.4, a.z + fz * 8), 0xfff6c8, 0, 0.35, 3);
       M.fx.flash(a.x + fx * 3, 1.4, a.z + fz * 3, 0xfff6c8, 10, 0.35);
       M.sfx('ui', a);
-      if (k && k.angleTo(a) < 1.3) { k.fx.add('blind', 2); k.fx.add('slow', 2, 0.2); M.feed(a.name + ' blinded ' + k.name, 'good'); a.stats.stuns++; }
+      if (k && k.angleTo(a) < 1.3 && M.lands(a, k, 'flashlight')) { k.fx.add('blind', 2); k.fx.add('slow', 2, 0.2); M.feed(a.name + ' blinded ' + k.name, 'good'); a.stats.stuns++; }
       return true;
     },
     ai(a, M, c) { return c.killer && c.kSeen && c.kd < 7.5 && c.kFacing && (c.aim = { yaw: Math.atan2(c.killer.x - a.x, c.killer.z - a.z) }); }
   },
   makeitrain: {
     icon: '💸',
-    cast(a, M) { M.sfx('cash', a); M.fx.zone({ x: a.x, z: a.z, r: 3.6, life: 5, kind: 'cash', hits: 'killer', onTick: (k) => k.fx.add('slow', 0.2, 0.35) }); a.view && a.view.once('cheer'); return true; },
+    cast(a, M) { M.sfx('cash', a); M.fx.zone({ x: a.x, z: a.z, r: 4.2, life: 5, kind: 'cash', hits: 'killer', onTick: (k) => k.fx.add('slow', 0.2, 0.45) }); a.view && a.view.once('cheer'); return true; },
     ai(a, M, c) { return c.chased && c.kd < 5; }
   },
   gold: {
-    icon: '🥇', cast(a, M) { a.fx.add('absorb', 8, 40); M.sfx('buy', a); M.fx.burst(a.x, 1, a.z, 0xf2c14e, 26, 2, 0.8); return true; },
+    icon: '🥇', cast(a, M) { a.fx.add('absorb', 8, 55); M.sfx('buy', a); M.fx.burst(a.x, 1, a.z, 0xf2c14e, 26, 2, 0.8); return true; },
     ai(a, M, c) { return c.threat && c.kd < 6; }
   },
   push: {
@@ -231,7 +231,7 @@ export const ABILITIES = {
       a.view && a.view.once('cast');
       M.sfx('teleport', a); M.fx.ring(a.x, a.z, 7, 0x46e0ff, 0.5);
       const k = pickTarget(a, M, yaw, 7.5, 0.6);
-      if (k) { const d = a.dist(k) || 1; k.shove((k.x - a.x) / d * 15, (k.z - a.z) / d * 15, 0.4); stunKiller(a, k, 1, M, 'threw'); M.fx.burst(k.x, 1.2, k.z, 0x46e0ff, 30, 4, 0.6); }
+      if (k && M.lands(a, k, 'push')) { const d = a.dist(k) || 1; k.shove((k.x - a.x) / d * 15, (k.z - a.z) / d * 15, 0.4); stunKiller(a, k, 1, M, 'threw'); M.fx.burst(k.x, 1.2, k.z, 0x46e0ff, 30, 4, 0.6); }
       return true;
     },
     ai(a, M, c) { return c.killer && c.kd < 5 && c.kSeen && c.kInFront && (c.aim = { yaw: Math.atan2(c.killer.x - a.x, c.killer.z - a.z) }); }
@@ -273,7 +273,7 @@ export const ABILITIES = {
       M.sfx('fireball', a);
       const h = chest(a);
       M.fx.projectile({ x: h.x + fx * 0.8, y: 1.3, z: h.z + fz * 0.8, vx: fx * 21, vy: 0, vz: fz * 21, owner: a, color: 0xff5a14, size: 0.3, radius: 0.55, life: 1.4,
-        onHit: (o) => { o.damage(30, a, 'fire'); o.fx.add('burn', 2, 4, a); M.fx.burst(o.x, 1.2, o.z, 0xff7a20, 30, 4, 0.7); M.sfx('fire', o); return 'stop'; },
+        onHit: (o) => { if (!M.lands(a, o, 'fireball')) return 'pierce'; o.damage(26, a, 'fire'); o.fx.add('burn', 2, 4, a); M.fx.burst(o.x, 1.2, o.z, 0xff7a20, 30, 4, 0.7); M.sfx('fire', o); return 'stop'; },
         onWorld: (p) => { M.fx.burst(p.mesh.position.x, p.mesh.position.y, p.mesh.position.z, 0xff7a20, 26, 3, 0.6); M.sfx('fire', p.mesh.position); },
         onExpire: () => {} });
       // the burning trail
@@ -296,9 +296,10 @@ export const ABILITIES = {
       if (!t) { M.denied(a, 'No one in sight'); return false; }
       a.yaw = Math.atan2(t.x - a.x, t.z - a.z);
       a.view && a.view.once('cast', { speed: 0.6 });
+      if (!M.lands(a, t, 'levitate')) { a.startBusy('cast', { dur: 0.7, lock: true, cancelOnMove: false }); return true; }
       t.fx.add('lifted', 1.6); t.cancelBusy(); t.view && t.view.loop('lifted');
       M.sfx('teleport', t, { pitch: 0.6 }); M.fx.burst(t.x, 1, t.z, 0xff2a2a, 30, 2, 1.2, 3);
-      M.later(1.6, () => { if (t.alive) { t.damage(20, a, 'levitate'); M.fx.burst(t.x, 0.3, t.z, 0xff2a2a, 20, 3, 0.6); M.sfx('hit', t); } });
+      M.later(1.6, () => { if (t.alive) { t.damage(15, a, 'levitate'); M.fx.burst(t.x, 0.3, t.z, 0xff2a2a, 20, 3, 0.6); M.sfx('hit', t); } });
       a.startBusy('cast', { dur: 0.7, lock: true, cancelOnMove: false });
       return true;
     },
@@ -317,7 +318,7 @@ export const ABILITIES = {
         a.yaw = yaw;
         const r = hitscan(a, M, yaw, 30, 0.35);
         M.sfx('shot', a); M.fx.beam(hand(a), r.end, 0xffe0a0, 0, 0.1); M.fx.flash(a.x, 1.4, a.z, 0xffd080, 8, 0.1);
-        if (r.hit) { r.hit.damage(30, a, 'shot'); M.fx.burst(r.hit.x, 1.2, r.hit.z, 0xff3030, 14, 3, 0.5); }
+        if (r.hit && M.lands(a, r.hit, 'pistol shot')) { r.hit.damage(35, a, 'shot'); M.fx.burst(r.hit.x, 1.2, r.hit.z, 0xff3030, 14, 3, 0.5); }
       } });
       a.fx.add('slow', 0.35, 0.4);
       return true;
@@ -341,7 +342,7 @@ export const ABILITIES = {
       const dist = aim && aim.target ? clamp(a.dist(aim.target), 4, 15) : 12, t = 0.8, vy = (0 - 1.3) / t + 0.5 * 18 * t;
       a.view && a.view.once('throw'); M.sfx('whoosh', a);
       M.fx.projectile({ x: h.x, y: h.y, z: h.z, vx: fx * dist / t, vy, vz: fz * dist / t, gravity: 18, owner: a, color: 0x3a4a2a, size: 0.14, bounce: 0.3, life: 1.25, glow: false, spin: true,
-        onExpire: (p) => { const P = p.mesh.position; M.explode(P.x, P.z, 4, a, { dmg: 35, color: 0xff9a40 }); } });
+        onExpire: (p) => { const P = p.mesh.position; M.explode(P.x, P.z, 4, a, { dmg: 40, color: 0xff9a40, ability: 'grenade' }); } });
       return true;
     },
     ai(a, M, c) { return c.target && c.td > 5 && c.td < 14 && (c.aim = { target: c.target, lead: 14 }); }
@@ -357,8 +358,9 @@ export const ABILITIES = {
         const d = a.dist(o); if (d > 7.5) continue;
         if (Math.abs(angDiff(yaw, Math.atan2(o.x - a.x, o.z - a.z))) > 0.4 && d > 1.2) continue;
         if (!M.world.collision.sightClear(a.x, a.z, o.x, o.z, 1.1)) continue;
-        o.damage(Math.round(40 * clamp(1.15 - d / 7.5, 0.35, 1)), a, 'shot');
-        o.shove((o.x - a.x) / (d || 1) * 8, (o.z - a.z) / (d || 1) * 8, 0.18);
+        if (!M.lands(a, o, 'shotgun')) continue;
+        o.damage(Math.round(50 * clamp(1.2 - d / 9, 0.45, 1)), a, 'shot');
+        o.shove((o.x - a.x) / (d || 1) * 2, (o.z - a.z) / (d || 1) * 2, 0.15);       // a jolt, not a launch that carries them away
         M.fx.burst(o.x, 1.2, o.z, 0xff3030, 16, 3, 0.5);
       }
       return true;
@@ -393,7 +395,7 @@ export const ABILITIES = {
       a.view && a.view.once('slash'); M.sfx('swing', a, { pitch: 0.7 });
       const cut = new Set();
       a.shove(fx * 22, fz * 22, 0.36, (s) => {
-        for (const o of enemies(s, M)) if (!cut.has(o) && s.dist(o) < 1.6) { cut.add(o); const d = o.damage(30, s, 'slash'); if (d) { M.fx.burst(o.x, 1.2, o.z, 0xff3030, 22, 4, 0.6); M.sfx('hit', o); } }
+        for (const o of enemies(s, M)) if (!cut.has(o) && s.dist(o) < 1.6) { cut.add(o); if (!M.lands(s, o, 'dash slash')) continue; const d = o.damage(30, s, 'slash'); if (d) { M.fx.burst(o.x, 1.2, o.z, 0xff3030, 22, 4, 0.6); M.sfx('hit', o); } }
       });
       return true;
     },
@@ -410,19 +412,20 @@ export const ABILITIES = {
       a.fx.add('slow', 0.8, 0.6);
       a.view && a.view.once('slash', { speed: 0.6 });
       M.sfx('roar', a, { pitch: 1.3, vol: 0.5 });
-      M.later(0.75, () => {
+      M.later(0.62, () => {
         if (!a.alive || a.fx.has('stun')) return;
         let any = false;
         for (const o of enemies(a, M)) {
           const d = a.dist(o); if (d > 3.2) continue;
           if (Math.abs(angDiff(a.yaw, Math.atan2(o.x - a.x, o.z - a.z))) > 0.8 && d > 1) continue;
+          if (!M.lands(a, o, 'execution')) continue;
           const dd = o.damage(60, a, 'execute'); if (dd) { any = true; M.fx.burst(o.x, 1.2, o.z, 0xff2020, 40, 5, 0.8); M.sfx('hit', o, { pitch: 0.7 }); M.shakeNear(o, 0.25); }
         }
         if (!any) M.onWhiff(a);
       });
       return true;
     },
-    ai(a, M, c) { return c.target && c.td < 2.6 && c.tAngle < 0.5 && (c.targetStuck || c.target.hp > 55); }
+    ai(a, M, c) { return c.target && c.td < 3 && c.tAngle < 0.6; }
   },
   lightning: {
     icon: '⚡',
@@ -432,12 +435,13 @@ export const ABILITIES = {
       if (!first) { M.denied(a, 'No one in sight'); return false; }
       a.yaw = Math.atan2(first.x - a.x, first.z - a.z);
       a.view && a.view.once('cast');
-      const zap = (from, to) => { M.fx.beam(from, chest(to), 0xfff36b, 0.6, 0.3, 2); M.fx.beam(from, chest(to), 0xffffff, 0.35, 0.2); to.damage(22, a, 'lightning'); to.fx.add('slow', 2, 0.3); M.fx.burst(to.x, 1.2, to.z, 0xfff36b, 20, 3, 0.5); M.fx.flash(to.x, 1.6, to.z, 0xfff36b, 12, 0.25); };
-      zap(hand(a), first);
+      const zap = (from, to) => { M.fx.beam(from, chest(to), 0xfff36b, 0.6, 0.3, 2); M.fx.beam(from, chest(to), 0xffffff, 0.35, 0.2); to.damage(18, a, 'lightning'); to.fx.add('slow', 1.2, 0.25); M.fx.burst(to.x, 1.2, to.z, 0xfff36b, 20, 3, 0.5); M.fx.flash(to.x, 1.6, to.z, 0xfff36b, 12, 0.25); };
       M.sfx('zap', a);
+      if (!M.lands(a, first, 'lightning')) { M.fx.beam(hand(a), chest(first), 0xfff36b, 1.4, 0.25, 2); return true; }   // the bolt goes wide
+      zap(hand(a), first);
       let second = null, best = 8;
       for (const o of enemies(a, M)) { if (o === first) continue; const d = first.dist(o); if (d < best) { best = d; second = o; } }
-      if (second) M.later(0.12, () => { if (second.alive) zap(chest(first), second); });
+      if (second) M.later(0.12, () => { if (second.alive && M.lands(a, second, 'chain lightning')) zap(chest(first), second); });
       return true;
     },
     ai(a, M, c) { return c.target && c.tSeen && c.td > 3 && c.td < 13 && (c.aim = { target: c.target }); }
@@ -449,7 +453,8 @@ export const ABILITIES = {
       const t = aim && aim.target && a.dist(aim.target) < 15 && M.canSee(a, aim.target, true) ? aim.target : pickTarget(a, M, yaw, 15, 0.45);
       if (!t) { M.denied(a, 'No one in sight'); return false; }
       a.view && a.view.once('cast', { speed: 0.7 });
-      const d = a.dist(t) || 1, pull = Math.min(6, d - 1.6);
+      if (!M.lands(a, t, 'possession')) return true;
+      const d = a.dist(t) || 1, pull = Math.min(4, d - 1.6);
       t.cancelBusy(); t.fx.add('root', 0.5);
       t.shove((a.x - t.x) / d * pull / 0.5, (a.z - t.z) / d * pull / 0.5, 0.5);
       M.fx.beam(hand(a), chest(t), 0xffd21f, 0.25, 0.5, 2);

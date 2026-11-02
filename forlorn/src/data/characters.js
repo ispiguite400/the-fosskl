@@ -14,7 +14,7 @@ export const SURVIVORS = [
     bio: 'The last Guest left in Roblox. A veteran of the war against the Bacon Empire who would rather take the hit himself than watch a friend fall.',
     passive: { name: 'Veteran', text: 'Takes 10% less damage.' },
     abilities: [
-      { id: 'block', key: 'Q', name: 'Block', cd: 22, text: 'Raise your guard for 1.2s. A hit during it is shrugged off and the killer is stunned for 2s.' },
+      { id: 'block', key: 'Q', name: 'Block', cd: 22, text: 'Raise your guard for 1.5s. A hit during it is shrugged off and the killer is stunned for 2s.' },
       { id: 'grenade', key: 'R', name: 'Grenade', cd: 40, text: 'Throw a grenade. It goes off after a second: the killer is stunned for 1.8s and knocked back.' }
     ],
     skins: [{ id: 'default', name: 'Soldier', price: 0 }, { id: 'prisoner', name: 'Guest Prison', price: 350 }, { id: 'winter', name: 'Winter Ops', price: 450 }]
@@ -32,7 +32,7 @@ export const SURVIVORS = [
   },
   {
     id: 'daisy', name: 'Daisy', title: 'Heart of the Resistance', film: 'The Last Guest', price: 400, color: '#38c6d9',
-    hp: 95, speed: 1.02, stamina: 100,
+    hp: 105, speed: 1.02, stamina: 100,
     bio: "Guest's childhood friend and the reason he keeps going. She patches up whoever needs it and never leaves anyone behind.",
     passive: { name: 'Hope', text: 'Survivors near her regain stamina 25% faster.' },
     abilities: [
@@ -54,7 +54,7 @@ export const SURVIVORS = [
   },
   {
     id: 'captain', name: 'Army Captain', title: 'Captain of the Roblox Army', film: 'The Last Guest', price: 800, color: '#7a8b3c',
-    hp: 135, speed: 0.96, stamina: 95,
+    hp: 135, speed: 0.99, stamina: 95,
     bio: 'The commander who led the Roblox Army against the Bacon Empire. Slow to fall, quick to give orders.',
     passive: { name: 'Command', text: 'Survivors within 10m of him repair 10% faster.' },
     abilities: [
@@ -65,7 +65,7 @@ export const SURVIVORS = [
   },
   {
     id: 'emily', name: 'Emily', title: 'The New Girl', film: 'Guest 666', price: 500, color: '#b4a2ff',
-    hp: 85, speed: 1.04, stamina: 100,
+    hp: 95, speed: 1.04, stamina: 100,
     bio: 'The quiet student the bullies picked on, until the legend of Guest 666 came true. She knows how to disappear.',
     passive: { name: 'Watched Over', text: 'Sees the killer through walls within 25m.' },
     abilities: [
@@ -91,8 +91,8 @@ export const SURVIVORS = [
     bio: "Emily's teacher, dripping in gold, with a smile you can see from across the school. He thinks money solves everything. Sometimes it does.",
     passive: { name: 'Big Spender', text: 'Earns 25% more money every round.' },
     abilities: [
-      { id: 'makeitrain', key: 'Q', name: 'Make It Rain', cd: 35, text: 'Throw a fortune in cash: the killer is slowed 35% inside it for 5 seconds.' },
-      { id: 'gold', key: 'R', name: 'Gold Plating', cd: 45, text: 'Absorb the next 40 damage for 8 seconds.' }
+      { id: 'makeitrain', key: 'Q', name: 'Make It Rain', cd: 35, text: 'Throw a fortune in cash: the killer is slowed 45% inside it for 5 seconds.' },
+      { id: 'gold', key: 'R', name: 'Gold Plating', cd: 45, text: 'Absorb the next 55 damage for 8 seconds.' }
     ],
     skins: [{ id: 'default', name: 'Gold Suit', price: 0 }, { id: 'diamond', name: 'Diamond', price: 900 }]
   },
@@ -113,7 +113,7 @@ export const SURVIVORS = [
     bio: "Son of the Bacon General, who turned his back on the Empire to free the Guests. The Bacons still hesitate before hurting him.",
     passive: { name: 'Insider', text: 'Bacon killers deal him 15% less damage.' },
     abilities: [
-      { id: 'disguise', key: 'Q', name: 'Bacon Disguise', cd: 45, text: 'For 6s the killer ignores you unless you are within 3m.' },
+      { id: 'disguise', key: 'Q', name: 'Bacon Disguise', cd: 50, text: 'For 6s the killer ignores you unless you are within 3m.' },
       { id: 'snare', key: 'R', name: 'Sabotage', cd: 30, text: 'Set a snare: the killer is rooted for 2s when they step in it.' }
     ],
     skins: [{ id: 'default', name: 'Motorcycle Tee', price: 0 }, { id: 'rebel', name: 'Rebel', price: 400 }]
@@ -126,31 +126,31 @@ export const KILLERS = [
     speed: 1, stamina: 120, m1: { name: 'Claw', dmg: 25, cd: 1.5, range: 2.6 },
     bio: 'The spirit of a Guest that never left. Pitch black, red-eyed, silent. He comes for the ones who hurt others, and tonight that is everyone.',
     abilities: [
-      { id: 'hellfire', key: 'Q', name: 'Hellfire', cd: 14, text: 'Hurl a fireball: 30 damage, and it leaves a burning trail.' },
-      { id: 'levitate', key: 'R', name: 'Levitate', cd: 30, text: 'Lift the survivor you are looking at (18m): helpless for 1.6s, 20 damage.' },
+      { id: 'hellfire', key: 'Q', name: 'Hellfire', cd: 16, text: 'Hurl a fireball: 26 damage, and it leaves a burning trail.' },
+      { id: 'levitate', key: 'R', name: 'Levitate', cd: 34, text: 'Lift the survivor you are looking at (18m): helpless for 1.6s, 15 damage.' },
       { id: 'vanish', key: 'F', name: 'Vanish', cd: 40, text: 'Fade from sight for 5 seconds and move 20% faster.' }
     ],
     skins: [{ id: 'default', name: 'The Terrible', price: 0 }, { id: 'classic', name: 'White Eyes', price: 500 }, { id: 'inferno', name: 'Inferno', price: 900 }]
   },
   {
     id: 'bacongeneral', name: 'Bacon General', title: 'Ruler of the Bacon Empire', film: 'The Last Guest', price: 0, color: '#3d74c9',
-    speed: 0.98, stamina: 115, m1: { name: 'Pistol Whip', dmg: 25, cd: 1.5, range: 2.5 },
+    speed: 1, stamina: 115, m1: { name: 'Pistol Whip', dmg: 25, cd: 1.5, range: 2.5 },
     bio: "General Baconson, who burned the Guest villages and took Guest's parents. He does not fight fair, and he never comes alone.",
     abilities: [
-      { id: 'pistol', key: 'Q', name: 'Pistol Shot', cd: 10, text: 'Aim and fire: 30 damage at up to 30m.' },
-      { id: 'reinforce', key: 'R', name: 'Reinforcements', cd: 60, text: 'Call two Bacon Soldiers to hunt for 20 seconds.' },
-      { id: 'kgrenade', key: 'F', name: 'Grenade', cd: 25, text: 'Lob a grenade: 35 damage in a 4m blast.' }
+      { id: 'pistol', key: 'Q', name: 'Pistol Shot', cd: 9, text: 'Aim and fire: 35 damage at up to 30m.' },
+      { id: 'reinforce', key: 'R', name: 'Reinforcements', cd: 45, text: 'Call two Bacon Soldiers to hunt for 20 seconds.' },
+      { id: 'kgrenade', key: 'F', name: 'Grenade', cd: 20, text: 'Lob a grenade: 40 damage in a 4m blast.' }
     ],
     skins: [{ id: 'default', name: 'Bacon General', price: 0 }, { id: 'dress', name: 'Parade Dress', price: 600 }]
   },
   {
     id: 'baconcolonel', name: 'Bacon Colonel', title: 'The Iron Fist', film: 'The Last Guest', price: 600, color: '#8f8f8f',
-    speed: 1, stamina: 120, m1: { name: 'Rifle Butt', dmg: 25, cd: 1.5, range: 2.5 },
+    speed: 1.03, stamina: 120, m1: { name: 'Rifle Butt', dmg: 28, cd: 1.5, range: 2.5 },
     bio: 'The one-eyed Colonel who took over the Empire after the General fell. Patient, cruel, and very good with traps.',
     abilities: [
-      { id: 'shotgun', key: 'Q', name: 'Shotgun', cd: 12, text: 'A wide blast: up to 40 damage close in.' },
-      { id: 'beartrap', key: 'R', name: 'Bear Trap', cd: 15, text: 'Set a trap (three at once): 15 damage and rooted for 2.5s.' },
-      { id: 'interrogate', key: 'F', name: 'Interrogate', cd: 35, text: 'Your next hit reveals every survivor for 6 seconds.' }
+      { id: 'shotgun', key: 'Q', name: 'Shotgun', cd: 10, text: 'A wide blast: up to 50 damage close in.' },
+      { id: 'beartrap', key: 'R', name: 'Bear Trap', cd: 12, text: 'Set a trap (three at once): 15 damage and rooted for 2.5s.' },
+      { id: 'interrogate', key: 'F', name: 'Interrogate', cd: 28, text: 'Your next hit reveals every survivor for 6 seconds.' }
     ],
     skins: [{ id: 'default', name: 'Fur Coat', price: 0 }, { id: 'winter', name: 'Winter Campaign', price: 600 }]
   },
@@ -159,7 +159,7 @@ export const KILLERS = [
     speed: 1.02, stamina: 120, m1: { name: 'Sword', dmg: 30, cd: 1.7, range: 2.9 },
     bio: 'The Empire\'s best, in black armour and a black bandana, with a sword and a red scar. He has never lost a duel.',
     abilities: [
-      { id: 'dashslash', key: 'Q', name: 'Dash Slash', cd: 12, text: 'Dash 8m, cutting everything you pass: 30 damage.' },
+      { id: 'dashslash', key: 'Q', name: 'Dash Slash', cd: 10, text: 'Dash 8m, cutting everything you pass: 30 damage.' },
       { id: 'parry', key: 'R', name: 'Parry', cd: 20, text: 'For 1s, stuns used on you are turned back: 20 damage to the survivor instead.' },
       { id: 'execute', key: 'F', name: 'Execution', cd: 30, text: 'A slow, heavy blow: 60 damage.' }
     ],
@@ -167,12 +167,12 @@ export const KILLERS = [
   },
   {
     id: 'bloxwatch', name: 'Blox Watch', title: 'The First Guest', film: 'Blox Watch', price: 1000, color: '#ffd21f',
-    speed: 1, stamina: 125, m1: { name: 'Shock', dmg: 25, cd: 1.5, range: 2.7 },
+    speed: 1, stamina: 115, m1: { name: 'Shock', dmg: 25, cd: 1.5, range: 2.5 },
     bio: 'The most powerful Astral, believed to be the very first Guest. Pitch black, yellow-eyed, with lightning in his hands.',
     abilities: [
-      { id: 'lightning', key: 'Q', name: 'Astral Lightning', cd: 14, text: 'Lightning leaps to a survivor in sight (14m) and on to one more: 22 damage each, slowed.' },
-      { id: 'possess', key: 'R', name: 'Possession', cd: 30, text: 'Seize a survivor within 15m and drag them 6m toward you.' },
-      { id: 'limbo', key: 'F', name: 'Limbo Step', cd: 18, text: 'Step through Limbo: reappear up to 15m ahead.' }
+      { id: 'lightning', key: 'Q', name: 'Astral Lightning', cd: 18, text: 'Lightning leaps to a survivor in sight (14m) and on to one more: 18 damage each, slowed.' },
+      { id: 'possess', key: 'R', name: 'Possession', cd: 35, text: 'Seize a survivor within 15m and drag them 4m toward you.' },
+      { id: 'limbo', key: 'F', name: 'Limbo Step', cd: 28, text: 'Step through Limbo: reappear up to 15m ahead.' }
     ],
     skins: [{ id: 'default', name: 'Blox Watch', price: 0 }, { id: 'void', name: 'Void', price: 900 }]
   }

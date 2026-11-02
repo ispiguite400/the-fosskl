@@ -7,6 +7,7 @@ import { lamp, crate, barrel, frame, sandbags } from '../prefabs.js';
 import { building, partition, bars, chainFence, guardTower, bunk, table, desk, lockers, bleachers, shelf } from '../prefabs2.js';
 
 export default {
+  time: 240,                          // balance: this map's round length (225 elsewhere)
   id: 'prison', name: 'Guest Prison', film: 'The Last Guest',
   blurb: 'The Empire\'s prison for Guests. Tonight the cells are open.',
   size: [96, 96],

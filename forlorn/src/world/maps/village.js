@@ -5,6 +5,7 @@
 import { house, fence, lamp, tree, rock, crate, barrel, cart, sandbags, well, frame, ruinWall, bench } from '../prefabs.js';
 
 export default {
+  time: 240,                          // balance: this map's round length (225 elsewhere)
   id: 'village', name: 'Guest Village', film: 'The Last Guest',
   blurb: 'The Guests\' home, the night the Bacon Empire burned it.',
   size: [92, 92],

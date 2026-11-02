@@ -649,3 +649,9 @@ body.touch .lobby-me { top: calc(3.6rem + var(--safe-t)); }
 /* ---------- the camp menu's split screen switch ---------- */
 .lobby-side .btn.on { box-shadow: inset 3px 0 0 var(--cyan); }
 .lobby-side .btn.on .ico { color: var(--cyan); }
+
+/* an ability that missed (match.lands) and a kill's time bonus */
+.h-ping.miss i { display: none; }
+.h-ping.miss span { left: 0; top: 0; translate: -50% -100%; font-family: var(--head); font-size: 1.5rem; letter-spacing: 0.12em; color: #f4efe6; text-shadow: 0 2px 4px #000, 0 0 10px rgba(0,0,0,0.8); animation: rise 0.25s ease both; }
+.h-plus { position: absolute; left: 50%; top: 100%; translate: -50% 0.2rem; font-family: var(--head); font-size: 1.3rem; letter-spacing: 0.08em; color: var(--red2); text-shadow: var(--outline); animation: rise 0.3s ease both; white-space: nowrap; }
+.h-clock.bumped .h-timer { color: var(--red2); }

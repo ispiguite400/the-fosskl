@@ -13,6 +13,7 @@ import { sign, tenement, shack, cityWall, wallTower, streetLight, burnBarrel, du
 const PI = Math.PI;
 
 export default {
+  time: 255,                          // balance: this map's round length (225 elsewhere)
   id: 'city', name: 'Bacon City', film: 'The Bacon Hair',
   blurb: 'Curfew is in effect. Nobody gets over the Wall.',
   size: [112, 112],
