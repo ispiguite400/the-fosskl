@@ -5,7 +5,7 @@
 import { el, esc, fmtTime, clamp } from '../core/util.js';
 import { profile, settings, saveProfile, saveSettings, owns, grant, equippedSkin } from '../core/save.js';
 import { SURVIVORS, KILLERS, isReady, byId } from '../data/characters.js';
-import { input, scanPads } from '../core/input.js';
+import { input } from '../core/input.js';
 import { audio } from '../audio/audio.js';
 import { music } from '../audio/music.js';
 import { portrait, mapArt } from './art.js';
@@ -107,6 +107,9 @@ export class UI {
     btn('Killer Chance', 'skull', () => this.push('shop', 'malice'));
     btn('Settings', 'gear', () => this.push('settings'));
     btn('How to play', 'book', () => this.push('howto'));
+    // split screen: on and off; player two joins with their controller and picks who to play as in their half
+    const splitText = () => (g.p2 ? 'Split screen: on' : g.splitOn ? 'Split screen: press ✕' : 'Split screen');
+    this.splitBtn = btn(splitText(), 'people', () => { g.toggleSplit(); this.splitBtn.querySelector('span').textContent = splitText(); this.splitBtn.classList.toggle('on', !!(g.p2 || g.splitOn)); }, g.p2 || g.splitOn ? 'on' : '');
     const optText = () => (settings.killerOptOut ? 'Killer: off' : 'Killer: on');
     this.optBtn = btn(optText(), 'knife', () => { settings.killerOptOut = !settings.killerOptOut; saveSettings(); this.optBtn.querySelector('span').textContent = optText(); }, 'small');
     this._set('lobby', s);
@@ -151,10 +154,10 @@ export class UI {
       qe.textContent = settings.killerOptOut ? 'Killer off' : q.pos === 1 && !q.gap ? 'You are the next killer' : q.pos === 1 ? 'Tied for killer' : '#' + q.pos + ' in line for killer';
       qe.classList.toggle('first', !settings.killerOptOut && q.pos === 1 && !q.gap);
       // split screen: tell a second controller it can join
-      const je = s.querySelector('.lobby-me .join'), pads = scanPads().length;
-      const ask = !g.p2 && (g.joinWait || pads >= 2);
+      const je = s.querySelector('.lobby-me .join'), ask = !g.p2 && g.splitOn;
       je.classList.toggle('hidden', !ask);
-      if (ask && je.dataset.v !== String(g.joinWait)) { je.dataset.v = String(g.joinWait); je.innerHTML = icon('people') + (g.joinWait ? 'Player 2: press ' : 'Split screen: a second controller presses ') + '<span class="glyph"><span class="g-face" style="color:#8db8ff"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></span></span> to join'; }
+      if (ask && je.dataset.v !== String(g.joinWait)) { je.dataset.v = String(g.joinWait); je.innerHTML = icon('people') + 'Player 2: press <span class="glyph"><span class="g-face" style="color:#8db8ff"><svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg></span></span> on ' + (g.joinWait ? 'your' : 'a second') + ' controller to join'; }
+      if (this.splitBtn) { this.splitBtn.querySelector('span').textContent = g.p2 ? 'Split screen: on' : g.splitOn ? 'Split screen: press ✕' : 'Split screen'; this.splitBtn.classList.toggle('on', !!(g.p2 || g.splitOn)); }
       s.querySelector('.lobby-players .rows').innerHTML = members.map((m) => '<div class="row' + (m.isMe ? ' me' : '') + (m === next ? ' next' : '') + '"><span class="n">' + esc(m.name) + '</span><span class="mb"><i style="width:' + Math.round(m.malice / top * 100) + '%"></i></span><span class="m">' + m.malice + '</span></div>').join('');
       if (L.timeLeft < 13 && !this._voteBuilt) this.buildVote();
       if (this._voteBuilt) {
@@ -355,8 +358,7 @@ export class UI {
     b('Shop', 'bag', () => { this.stack = ['lobby']; this.shop(); });
     b('Settings', 'gear', () => { this.stack = ['lobby']; this.settings(); });
     b('How to play', 'book', () => { this.stack = ['lobby']; this.howto(); });
-    if (this.game.p2) b('Remove player 2', 'door', () => { this.game.resume(); this.game.removePlayer2(); });
-    else b('Add player 2', 'people', () => { this.game.joinWait = true; this.game.resume(); this.game.chat.system('Split screen: Player 2, press ✕ on your controller to join'); });
+    b(this.game.p2 || this.game.splitOn ? 'Split screen: off' : 'Split screen', 'people', () => { this.game.resume(); this.game.toggleSplit(); });
     this.onTab = null;
     this._set('lobbymenu', s);
     if (input.device === 'pad') this.nav.set(s.querySelector('.btn'));
@@ -373,7 +375,7 @@ export class UI {
       sec('note', 'Last Man Standing', 'When one survivor is left, the song starts. The round now lasts exactly as long as the song. The survivor gets a burst of speed and stamina; the killer starts in a Frenzy.') +
       sec('star', 'What is different here', '<b>Bond</b>: stay near another survivor for a while and you bond. Bonded survivors repair faster and see each other through walls. <b>Echoes</b>: dead survivors can reveal the killer to the living once a round. <b>Bloodlust</b>: the killer fills it by hitting and chasing; when it boils over, a Frenzy. <b>Events</b>: every map has its own, halfway through: an air raid, a lockdown, a blackout, a curfew.') +
       sec('skull', 'Who is the killer?', 'Every round you are not the killer, your malice goes up. The highest malice is the next killer. Turn "Play as killer" off in Settings to stay a survivor.') +
-      sec('people', 'Split screen', 'Two players on one screen, each with a controller. In the camp, a second controller presses ✕ (A on Xbox) to join, or pick <b>Add player 2</b> from the menu to play player one on keyboard and mouse. The screen splits down the middle; both of you play the next rounds, on the same side or against each other. Player two changes survivor with L1 / R1 and killer with L2 / R2, and holds ○ (B) to leave.') +
+      sec('people', 'Split screen', 'Two players on one screen: one on the laptop\'s keyboard and mouse (or a controller), one on a controller. Pick <b>Split screen</b> in the camp\'s menu, then player two presses ✕ (A on Xbox) on their controller. The screen splits down the middle and both of you play the next rounds. Each of you chooses who to play as in the camp: player one in Characters, player two in their own half (L1 / R1 for a survivor, L2 / R2 for a killer). Pick Split screen again, or hold ○ (B) on player two\'s controller, to go back to one player.') +
       '</div>';
     s.querySelector('[data-back]').onclick = () => this.back();
     this.onTab = null;

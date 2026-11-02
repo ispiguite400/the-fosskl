@@ -60,14 +60,18 @@ play and Settings (`src/ui/glyph.js`).
 
 ### Split screen
 
-Two players on one screen, each on a controller. In the camp, a second controller presses ✕ (A on
-Xbox) to join; or pick **Add player 2** in the camp menu to keep player one on keyboard and mouse
-and give the controller to player two. The screen splits side by side. Each player has their own
-camera, HUD, button glyphs, name tags, wire puzzle, rumble and screen mood (fear, death, blind),
-and sees through walls only what their own side would. Both play every round from then on, on the
-same team or one of them as the killer. Player two picks a survivor with L1 / R1 and a killer
-with L2 / R2 from the characters you own, and holds ○ (B) to leave. Either player's OPTIONS
-pauses, and both can drive the pause menu. Player two's earnings go into the same bank.
+Two players on one screen: one on the laptop's keyboard and mouse (or a controller), the other on a
+controller. Pick **Split screen** in the camp's menu, then player two presses ✕ (A on Xbox) on their
+controller. If player one is on the keyboard, any controller can be player two's; if player one is
+on a controller, player two uses a second one. The screen splits side by side, each player with
+their own camera, HUD, button glyphs, name tags, wire puzzle, rumble and screen mood, and both play
+every round from then on, on the same team or one of them as the killer.
+
+Each player chooses who to play as in the camp: player one in Characters, player two in the card
+in their half (L1 / R1 for a survivor, L2 / R2 for a killer, or click its arrows), from the
+characters you own. Pick Split screen again, or hold ○ (B) on player two's controller, to go back to
+one player. Either player's OPTIONS pauses, and both can drive the pause menu. Player two's earnings
+go into the same bank.
 
 ## The game
 

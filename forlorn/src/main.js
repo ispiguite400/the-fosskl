@@ -31,6 +31,7 @@ import { loadLobby, loadMap, availableMaps } from './data/maps.js';
 import { preloadModel } from './render/characters.js';
 import { characterModel, SHIPPED, loadShipped, SURVIVORS, KILLERS, isReady, byId } from './data/characters.js';
 import { esc } from './core/util.js';
+import { portrait } from './ui/art.js';
 import * as THREE from 'three';
 
 class Game {
@@ -50,7 +51,8 @@ class Game {
     this.puzzle = one.puzzle = new Puzzle(this, document.getElementById('overlay'));
     this.touch = new Touch(this, document.getElementById('touch'));
     this.player = one.control = new PlayerControl(this, one);
-    this.joinWait = false;                   // "Add player 2" from the menu: the next controller to press ✕ joins
+    this.splitOn = false;                    // Split screen in the camp's menu: waiting for player two, or playing two
+    this.joinWait = false;                   // ...and player one is on the keyboard, so any controller may be player two's
     this.server = new Server(this);
     this.state = 'boot';
     this.lobby = null; this.match = null; this.paused = false;
@@ -106,12 +108,25 @@ class Game {
   get p2() { return this.slots[1] || null; }
 
   /* ---------------- split screen ---------------- */
+  /**
+   * The camp menu's Split screen switch. On: player two presses ✕ on a controller to join (player one
+   * on keyboard and mouse leaves every controller free; player one on a controller keeps theirs). Off:
+   * back to one player.
+   */
+  toggleSplit() {
+    if (this.p2 || this.splitOn) { this.splitOn = false; this.joinWait = false; if (this.p2) this.removePlayer2(); return; }
+    this.splitOn = true;
+    this.joinWait = input.device !== 'pad' || scanPads().length < 2;   // with one controller, it is player two's
+    this._joinHeld = scanPads().some((p) => p.pressed.includes(0));   // a ✕ already down (the one that pressed this) does not count
+    this.chat.system('Split screen: Player 2, press ✕ (A on Xbox) on ' + (this.joinWait ? 'your' : 'a second') + ' controller to join');
+    audio.sfx('ui');
+  }
   /** A second controller joins as player two (only in the camp, between rounds). */
   addPlayer2(padIndex) {
     if (this.p2 || this.state !== 'lobby' || !this.lobby) return false;
     this.joinWait = false;
     const inp = new PadInput(padIndex);
-    inp.update();                            // the ✕ that joined is already held, so it is not also a jump
+    inp.update(); inp._pressed.clear();       // the ✕ that joined is already held, so it is not also a jump (or a menu press)
     input.claimed.add(padIndex); input.others = [inp];
     setGlyphSource(2, inp);
     const cam = new THREE.PerspectiveCamera(settings.fov || 70, 1, 0.08, 400);
@@ -145,15 +160,21 @@ class Game {
     this.slots.length = 1;
     this.renderer.setSplit(null);
     document.getElementById('ui').classList.remove('split');
+    this.splitOn = false; this.joinWait = false;
     this.chat.system(s.member.name + ' left split screen', 'leave');
   }
-  /** Player two's corner of the camp: who they will play, and how to change it or leave. */
+  /** Player two's corner of the camp: who they will play as (survivor and killer), and how to leave. */
   lobbyP2() {
     const s = this.p2; if (!s || this.state !== 'lobby') return;
-    const sv = byId(this.server.survivorFor(s.member).charId), kl = byId(this.server.killerFor(s.member).charId);
-    const g = (a) => glyphP2(a);
-    s.hud.root.innerHTML = '<div class="p2-card"><div class="p2-tag">PLAYER 2</div><div class="p2-row"><small>SURVIVOR</small>' + g('tabPrev') + '<b>' + esc(sv ? sv.name : '') + '</b>' + g('tabNext') + '</div>' +
-      '<div class="p2-row"><small>KILLER</small>' + g('ability2') + '<b>' + esc(kl ? kl.name : '') + '</b>' + g('attack') + '</div><div class="p2-hint">Hold ' + g('cancel') + ' to leave</div></div>';
+    const sv = this.server.survivorFor(s.member), kl = this.server.killerFor(s.member);
+    const row = (kind, label, pick, prev, next) => {
+      const c = byId(pick.charId);
+      return '<div class="p2-row"><span class="p2-pic" style="background-image:url(' + portrait(pick.charId, pick.skin) + ')"></span><div class="p2-who"><small>' + label + '</small><b>' + esc(c ? c.name : '') + '</b></div>' +
+        '<button class="btn small" data-p2="' + kind + ':-1">' + glyphP2(prev) + '</button><button class="btn small" data-p2="' + kind + ':1">' + glyphP2(next) + '</button></div>';
+    };
+    s.hud.root.innerHTML = '<div class="p2-card"><div class="p2-tag">PLAYER 2 <small>WHO TO PLAY AS</small></div>' + row('survivor', 'SURVIVOR', sv, 'tabPrev', 'tabNext') + row('killer', 'KILLER', kl, 'ability2', 'attack') +
+      '<div class="p2-hint">Hold ' + glyphP2('cancel') + ' to leave split screen</div></div>';
+    s.hud.root.querySelectorAll('[data-p2]').forEach((b) => { b.onclick = () => { const [k, d] = b.dataset.p2.split(':'); this.cycleP2(k, +d); }; });
   }
   /** Player two flips through the characters player one owns. */
   cycleP2(kind, dir) {
@@ -172,6 +193,7 @@ class Game {
     if (this.state !== 'lobby' || this.ui.modal() || this.chat.isOpen) return;
     const s = this.p2;
     if (!s) {
+      if (!this.splitOn) return;
       for (const pad of scanPads()) {
         const mine = pad.index === input.padIndex && !this.joinWait;
         if (mine || input.claimed.has(pad.index)) continue;
