@@ -394,7 +394,7 @@ export class Match {
       this.lms = { survivor: s, track, len, start: this.time, title: music.title(track) };
       this.phase = 'lms';
       this.timeLeft = len;
-      s.fx.add('haste', 9999, 0.13); s.maxStamina *= 1.3; s.stamina = s.maxStamina; s.heal(40);      // balance: tuned on all-bot rounds
+      s.fx.add('haste', 9999, 0.12); s.maxStamina *= 1.3; s.stamina = s.maxStamina; s.heal(30);      // balance: tuned on all-bot rounds
       this.bloodlust = 100;
       music.play(track, { fade: 0.4, restart: true });
       audio.sfx('sting', { vol: 0.8 });

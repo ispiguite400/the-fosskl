@@ -122,7 +122,7 @@ go into the same bank.
 - **Abilities can miss**: any ability that would land on someone (a stun, a shot, a fireball, a
   lift, a slash) misses one time in five, for survivors and killers alike, and MISS shows over its
   target (`MISS_CHANCE` in `src/game/match.js`).
-- **Time**: a round is 225 seconds (a little longer on the big maps, shorter on the war map); each
+- **Time**: a round is 225 seconds (a little longer on the big maps, shorter in the hospital); each
   generator takes 20 seconds off, and each kill gives the killer 40 more (`GEN_CUT`, `KILL_TIME`).
 - **Tuned on data**: every killer, survivor and map was tuned by playing hundreds of all-bot rounds
   headless and reading the win rates per killer, map and survivor, aiming for even rounds.

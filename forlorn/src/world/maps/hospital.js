@@ -7,6 +7,7 @@ import { lamp, tree, car, bench, frame, crate } from '../prefabs.js';
 import { building, partition, bed, table, desk, shelf, lockers } from '../prefabs2.js';
 
 export default {
+  time: 210,                          // balance: this map's round length (225 elsewhere)
   id: 'hospital', name: 'Bloxville General', film: 'Guest 666',
   blurb: 'The hospital after visiting hours. The power is not to be trusted.',
   size: [96, 96],
