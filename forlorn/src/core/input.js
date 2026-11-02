@@ -69,6 +69,7 @@ class Input {
     this.touch ={ move: { x: 0, y: 0 }, look: { x: 0, y: 0 }, buttons: new Set() };
     this.pad = null; this.padIndex = -1; this.padKind = 'ps';
     this.claimed = new Set();               // controllers that belong to player two
+    this.padTaps = watchPad(() => this.padIndex);   // buttons pressed since the last frame, however briefly
     this.others = [];                       // player two's input, when a menu is shared
     this.menuShare = false;
     this.wheel = 0;
@@ -131,11 +132,11 @@ class Input {
       let on = false;
       if (!this.typing) for (const k of b.keys) if (this.keys.has(k) || this.taps.has(k)) on = true;
       if (b.mouse) for (const m of b.mouse) if (this.mouse.has(m) || this.mouseTaps.has(m)) on = true;
-      if (pad && b.pad) for (const i of b.pad) if (pad.buttons[i] && (pad.buttons[i].pressed || pad.buttons[i].value > 0.4)) on = true;
+      if (pad && b.pad) for (const i of b.pad) if (pad.buttons[i] && (pad.buttons[i].pressed || pad.buttons[i].value > 0.4 || this.padTaps.has(i))) on = true;
       if (this.touch.buttons.has(a)) on = true;
       if (on) this.held.add(a);
     }
-    this.taps.clear(); this.mouseTaps.clear();
+    this.taps.clear(); this.mouseTaps.clear(); this.padTaps.clear();
     this._pressed = new Set([...this.held].filter((a) => !this.prev.has(a)));
     this._released = new Set([...this.prev].filter((a) => !this.held.has(a)));
     // movement
@@ -200,6 +201,21 @@ class Input {
 
 export const input = new Input();
 
+/*
+ * A frame only looks at the controller once, so a quick tap that starts and ends between two frames
+ * (easy at 30 fps, and on a busy laptop) would be lost. This reads the controller every few
+ * milliseconds and keeps any button that went down until the next frame takes it.
+ */
+function watchPad(index) {
+  const taps = new Set(), was = [];
+  setInterval(() => {
+    const i = index(), p = i >= 0 && navigator.getGamepads ? navigator.getGamepads()[i] : null;
+    if (!p || !p.connected) { was.length = 0; return; }
+    p.buttons.forEach((b, k) => { const on = b.pressed || b.value > 0.4; if (on && !was[k]) taps.add(k); was[k] = on; });
+  }, 4);
+  return taps;
+}
+
 const MENU = new Set(['confirm', 'cancel', 'menuUp', 'menuDown', 'menuLeft', 'menuRight', 'tabPrev', 'tabNext']);
 
 /** Every connected controller: [{ index, id, pressed: [button numbers] }]. */
@@ -220,6 +236,7 @@ export class PadInput {
     this.move = { x: 0, y: 0 }; this.look = { x: 0, y: 0 };
     this.held = new Set(); this.prev = new Set(); this._pressed = new Set(); this._released = new Set();
     this.keys = new Set(); this.touch = { move: { x: 0, y: 0 }, look: { x: 0, y: 0 }, buttons: new Set() };
+    this.padTaps = watchPad(() => this.padIndex);
   }
   get connected() { const p = navigator.getGamepads ? navigator.getGamepads()[this.padIndex] : null; return !!(p && p.connected); }
   update() {
@@ -234,9 +251,10 @@ export class PadInput {
       lx = dz(this.pad.axes[2] || 0, 0.1); ly = dz(this.pad.axes[3] || 0, 0.1);
       for (const a in BIND) {
         const b = BIND[a];
-        if (b.pad) for (const i of b.pad) if (this.pad.buttons[i] && (this.pad.buttons[i].pressed || this.pad.buttons[i].value > 0.4)) this.held.add(a);
+        if (b.pad) for (const i of b.pad) if (this.pad.buttons[i] && (this.pad.buttons[i].pressed || this.pad.buttons[i].value > 0.4 || this.padTaps.has(i))) this.held.add(a);
       }
     }
+    this.padTaps.clear();
     this._pressed = new Set([...this.held].filter((a) => !this.prev.has(a)));
     this._released = new Set([...this.prev].filter((a) => !this.held.has(a)));
     const len = Math.hypot(px, py);

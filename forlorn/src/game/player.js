@@ -19,6 +19,7 @@ export class PlayerControl {
     this.spectating = null;
     this.emotes = ['wave', 'point', 'dance', 'cheer'];
     this.emoteI = 0;
+    this.queued = {};                       // ability button -> seconds it is still remembered
   }
   /** Where the player is aiming: the camera's heading, nudged onto a target in the cone. */
   aim(a, M, range = 18, cone = 0.22) {
@@ -36,6 +37,9 @@ export class PlayerControl {
     if (!a) return;
     const I = a.intent;
     if (!a.alive || a.left) { this.spectate(dt, M); I.mx = I.mz = 0; return; }
+    // an ability button gets you off a generator: the wire puzzle closes and the ability fires
+    const ABS = ['ability1', 'ability2', 'ability3'];
+    if (puzzle.open && M && !input.typing && !g.ui.modal() && ABS.some((x) => input.pressed(x))) puzzle.close();
     const blocked = input.typing || g.ui.modal() || puzzle.open;
     const [fx, fz] = cam.forward(), [rx, rz] = cam.right();
     const mx = blocked ? 0 : input.move.x, my = blocked ? 0 : input.move.y;
@@ -52,15 +56,24 @@ export class PlayerControl {
       return;
     }
     if (!M || M.phase === 'intro' || M.phase === 'end') { this.prompt = null; return; }
-    // abilities
-    const ab = a.def.abilities;
-    const tryCast = (i) => {
-      const ok = M.useAbility(a, i, this.aim(a, M, 20, 0.3));
-      if (!ok && ab[i] && a.cd[ab[i].id] > 0) audio.sfx('deny', { vol: 0.4 });
+    // abilities: a press is remembered for a moment, so one pressed a hair early (the cooldown about to
+    // end, mid-swing, a stun wearing off) still fires as soon as it can, instead of being lost
+    const ab = a.def.abilities, KEEP = 0.3;
+    for (const x of ABS) if (input.pressed(x)) this.queued[x] = KEEP;
+    const use = (x, i) => {
+      const left = this.queued[x] || 0; if (left <= 0) return;
+      const item = i === 2 && a.role !== 'killer';
+      const cd = item || !ab[i] ? 0 : a.cd[ab[i].id] || 0;
+      if (item && !a.item) { this.queued[x] = 0; return; }
+      if (cd > KEEP && left === KEEP) { audio.sfx('deny', { vol: 0.4 }); this.queued[x] = 0; return; }   // not nearly ready: say so now
+      if (cd <= 0 && a.canAct()) {
+        this.queued[x] = 0;
+        if (item) M.useItem(a); else M.useAbility(a, i, this.aim(a, M, 20, 0.3));
+        return;
+      }
+      this.queued[x] = left - dt;
     };
-    if (input.pressed('ability1')) tryCast(0);
-    if (input.pressed('ability2')) tryCast(1);
-    if (input.pressed('ability3')) { if (a.role === 'killer') tryCast(2); else if (a.item) M.useItem(a); }
+    use('ability1', 0); use('ability2', 1); use('ability3', 2);
     if (a.role === 'killer' && input.down('attack')) { a.yaw = cam.yaw + angDiff(cam.yaw, a.yaw) * 0.3; M.attack(a); }
     this.emote(a, input);
     // interact: the nearest thing worth pressing E on
